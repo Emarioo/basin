@@ -18,3 +18,10 @@ We may potentially support local macro character expansion in the lexer.
 The lexer takes a file or text as input and produces a sequence of tokens.
 
 # Parser
+
+
+
+# Multithreading
+
+Lexing a file is one operation. It takes input and gives output. It does not modify some global state. (it may add some new file ids if you do #paste)
+

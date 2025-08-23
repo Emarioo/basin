@@ -1,5 +1,6 @@
 
-#include "basin/lexer.h"
+#include "basin/core/lexer.h"
+
 #include "platform/memory.h"
 
 Result tokenize(const ImportID import_id, const string text, TokenStream** out_stream) {

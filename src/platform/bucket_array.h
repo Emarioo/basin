@@ -12,15 +12,20 @@
 #include "platform/memory.h"
 
 
-#define DEF_BUCKET_ARRAY(T)                                                                             \
-typedef struct {                                                                                        \
-    BucketArray _internal;                                                                              \
-} BucketArray_##T;                                                                                      \
-static inline void barray_init(BucketArray_##T* array, int items_per_bucket, int initial_max_buckets);  \
-static inline void barray_cleanup(BucketArray_##T* array);                                              \
-static inline void barray_push(BucketArray_##T* array, void* element);                                  \
-static inline void barray_pop(BucketArray_##T* array);                                                  \
-static inline T* barray_get(BucketArray_##T* array, int index);
+#define DEF_BUCKET_ARRAY(T)                                                                                 \
+typedef struct {                                                                                            \
+    BucketArray _internal;                                                                                  \
+} BucketArray_##T;                                                                                          \
+static inline void barray_init_##T(BucketArray_##T* array, int items_per_bucket, int initial_max_buckets)   \
+    { barray_init((BucketArray*)array, sizeof(T), items_per_bucket, initial_max_buckets); }                               \
+static inline void barray_cleanup_##T(BucketArray_##T* array)                                               \
+    { barray_cleanup((BucketArray*)array, sizeof(T)); }                                                                   \
+static inline void barray_push_##T(BucketArray_##T* array, void* element)                                   \
+    { barray_push((BucketArray*)array, sizeof(T), element); }                                                             \
+static inline void barray_pop_##T(BucketArray_##T* array)                                                   \
+    { barray_pop((BucketArray*)array, sizeof(T)); }                                                                       \
+static inline T* barray_get_##T(BucketArray_##T* array, int index)                                          \
+    { barray_get((BucketArray*)array, sizeof(T), index); }
 
 typedef struct {
     void* elements;

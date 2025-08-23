@@ -4,6 +4,8 @@
 
 typedef u16 ImportID;
 
+#define INVALID_IMPORT_ID 0xFFFFu
+
 typedef enum {
     SUCCESS,
     FAILURE,

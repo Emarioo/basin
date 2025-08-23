@@ -9,10 +9,10 @@
         int len;                                                                                        \
         int max;                                                                                        \
     } Array_##T;                                                                                        \
-    static inline void array_init_##T(T* array, int max) { array_init(array, sizeof(T), max); }         \
-    static inline void array_push_##T(T* array, T* element) { array_push(array, sizeof(T), element); }  \
-    static inline void array_pop_##T(T* array) { array_pop(array, sizeof(T)); }                         \
-    static inline void array_cleanup_##T(T* array) { array_cleanup(array, sizeof(T)); }
+    static inline void array_init_##T(T* array, int max) { array_init((Array*)array, sizeof(T), max); }         \
+    static inline void array_push_##T(T* array, T* element) { array_push((Array*)array, sizeof(T), element); }  \
+    static inline void array_pop_##T(T* array) { array_pop((Array*)array, sizeof(T)); }                         \
+    static inline void array_cleanup_##T(T* array) { array_cleanup((Array*)array, sizeof(T)); }
 
 typedef struct {
     void* ptr;

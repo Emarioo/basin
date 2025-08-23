@@ -2,9 +2,12 @@
     Entry point and command line parsing for the compiler CLI executable
 */
 
-#include "basin/lexer.h"
+#include "basin/core/lexer.h"
+#include "basin/core/driver.h"
+
 #include "platform/string.h"
 #include "platform/file.h"
+#include "platform/thread.h"
 
 int main(int argc, char** argv) {
     if(argc != 2) {
@@ -22,12 +25,24 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    TokenStream* stream;
-    Result result = tokenize(0, text, &stream);
+    Driver* driver = driver_create();
+    
+    Task task = {};
+    task.kind = TASK_TOKENIZE;
+    task.text = text;
+    task.import_id = driver_create_import_id(driver, source_file);
 
-    printf("result %d\n", result.kind);
+    driver_add_task(driver, &task);
 
-    print_token_stream(stream);
+    driver_run(driver);
+
+    // Driver finished compiling code
+    // user metaprograms finished executing
+    // Driver finished generating x86 (if that was specified), bytecode is finished at least
+    // Driver spat out executable, shared library, bytecode or whatever was specified.
+    
+    // write it to a file
+
 
     return 0;
 }
