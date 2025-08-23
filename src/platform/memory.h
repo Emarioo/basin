@@ -6,7 +6,7 @@ void* heap_alloc(int size);
 void* heap_realloc(void* ptr, const int size);
 void heap_free(void* ptr);
 
-#define HEAP_ALLOC_OBJECT(T) _heap_alloc_object(sizeof(T));
+#define HEAP_ALLOC_OBJECT(T) (T*)_heap_alloc_object(sizeof(T));
 static inline void* _heap_alloc_object(const int size) {
     void* ptr = heap_alloc(size);
     memset(ptr, 0, size);

@@ -1,9 +1,108 @@
 #pragma once
 
+// #include <stdatomic.h>
 
-void thread_create();
+typedef struct {
+    u64 handle;
+    u32 id;
+} Thread;
 
-void mutex_create();
+typedef struct {
+    u64 handle;
+} Mutex;
 
-int atomic_add(int* ptr, int value);
-i64 atomic_add64(i64* ptr, i64 value);
+typedef struct {
+    u64 handle;
+} Semaphore;
+
+void spawn_thread(Thread* thread, u32(*func)(void*), void* arg);
+void join_thread(Thread* thread);
+bool is_thread_joinable(Thread* thread);
+u32 current_thread_id();
+
+void create_mutex(Mutex* mutex);
+void lock_mutex(Mutex* mutex);
+void unlock_mutex(Mutex* mutex);
+void cleanup_mutex(Mutex* mutex);
+
+void create_semaphore(Semaphore* semaphore, u32 initial, u32 max_locks);
+void wait_semaphore(Semaphore* semaphore);
+void signal_semaphore(Semaphore* semaphore, int count);
+void cleanup_semaphore(Semaphore* semaphore);
+
+#define atomic_add(PTR, VAL) __atomic_fetch_add(PTR, VAL, __ATOMIC_SEQ_CST)
+#define atomic_add64(PTR, VAL) __atomic_fetch_add(PTR, VAL, __ATOMIC_SEQ_CST)
+
+#ifdef IMPL_PLATFORM
+
+#include "windows.h"
+
+void spawn_thread(Thread* thread, u32(*func)(void*), void* arg) {
+    // #if OS_WINDOWS
+        u32 thread_id;
+        HANDLE handle = CreateThread(NULL, 0, func, arg, 0, &thread_id);
+
+        ASSERT(handle != INVALID_HANDLE_VALUE);
+
+        thread->handle = (u64)handle;
+        thread->id = thread_id;
+    // #else
+    // #endif
+}
+void join_thread(Thread* thread) {
+    // #ifdef OS_WINDOWS
+    u32 res = WaitForSingleObject(thread->handle, INFINITE);
+    ASSERT(res != WAIT_FAILED);
+    
+    u32 yes = CloseHandle(thread->handle);
+    ASSERT(yes);
+    // #else
+    // #endif
+}
+bool is_thread_joinable(Thread* thread) {
+    return thread->id != 0 && thread->id != current_thread_id();
+}
+u32 current_thread_id() {
+    // #ifdef OS_WINDOWS
+        return GetCurrentThreadId();
+    // #else
+    // #endif
+}
+
+void create_mutex(Mutex* mutex) {
+    HANDLE handle = CreateMutex(NULL, false, NULL);
+    ASSERT(handle != INVALID_HANDLE_VALUE);
+    mutex->handle = handle;
+}
+void lock_mutex(Mutex* mutex) {
+    u32 res = WaitForSingleObject(mutex->handle, INFINITE);
+    ASSERT(res != WAIT_FAILED);
+}
+void unlock_mutex(Mutex* mutex) {
+    bool yes = ReleaseMutex(mutex->handle);
+    ASSERT(yes);
+}
+void cleanup_mutex(Mutex* mutex) {
+    bool yes = CloseHandle(mutex->handle);
+    mutex->handle = 0;
+}
+
+void create_semaphore(Semaphore* semaphore, u32 initial, u32 max_locks) {
+    HANDLE handle = CreateSemaphore(NULL, initial, max_locks, NULL);
+    ASSERT(handle != INVALID_HANDLE_VALUE);
+    semaphore->handle = handle;
+}
+void wait_semaphore(Semaphore* semaphore) {
+    u32 res = WaitForSingleObject(semaphore->handle, INFINITE);
+    ASSERT(res != WAIT_FAILED);
+}
+void signal_semaphore(Semaphore* semaphore, int count) {
+    bool yes = ReleaseSemaphore(semaphore->handle, count, NULL);
+    ASSERT(yes);
+}
+void cleanup_semaphore(Semaphore* semaphore) {
+    bool yes = CloseHandle(semaphore->handle);
+    semaphore->handle = 0;
+}
+
+#endif // IMPL_PLATFORM
