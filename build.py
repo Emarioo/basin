@@ -5,7 +5,7 @@ Requirements:
     gcc
 '''
 
-import sys, os, platform
+import sys, os, platform, glob
 
 def main():
     
@@ -20,13 +20,26 @@ def compile_tool():
     os.makedirs("bin", exist_ok=True)
 
     ROOT = os.path.dirname(__file__)
-    SRC = f"{ROOT}/src/basin/main.c"
+    
+    SRC = []
+    for file in glob.glob(f"{ROOT}/src/**/*.c", recursive=True):
+        file = file.replace("\\","/")
+        
+        if file.startswith("_"):
+            continue
+
+        # print(file)
+        SRC.append(file)
+
+    SRC = " ".join(SRC)
+    
     OUT = "bin/basin"
-    CFLAGS = f"-g -I{ROOT}/src/basin -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
+    CFLAGS = f"-g -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
     run(f"gcc {CFLAGS} {SRC} -o {OUT}")
 
+
 def run(cmd):
-    print(cmd)
+    # print(cmd)
     if platform.system() == "Windows":
         res = os.system(cmd)
     else:
