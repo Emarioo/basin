@@ -34,6 +34,9 @@ def compile_tool():
     SRC = " ".join(SRC)
     
     OUT = "bin/basin"
+    
+    # IMPORTANT: DO NOT ADD -Wincompatible-pointer-types. It catches sizeof type mismatch when allocating objects. Explicitly cast to void* to ignore this error.
+    CWARN = ""
     CFLAGS = f"-g -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
     run(f"gcc {CFLAGS} {SRC} -o {OUT}")
 

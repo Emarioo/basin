@@ -1,2 +1,118 @@
 
+import "logger"
+import "array"
+import "string"
+@share import "memory"
+
+// const.bsn
+
+@compiler const OS_WINDOWS: bool // compiler on constants mean: "compiler sets the value"
+@compiler const OS_LNUX: bool
+
+
+import "compiler"
+
+#link "-lX11"
+
+if OS_WINDOWS {
+    #run compiler_add_link_argument(compiler_current_workspace(), "-lX11")
+}
+
+#run if OS_WINDOWS {
+        compiler_add_link_argument(compiler_current_workspace(), "-lX11")
+}
+
+
+for items {
+    log(it)
+}
+
+#emit {
+    emit "log(items[0])", 
+
+}
+
+#run {
+
+}
+
+import "windows"
+    =
+# {
+    compiler_import("windows")
+}
+
+# {
+    compiler_import("windows")
+}
+
+
+a := #eval [
+    yield VALUE
+]
+
+#if OS_WINDOWS
+    import "windows"
+#else
+    import "Linux"
+#endif
+
+# import_windows_or_linux()
+
+
+// TODO: Decide how constants are checked evaluated. When do we do this compile time stuff. What if we want to emit code.
+# if OS_WINDOWS {
+    compiler_import("windows")
+} else OS_LINUX {
+    compiler_import("linux")
+} else {
+    compiler_error("BAD", __file__ + __line__)
+}
+
+
+// memory
+
+#if OS_WINDOWS {
+    compiler_import("windows")
+}
+#if OS_LINUX {
+    compiler_import("linux")
+}
+
+fn heap_alloc() {
+    @import(Kernel) fn HeapAlloc()
+
+    HeapAlloc()
+
+    @import(LIBC) fn malloc()
+
+    malloc()
+}
+
+
+
+// 
+
 log("Hello world", 4)
+
+
+struct Context {
+    x: int
+    y: Block
+}
+
+fn set_callback(func: (i32) -> i32) -> Result {
+    [ 1, 2, 4 ]
+    def :={ 0, 2, 5, 23 }
+    sum := [
+        tmp := 0
+        for item in values {
+            tmp += func(item.x) + func(item.y)
+        }
+        yield tmp
+    ]
+}
+
+s: string
+
+s += "hello"

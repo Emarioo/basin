@@ -17,15 +17,17 @@ typedef struct {                                                                
     BucketArray _internal;                                                                                  \
 } BucketArray_##T;                                                                                          \
 static inline void barray_init_##T(BucketArray_##T* array, int items_per_bucket, int initial_max_buckets)   \
-    { barray_init((BucketArray*)array, sizeof(T), items_per_bucket, initial_max_buckets); }                               \
+    { barray_init((BucketArray*)array, sizeof(T), items_per_bucket, initial_max_buckets); }                 \
 static inline void barray_cleanup_##T(BucketArray_##T* array)                                               \
-    { barray_cleanup((BucketArray*)array, sizeof(T)); }                                                                   \
-static inline void barray_push_##T(BucketArray_##T* array, void* element)                                   \
-    { barray_push((BucketArray*)array, sizeof(T), element); }                                                             \
-static inline void barray_pop_##T(BucketArray_##T* array)                                                   \
-    { barray_pop((BucketArray*)array, sizeof(T)); }                                                                       \
+    { barray_cleanup((BucketArray*)array, sizeof(T)); }                                                     \
+static inline T* barray_push_##T(BucketArray_##T* array, void* element)                                     \
+    { return barray_push((BucketArray*)array, sizeof(T), element); }                                        \
+static inline void barray_pop_##T(BucketArray_##T* array, void* out_element)                                \
+    { barray_pop((BucketArray*)array, sizeof(T), out_element); }                                            \
 static inline T* barray_get_##T(BucketArray_##T* array, int index)                                          \
-    { barray_get((BucketArray*)array, sizeof(T), index); }
+    { return barray_get((BucketArray*)array, sizeof(T), index); }                                           \
+static inline int barray_count_##T(BucketArray_##T* array)                                                  \
+    { barray_count((BucketArray*)array, sizeof(T)); }
 
 typedef struct {
     void* elements;
@@ -44,9 +46,10 @@ typedef struct {
 void barray_init(BucketArray* array, int element_size, int items_per_bucket, int initial_max_buckets);
 void barray_cleanup(BucketArray* array, int element_size);
 
-void barray_push(BucketArray* array, int element_size, void* element);
-void barray_pop(BucketArray* array, int element_size);
+void* barray_push(BucketArray* array, int element_size, void* element);
+void barray_pop(BucketArray* array, int element_size, void* out_element);
 void* barray_get(BucketArray* array, int element_size, int index);
+int barray_count(BucketArray* array, int element_size);
 
 #ifdef IMPL_PLATFORM
 
@@ -80,7 +83,7 @@ void barray_cleanup(BucketArray* array, int element_size) {
     // keep items_per_bucket
 }
 
-void barray_push(BucketArray* array, int element_size, void* element) {
+void* barray_push(BucketArray* array, int element_size, void* element) {
     int element_max = array->items_per_bucket * array->buckets_max;
 
     if(array->element_count >= element_max) {
@@ -102,13 +105,23 @@ void barray_push(BucketArray* array, int element_size, void* element) {
     int bucket_index = array->element_count / array->items_per_bucket;
     int element_index = array->element_count % array->items_per_bucket;
 
-    memcpy((char*)array->buckets[bucket_index].elements + element_index * element_size, element, element_size);
+    void* ptr = (char*)array->buckets[bucket_index].elements + element_index * element_size;
+
+    memcpy(ptr, element, element_size);
 
     array->element_count++;
+    return ptr;
 }
 
-void barray_pop(BucketArray* array, int element_size) {
+void barray_pop(BucketArray* array, int element_size, void* out_element) {
     array->element_count--;
+    if(out_element) {
+        int index = array->element_count;
+        int bucket_index = index / array->items_per_bucket;
+        int element_index = index % array->items_per_bucket;
+        
+        memcpy(out_element, (char*)array->buckets[bucket_index].elements + element_index * element_size, element_size);
+    }
 }
 
 void* barray_get(BucketArray* array, int element_size, int index) {
@@ -118,6 +131,10 @@ void* barray_get(BucketArray* array, int element_size, int index) {
     int element_index = index % array->items_per_bucket;
 
     return (char*)array->buckets[bucket_index].elements + element_index * element_size;
+}
+
+int barray_count(BucketArray* array, int element_size) {
+    return array->element_count;
 }
 
 

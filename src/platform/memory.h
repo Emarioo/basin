@@ -13,6 +13,8 @@ static inline void* _heap_alloc_object(const int size) {
     return ptr;
 }
 
+#define HEAP_ALLOC_ARRAY(T,N) (T*)heap_alloc(sizeof(T) * (N))
+
 #ifdef IMPL_PLATFORM
 
 void* heap_alloc(int size) {

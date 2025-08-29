@@ -1,0 +1,33 @@
+/*
+    Run refers to running code during compilation.
+
+    The compile time expressions are executed in the order they appear in the file.
+*/
+
+
+import "stdio.h"
+
+// One expression
+# printf("Printing at compile time")
+
+// A body expression
+# {
+    printf("Printing\n")
+    printf("with a second line!\")
+}
+
+global state: i32 = 2 + 3 // running at compile time
+
+fn hello() {
+    internal_num: i32 = # 21 + 34 // runs at compile time and returns a literal
+
+    internal_num: i32 = # {
+        printf("Some printing here")
+        yield 23 // yield in expression instead of return
+    }
+
+    variable: i32 = {
+        printf("Some printing here at runtime")
+        yield 23 // yield is used in expression bodies when compile time execution isn't involved too!
+    }
+}

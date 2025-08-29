@@ -15,7 +15,9 @@ typedef struct {
     u64 handle;
 } Semaphore;
 
-void spawn_thread(Thread* thread, u32(*func)(void*), void* arg);
+typedef  u32(*ThreadRoutine)(void*);
+
+void spawn_thread(Thread* thread, ThreadRoutine func, void* arg);
 void join_thread(Thread* thread);
 bool is_thread_joinable(Thread* thread);
 u32 current_thread_id();
@@ -27,7 +29,7 @@ void cleanup_mutex(Mutex* mutex);
 
 void create_semaphore(Semaphore* semaphore, u32 initial, u32 max_locks);
 void wait_semaphore(Semaphore* semaphore);
-void signal_semaphore(Semaphore* semaphore, int count);
+bool signal_semaphore(Semaphore* semaphore, int count);
 void cleanup_semaphore(Semaphore* semaphore);
 
 // returns previous value
@@ -39,7 +41,7 @@ void cleanup_semaphore(Semaphore* semaphore);
 
 #include "windows.h"
 
-void spawn_thread(Thread* thread, u32(*func)(void*), void* arg) {
+void spawn_thread(Thread* thread, ThreadRoutine func, void* arg) {
     // #if OS_WINDOWS
         u32 thread_id;
         // Unsafe casting routine pointer?
@@ -99,9 +101,9 @@ void wait_semaphore(Semaphore* semaphore) {
     u32 res = WaitForSingleObject((HANDLE)semaphore->handle, INFINITE);
     ASSERT(res != WAIT_FAILED);
 }
-void signal_semaphore(Semaphore* semaphore, int count) {
+bool signal_semaphore(Semaphore* semaphore, int count) {
     bool yes = ReleaseSemaphore((HANDLE)semaphore->handle, count, NULL);
-    ASSERT(yes);
+    return yes;
 }
 void cleanup_semaphore(Semaphore* semaphore) {
     bool yes = CloseHandle((HANDLE)semaphore->handle);

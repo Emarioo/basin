@@ -5,27 +5,35 @@
 #pragma once
 
 #include "basin/types.h"
+#include "basin/core/lexer.h"
 
 #include "platform/array.h"
 #include "platform/bucket_array.h"
 #include "platform/thread.h"
 
 typedef enum {
+    TASK_INVALID,
     TASK_TOKENIZE,
+    TASK_PARSE,
+    TASK_COUNT,
 } TaskKind;
+extern const char* const task_kind_names[TASK_COUNT];
 
 typedef struct {
     TaskKind kind;
     union {
-        ImportID import_id;
-        string text;
+        struct {
+            Import* import;
+            string text;
+        } tokenize;
+        struct {
+            Import* import;
+            string text;
+            TokenStream* stream;
+        } parse;
     };
 } Task;
 
-typedef struct {
-    ImportID import_id;
-    string path; // sometimes we don't have path, for small code created through metaprogramming for example.
-} Import;
 
 DEF_BUCKET_ARRAY(Task)
 DEF_BUCKET_ARRAY(Import)
@@ -43,6 +51,9 @@ typedef struct Driver {
 
     Mutex import_mutex;
     Mutex task_mutex;
+    Semaphore may_have_task_semaphore;
+
+    volatile u32 idle_threads;
 
     ImportID next_import_id;
 
@@ -56,7 +67,8 @@ typedef struct Driver {
 
 Driver* driver_create();
 
-void driver_add_task(Driver* driver, Task* task);
+#define driver_add_task(...) driver_add_task_with_thread_id(__VA_ARGS__, -1)
+void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number);
 
 void driver_run(Driver* driver);
 
@@ -65,4 +77,4 @@ void driver_run(Driver* driver);
 //      INTERNAL FUNCTIONS (can be used publicly too, for adding specialized tasks)
 // ############################
 
-ImportID driver_create_import_id(Driver* driver, string path);
+Import* driver_create_import_id(Driver* driver, string path);

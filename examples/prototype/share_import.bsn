@@ -1,0 +1,47 @@
+/*
+    You have your library with core.bsn and util.bsn.
+
+    Then you have main.bsn which calls functions from your software.
+
+    Without the @expose annotation on util import main.bsn would not be able to call util_sum_int.
+    main.bsn would need to import util.bsn on it's own otherwise.
+
+    We don't expose identifiers from imports to importers to reduce identifier lookups.
+
+    Functions, structs, variables are visible by default. You can use @private to make them hidden from importers.
+*/
+
+// core.bsn
+
+@expose import "util.bsn"
+
+fn compute(list: i32[5]) -> i32 {
+    sum := sum_int(list)
+    return sum / 5
+}
+
+@hide fn var(list: i32[5]) -> i32 {
+    sum := sum_int(list)
+    return sum / 5
+}
+
+// util.bsn
+
+fn sum_int(list: i32[]) -> i32 {
+    sum := 0
+    for it in list {
+        sum += it
+    }
+    return sum
+}
+
+// main.bsn
+
+import "core.bsn"
+
+fn main() {
+    list: i32[5] = { 2, 5, 9, 2, 15 }
+    avg := compute(list)
+
+    sum := util_sum_int(list) // error
+}

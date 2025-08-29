@@ -1,0 +1,65 @@
+/*
+    Emit replaces preprocessor functionality. It is a function you call during compilation in places where
+    you want to add generated code.
+
+    Do note that heavy use of this feature in a codebase will harm readability and intensify complexity.
+*/
+
+
+# {
+    emit("global my_var: i32")
+}
+
+import "stdio.h"
+
+fn main() {
+    my_var = 23
+    printf("Hello %d", my_var)
+}
+
+/*
+    You can generate structs like this (the language has polymorphism for data structures so use that instead but for other use case this could be useful)
+*/
+
+fn define_array(T: Type) {
+    emit("struct Array {")
+    emit("  ptr: ", T.name, "*")
+    emit("  len: i32")
+    emit("  max: i32")
+    // emit methods
+    emit("}")
+}
+
+struct Vector {
+    x: f32
+    y: f32
+}
+
+# define_array(Vector)
+
+/*
+    For some implementation developer thoughts:
+
+    We always tokenize the whole file first. Tokenize IS ALWAYS a simple operation of parsing characters, comments, words, strings.
+
+    The next thing is parsing which is where we will construct an AST per file.
+
+    Each AST contains expressions, structs, enums, variables, imports and a scope tree.
+
+    During parsing we do not check types. We don't even parse types. Nor do we parse function parameters, return values, struct fields.
+    We create incomplete elements which are parsed when needed.
+    
+    During parsing we construct a scope tree of identifiers.
+
+    When we come across a compile time expression we will begin parsing it and while doing so find identifiers and figure out which functions and structs
+    we need to fully parse, recursively type check identifiers, and generate bytecode for.
+
+    Then we can execute the expression, create a temporary result object of static data (4 bytes if a simple integer) which is put in place where the expression was.
+    If the expression was free-floating (not in an assignment or passed to a function) then the result object is skipped.
+
+    If the expression performs emit then we will separately parse that syntax as it's own small file and insert the "mini-AST" in place where the expression was.
+
+    By default the compiler will eventually parse everything but it will prioritize compile time expressions to make sure that a function that relies on an identifier or type
+    isn't parsed and type checked before the compile time expression. If function relies on a struct created by compile time expression then there will be an error saying "Type not defined.".
+    This has to be a bad error message because we don't know what the expression will emit.
+*/

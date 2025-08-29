@@ -6,6 +6,12 @@ typedef u16 ImportID;
 
 #define INVALID_IMPORT_ID 0xFFFFu
 
+
+typedef struct {
+    ImportID import_id;
+    string path; // sometimes we don't have path, for small code created through metaprogramming for example.
+} Import;
+
 typedef enum {
     SUCCESS,
     FAILURE,

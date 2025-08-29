@@ -29,8 +29,8 @@ int main(int argc, char** argv) {
     
     Task task = {};
     task.kind = TASK_TOKENIZE;
-    task.text = text;
-    task.import_id = driver_create_import_id(driver, source_file);
+    task.tokenize.text = text;
+    task.tokenize.import = driver_create_import_id(driver, source_file);
 
     driver_add_task(driver, &task);
 

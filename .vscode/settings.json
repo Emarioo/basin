@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.log": "ansi",
+        "type_traits": "cpp"
+    }
+}
