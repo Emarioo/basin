@@ -24,11 +24,11 @@ typedef struct {
     union {
         struct {
             Import* import;
-            string text;
+            // string text;
         } tokenize;
         struct {
             Import* import;
-            string text;
+            // string text;
             TokenStream* stream;
         } parse;
     };

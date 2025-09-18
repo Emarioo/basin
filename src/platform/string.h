@@ -1,10 +1,21 @@
 #pragma once
 
 typedef struct {
+    // YOU CANNOT REARRANGE THESE FIELDS.
+    // CODE DEPENDS ON IT BEING THIS BECAUSE OF INITIALIZER
     char* ptr;
-    int len;
-    int max;
+    u64 len;
+    u64 max;
 } string;
+
+typedef struct {
+    // YOU CANNOT REARRANGE THESE FIELDS.
+    // CODE DEPENDS ON IT BEING THIS BECAUSE OF INITIALIZER
+    const char* ptr;
+    u64 len;
+} cstring;
+
+static inline cstring cstr(string s) { cstring c = { s.ptr, s.len }; return c; };
 
 bool string_equal_cstr(string str, char* ptr);
 

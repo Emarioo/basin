@@ -8,7 +8,7 @@
 
 DEF_ARRAY(int)
 
-Result tokenize(const Import* import, const string text, TokenStream** out_stream) {
+Result tokenize(const Import* import, TokenStream** out_stream) {
     ASSERT(out_stream);
 
     TokenStream* stream = (TokenStream*)HEAP_ALLOC_OBJECT(TokenStream);
@@ -20,6 +20,9 @@ Result tokenize(const Import* import, const string text, TokenStream** out_strea
     //     snprintf(buffer, sizeof(buffer), "<import_id %u>", (unsigned)import_id);
     //     stream->stream_path = alloc_string(buffer);
     // }
+    string text;
+    text.ptr = import->text.ptr;
+    text.len = import->text.len;
 
     stream->tokens_len = 0;
     stream->tokens_max = text.len / 2 + 10;
@@ -39,8 +42,9 @@ Result tokenize(const Import* import, const string text, TokenStream** out_strea
     #define RESERVE_TOKEN_EXT() if (stream->tokens_len + EXT_TOKEN_PER_TOKEN > stream->tokens_max) { stream->tokens = heap_realloc(stream->tokens, (stream->tokens_max*2 + sizeof(TokenExt) + 20) * sizeof(Token)); }
     #define RESERVE_DATA(N) if (stream->data_len + (N) > stream->data_max) { stream->data = heap_realloc(stream->data, (stream->data_max*2 + (N) + 500)); }
 
+
     int head = 0;
-    while(head < text.len) {
+    while(head < import->text.len) {
         int cur_head = head;
         char c = text.ptr[head];
         char c2 = head + 1 < text.len ? text.ptr[head + 1] : 0;
@@ -340,7 +344,9 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
         return false;
     }
     
-    string text = read_file(stream->import->path.ptr);
+    string text;
+    text.ptr = stream->import->text.ptr;
+    text.len = stream->import->text.len;
 
     if(!text.ptr) {
         return false;
@@ -437,5 +443,6 @@ char* keyword_table[KEYWORD_END - KEYWORD_BEGIN] = {
     "else",
     "as",
     "in",
+    "return",
     "defer"
 };

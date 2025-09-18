@@ -5,26 +5,34 @@
 #include <setjmp.h>
 #include <stdarg.h>
 
-#define match(KIND) (context->head >= context->stream->tokens_len ? false : (context->stream->tokens[context->head].kind == (KIND) ? (context->head++, true) : false ))
-#define match_ext(KIND) (context->head+1 >= context->stream->tokens_len ? &EOF_TOKEN_EXT : (context->stream->tokens[context->head].kind == (KIND) ? (TokenExt*)&context->stream->tokens[context->head+=2] : &EOF_TOKEN_EXT) )
+#define match(KIND) (context->head < context->stream->tokens_len && context->stream->tokens[context->head].kind == (KIND) ? (context->head++, (const TokenExt*)&context->stream->tokens[context->head]) : (parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token"), &EOF_TOKEN_EXT))
+#define match_ext(KIND) (context->head+1 >= context->stream->tokens_len ? &EOF_TOKEN_EXT : (context->stream->tokens[context->head].kind == (KIND) ? (const TokenExt*)&context->stream->tokens[context->head+=2] : &EOF_TOKEN_EXT) )
 
 // 0 current token
-#define peek(N) (context->head >= context->stream->tokens_len ? &EOF_TOKEN : &context->stream->tokens[context->head + N])
+#define peek(N) (context->head >= context->stream->tokens_len ? &EOF_TOKEN_EXT : (const TokenExt*)&context->stream->tokens[context->head + N])
 
 #define advance() (context->head >= context->stream->tokens_len ? &EOF_TOKEN : &context->stream->tokens[context->head++])
+
+typedef enum {
+    COMPTIME_NONE,
+    COMPTIME_NORMAL,
+    COMPTIME_EVAL,
+    COMPTIME_EMIT,
+} ComptimeKind;
 
 typedef struct {
     TokenStream* stream;
     int head; // token head
 
-    jmp_buf jump_state;
+    ComptimeKind comptime_kind;
 
+    jmp_buf jump_state;
     TokenExt bad_token; // token causing bad syntax
     char error_message[256];
 } ParserContext;
 
 
-void parse_expression(ParserContext* context);
+ASTExpression* parse_expression(ParserContext* context);
 
 
 
@@ -66,9 +74,9 @@ Result parse_stream(TokenStream* stream, AST** out_ast) {
     return result;
 }
 
-#define check_error_ext(T, ...) ((T)->kind == T_END_OF_FILE ? parse_error(context, (Token*)(void*)(T), __VA_ARGS__) : 0)
+#define check_error_ext(T, ...) ((T)->kind == T_END_OF_FILE ? parse_error(context, (const TokenExt*)(void*)(T), __VA_ARGS__) : 0)
 
-void parse_error(ParserContext* context, const Token* tok, char* fmt, ...) {
+void parse_error(ParserContext* context, const TokenExt* tok, char* fmt, ...) {
     context->bad_token = *(const TokenExt*)tok;
 
     va_list ap;
@@ -79,13 +87,28 @@ void parse_error(ParserContext* context, const Token* tok, char* fmt, ...) {
     longjmp(context->jump_state, 1);
 }
 
-void parse_expression(ParserContext* context) {
-    const Token* tok = peek(0);
+void enter_comptime_mode(ParserContext* context, ComptimeKind kind) {
+    ASSERT(context->comptime_kind == COMPTIME_NONE);
+    context->comptime_kind = kind;
+}
+void exit_comptime_mode(ParserContext* context) {
+    ASSERT(context->comptime_kind != COMPTIME_NONE);
+    context->comptime_kind = COMPTIME_NONE;
+}
+
+#define IS_COMPTIME() (context->comptime_kind != COMPTIME_NONE)
+
+ASTExpression* parse_expression(ParserContext* context) {
+    const TokenExt* tok = peek(0);
 
     // TODO: Parse annotations
 
     if(tok->kind == T_IMPORT) {
         advance();
+
+        if(IS_COMPTIME()) {
+            parse_error(context, tok, "Import is not allowed in compile time expression. Use 'compiler_import(\"windows\")' from 'import \"compiler\"' instead.");
+        }
 
         const TokenExt* tok = match_ext(T_LITERAL_STRING);
         check_error_ext(tok, "Expected a string");
@@ -94,9 +117,65 @@ void parse_expression(ParserContext* context) {
 
         // TODO: Parse as
 
-    // } else if (tok.kind == T_FN) {
+    } else if (tok->kind == T_GLOBAL) {
+        advance();
+        
+        if(IS_COMPTIME()) {
+            parse_error(context, tok, "Global variables are not allowed inside compile time expressions.");
+        }
+
+        const TokenExt* tok = match_ext(T_IDENTIFIER);
+        check_error_ext(tok, "Expected an identifier.");
+            
+        string name = DATA_FROM_TOKEN(tok);
+
+        match(':');
+
+
+    } else if (tok->kind == T_RETURN) {
+        advance();
+
+    } else if (tok->kind == T_IF) {
+        advance();
+
+    } else if (tok->kind == T_FOR) {
+        advance();
+        
+    } else if (tok->kind == '#') {
+        // compile time expression
+        advance();
+
+        if(IS_COMPTIME()) {
+            parse_error(context, tok, "Nesting compile time expressions is not allowed.");
+        }
+
+        ComptimeKind compttime_kind = COMPTIME_NORMAL;
+
+        tok = peek(0);
+        if (tok->kind == T_IDENTIFIER) {
+            string data = DATA_FROM_TOKEN(tok);
+            
+            if(string_equal_cstr(data, "emit")) {
+                advance();
+                compttime_kind = COMPTIME_EMIT;
+            } else if(string_equal_cstr(data, "eval")) {
+                advance();
+                compttime_kind = COMPTIME_EVAL;
+            }
+        }
+
+        enter_comptime_mode(context, compttime_kind);
+        ASTExpression* node = parse_expression(context);
+        exit_comptime_mode(context);
+
+        // Find out from current imports which 
+
+        // generate code
+
 
     } else {
         parse_error(context, tok, "Unknown token.");
     }
+
+    return NULL;
 }

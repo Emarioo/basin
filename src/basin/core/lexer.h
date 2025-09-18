@@ -27,6 +27,7 @@ typedef enum {
     T_ELSE,
     T_AS,
     T_IN,
+    T_RETURN,
     T_DEFER, KEYWORD_END = T_DEFER + 1,
 
     // We can handle keywords from 0 to 32.
@@ -64,6 +65,8 @@ typedef struct {
 
 #define IS_SPECIAL(K) (K >= KEYWORD_END)
 
+#define DATA_FROM_TOKEN(T) { (T)->ptr_data+1, *((u8*)(T)->ptr_data), 0 }
+
 #define EXT_TOKEN_PER_TOKEN ((sizeof(TokenExt)+sizeof(Token)-1)/sizeof(Token))
 
 typedef struct {
@@ -83,7 +86,7 @@ static const TokenExt EOF_TOKEN_EXT = { T_END_OF_FILE, 0, -1, -1, NULL };
 //       PUBLIC FUNCTIONS
 //###############################
 
-Result tokenize(const Import* import, const string text, TokenStream** out_stream);
+Result tokenize(const Import* import, TokenStream** out_stream);
 
 // This is an expensive operation, we calculate line numbers
 void print_lines_from_token_stream(TokenStream* stream, Token token);

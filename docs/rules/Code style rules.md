@@ -3,6 +3,8 @@ When writing code in this project you must think about these:
 - Memory ownership
 - Error handling, from function calls and how compiler error messages are propagated
 
+You must do these things:
+- Always use `string` from platform layer UNLESS it's for the Basin API (it should use C strings).
 
 # Asserts
 Asserts are used when it's very likely to go wrong. Such as:

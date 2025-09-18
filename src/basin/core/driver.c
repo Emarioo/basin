@@ -125,7 +125,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         switch(task.kind) {
             case TASK_TOKENIZE: {
                 TokenStream* stream;
-                Result result = tokenize(task.tokenize.import, task.tokenize.text, &stream);
+                Result result = tokenize(task.tokenize.import, &stream);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);

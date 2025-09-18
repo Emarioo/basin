@@ -1,3 +1,0 @@
-/*
-    Public interface for the compiler library
-*/
