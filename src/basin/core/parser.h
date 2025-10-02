@@ -22,6 +22,8 @@
 
 #include "basin/core/lexer.h"
 
+#include "platform/array.h"
+
 
 // Memory owner
 typedef struct {
@@ -29,13 +31,64 @@ typedef struct {
 } AST;
 
 typedef enum {
-    edoiAJOE
+    EXPR_BLOCK,
+    EXPR_FOR,
+    EXPR_WHILE,
+    EXPR_IF,
+    EXPR_ASSIGN,
+    EXPR_CALL
+    // EXPR_
 } _ExpressionKind;
 
 typedef u8 ExpressionKind; // we don't take up more memory than we need
 
 typedef struct {
     ExpressionKind kind;
+    SourceLocation location;
 } ASTExpression;
+typedef ASTExpression* ASTExpressionP;
+
+DEF_ARRAY(ASTExpressionP)
+
+typedef struct {
+    string name;
+} TypeInfo;
+
+typedef TypeInfo* TypeInfoP;
+
+DEF_ARRAY(TypeInfoP)
+
+typedef struct {
+    Array_TypeInfoP arguments;
+    Array_TypeInfoP return_types;
+} FunctionSignature;
+
+typedef struct {
+    string name;
+    ASTExpression* default_value;
+} ASTFunction_Parameter;
+
+DEF_ARRAY(ASTFunction_Parameter);
+
+typedef struct {
+    string name;
+    FunctionSignature signature;
+    Array_ASTFunction_Parameter parameters;
+} ASTFunction;
+
+typedef struct {
+    ExpressionKind kind;
+    SourceLocation location;
+
+    // Unordered list of functions, structs, enums, globals, constants
+    Array_ASTExpressionP globals;
+    Array_ASTExpressionP constants;
+    Array_ASTExpressionP functions;
+    Array_ASTExpressionP enums;
+    Array_ASTExpressionP structures;
+
+    // list of expressions
+    Array_ASTExpressionP expressions;
+} ASTExpression_Block;
 
 Result parse_stream(TokenStream* stream, AST** out_ast);

@@ -1,0 +1,295 @@
+
+import "logger"
+import "array"
+import "string"
+@share_with_parent {
+    import "memory"
+}
+
+// const.bsn
+
+@compiler const OS_WINDOWS: bool // compiler on constants mean: "compiler sets the value"
+@compiler const OS_LNUX: bool
+
+
+
+
+global hello : i32
+
+global hello : get_type(5)
+
+struct Bucket(T,N) {
+    active: u8[N/8]
+    elements: T[N]
+}
+struct BucketArray(T,N) {
+    array: Array(Bucket(T,N)*)
+}
+
+struct Bucket<T,N> {
+    active: u8[N/8]
+    elements: T[N]
+}
+struct BucketArray<T,N> {
+    #macro Bucket_ptr Bucket<T,N>*
+    array: Array<Bucket_ptr>
+
+    fn add() {
+        
+    }
+    fn remove() {
+
+    }
+}
+
+
+
+
+global_var = "global" identifier ":" type_expression
+
+type_expression = identifier | ( identifier "<" poly_args ">" )
+
+
+import "compiler"
+
+#link "-lX11"
+
+if OS_WINDOWS {
+    # run compiler_add_link_argument(compiler_current_workspace(), "-lX11")
+}
+
+#run if OS_WINDOWS {
+        compiler_add_link_argument(compiler_current_workspace(), "-lX11")
+}
+
+
+for items {
+    log(it)
+}
+
+#emit {
+    emit "log(items[0])", 
+
+}
+
+#run {
+
+}
+
+import "windows"
+    =
+# {
+    compiler_import("windows")
+}
+
+# {
+    compiler_import("windows")
+}
+
+
+a := #eval {
+    return VALUE
+}
+
+#if OS_WINDOWS
+    import "windows"
+#else
+    import "Linux"
+#endif
+
+
+fn write_elf() {
+
+    is_64 := false
+
+    header_64: Elf64_Ehdr
+    header_32: Elf32_Ehdr
+
+    # emit
+
+    fn REF(a: char[], b: char[]) {
+        emit("* { if is_64  yield &" + a +"_64." + b + " else yield &" + a + "_32." + b + "}")
+    }
+
+    #emit REF("header", "val") = 23
+    // * { if is_64 yield &header_64.val else yield &header_32.val } = 23
+
+    enum Field {
+        shnum
+        rel_addr
+    };
+    
+    fn ref()
+
+    offsets: i32[Field.len]
+     = {
+        if small_elf  Elf32_Ehdr.shnum.offset     else  Elf64_Ehdr.shnum.offset          ,
+        if small_elf  Elf32_Ehdr.rel_addr.offset  else  Elf64_Ehdr.rel_addr.offset    ,
+    }
+    if small_elf {
+        for Elf32_Ehdr.fields
+    }
+
+
+    mov eax, [rbp + 8]
+    cmp eax, 0
+    jz ver_64
+    mov rbx, [rbp + 16]
+    add rbx, 4
+    jmp end_sw
+ver_64:
+    mov rbx, [rbp + 24]
+    add rbx, 8
+end_sw:
+    mov [rbx], 23
+    
+
+    mov eax, [rbp + 8]
+    cmp eax, 0
+    jz ver_64
+
+    mov rbx, [rbp + 16]
+    mov
+    call
+
+    ver64:
+    
+    mov
+    call
+    
+    compute(REF(header, val))
+
+
+
+
+    if is_64 {
+        header_64.val = 23;
+    } else {
+        elf32.val = 23;
+    }
+
+    if is_64 {
+        compute(elf64.val)
+    } else {
+        compute(elf32.val)
+    }
+}
+
+om: struct {
+    i32
+}
+
+struct Okay {
+
+}
+
+# import_windows_or_linux()
+
+global list: Array_int;
+global list: Array<int>;
+global ak: Array(i32)
+Array<i32>
+
+list.add("eaea")
+
+fn std_print(b: Any) {
+
+}
+fn std_print<T>(b: T) {
+
+}
+
+
+std_print("eaehioa")
+std_print(128391)
+std_print(oajd)
+
+struct Array<T> {
+    ptr: T*
+    len: i32
+    max: i32
+
+    fn add(this: Array<$T>*, const t: T) {
+        
+    }
+    fn remove(this: Array<$T>*, const t: T) {
+        
+    }
+    fn pop(this: Array<$T>*, const t: T) {
+        
+    }
+    fn insert(this: Array<$T>*, const t: T) {
+        
+    }
+    fn size(this: Array<$T>*, const t: T) {
+        
+    }
+
+}
+
+
+// TODO: Decide how constants are checked evaluated. When do we do this compile time stuff. What if we want to emit 
+# {
+    global hello: i32
+    if OS_WINDOWS {
+        compiler_import("windows")
+    } else if OS_LINUX {
+        compiler_import("linux")
+    } else {
+        compiler_error("BAD", __file__ + __line__)
+    }
+}
+
+#late {
+
+}
+
+
+# global hello: i32
+
+// memory
+
+#if OS_WINDOWS {
+    compiler_import("windows")
+}
+#if OS_LINUX {
+    compiler_import("linux")
+}
+
+fn heap_alloc() {
+    @import(Kernel) fn HeapAlloc()
+
+    HeapAlloc()
+
+    @import(LIBC) fn malloc()
+
+    malloc()
+}
+
+
+
+// 
+
+log("Hello world", 4)
+
+
+struct Context {
+    x: int
+    y: Block
+}
+
+fn set_callback(func: (i32) -> i32) -> Result {
+    [ 1, 2, 4 ]
+    def :={ 0, 2, 5, 23 }
+    sum := [
+        tmp := 0
+        for item in values {
+            tmp += func(item.x) + func(item.y)
+        }
+        yield tmp
+    ]
+}
+
+s: string
+
+s += "hello"

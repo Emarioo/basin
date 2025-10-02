@@ -1,0 +1,16 @@
+/*
+    Service API
+*/
+
+
+
+
+// Export all functions
+@export
+
+//
+// Functions
+//
+
+fn create_user(name: char[], password: char[])
+

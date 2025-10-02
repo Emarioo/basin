@@ -59,6 +59,11 @@ typedef struct {
     };
 } TokenExt;
 
+typedef struct {
+    ImportID  import_id;
+    int       position;
+} SourceLocation;
+
 #define IS_EXT_TOKEN(K) ((K >= IDENTIFIER && K <= LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
 
 #define IS_KEYWORD(K) (K >= KEYWORD_BEGIN && K < KEYWORD_END)
