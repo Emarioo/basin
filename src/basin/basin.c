@@ -1,6 +1,5 @@
 #include "basin/basin.h"
 
-#include "basin/core/lexer.h"
 #include "basin/core/driver.h"
 #include "basin/logger.h"
 

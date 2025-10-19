@@ -1,8 +1,8 @@
 #include "basin/core/driver.h"
 
 #include "basin/logger.h"
-#include "basin/core/lexer.h"
-#include "basin/core/parser.h"
+#include "basin/frontend/lexer.h"
+#include "basin/frontend/parser.h"
 
 #include "platform/memory.h"
 

@@ -1,0 +1,35 @@
+/*
+    Experimental ideas for bitfields packed types
+*/
+
+
+/*
+    First of all what do you want to pack.
+*/
+
+
+
+struct Message {
+    magic: u8   @bits(0..23)
+    field: f32  @bits
+
+}
+
+
+
+
+
+struct Message {
+    magic: u8   @bits(0..23)
+    field: f32  @bits(153..153+7)  // At some point the bit offsets are large,
+                                   // just numbers that don't mean anything to the programmer because we think hexidecimal and bytes
+
+    some: u8    @packing(8,17,10)   // byte 8 + bit 17 with size 10 bits.
+}
+
+struct Message {
+    magic: u8   @bits(0..23)
+    field: f32  @bits(153..153+7)  // At some point the bit offsets are large,
+                                   // just numbers that don't mean anything to the programmer because we think hexidecimal and bytes
+}
+

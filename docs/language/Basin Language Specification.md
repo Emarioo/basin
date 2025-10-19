@@ -1,6 +1,8 @@
-This is the specification for the Basin programming language.
+**Specification for the Basin programming language.**
 
 # Table of Contents
+
+(numbering is messed up, it's work in progress)
 
 1. Introduction
    - Overview of the Basin language
@@ -28,6 +30,11 @@ This is the specification for the Basin programming language.
    - Type inference and type checking
    - Type modifiers
 
+9. Control Flow
+   - Conditionals
+   - Loops
+   - Early exits
+
 6. Functions
    - Function declarations and definitions
    - Function signatures and overloading
@@ -45,15 +52,9 @@ This is the specification for the Basin programming language.
    - Error handling for unresolved symbols
    - Examples of using system libraries
 
-9. Control Flow
-   - Conditionals
-   - Loops
-   - Early exits
-
 10. Memory Management
     - Stack vs. heap allocation
     - Manual memory management
-    - Garbage collection
 
 11. Error Handling
     - Compile-time errors
@@ -199,18 +200,90 @@ Whitespace is mostly ignored except for a few instances described in [Syntax](/d
 
 # 4. Syntax
 
-The primitive component of a Basin program is the expression. The file is one big block expression with multiple expressions inside it.
+The primitive component of a Basin program is the expression. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions. An expression is a value or a thing that can be executed.
 
-```
+Files themselves are a big block expression that contains more expressions. In a block expression there may also be global variables, constants, functions, structs, and enums. These are declarations and definitions and not expressions because they aren't executed. The initial value of a variable, constant or the code inside a function is an expression but not the entire function itself.
+
+Below are some pseudo grammar rules:
+- `thing` a normal name specifies a non-terminal, it expands to other non-terminals and terminals
+- `thing | other_thing` allows one or another thing
+- `("import" | "include") file_path` parenthesis declares precedence
+- `"import"` a terminal, specifies a specific string of text (keyword)
+- ` number ( "," number ) * ` asterisk specifies zero or more of the thing before
+- ` number ( "+" number ) + ` plus specifies one or more of the thing before
+- White space is ignored
+
+```bash
 file := block_expression
 
-block_expression := 
+block_expression :=  ( expression | global | constant | function | struct | enum | import ) *
 
+expression := ( "{" block_expression "}" ) | loop_expression | if_expression | identifier | literal_expression | math_operation | function_call | assignment | local_var_declaration
+
+# First expression is a range or slice
+#   if slice then first identifier will be the item, second identifier will be index
+#   if range then first identifier will be index, second identifier not allowed
+loop_expression := "for" identifier "in" expression  expression
+loop_expression := "for" identifier, identifier "in" expression  expression
+loop_expression := "for" expression  expression
+
+# conditional expression that should evaluate to a boolean, keep looping while true
+loop_expression := "while" expression expression
+# loop forever (until break or return)
+loop_expression := "while" "{" ( expression | block_expression )  "}"
 ```
-   - Grammar rules
-   - Statements and expressions
-   - Blocks and scoping rules
-
-
 
 # 5. Types
+
+## Primitive types
+```
+// integers
+u8, u16, u32, u64 // 1,2,4,8 bytes
+s8, s16, s32, s64 // 1,2,4,8 bytes
+
+// floating point (IEEE)
+f32, f64 // 4,8 bytes
+
+// other
+bool, char // 1,1 bytes
+
+// pointers
+voidptr
+i32*
+char*
+
+// function pointers
+fn()
+fn(i32)->i32
+
+// arrays with fixed size
+i32[8]
+char[255]
+
+// slice (pointer + length)
+char[]
+
+// types with platform dependent size
+uword, sword     // same size as the CPU's register size
+```
+
+## Enum types
+
+```
+enum Ore {
+   iron,
+   coal,
+   gold,
+}
+```
+
+## Struct types
+
+```
+struct Block {
+   valid: bool
+   len: u32
+   max: u32
+   data: u8*
+}
+```

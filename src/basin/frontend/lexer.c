@@ -1,5 +1,5 @@
 
-#include "basin/core/lexer.h"
+#include "basin/frontend/lexer.h"
 
 #include "platform/memory.h"
 #include "platform/string.h"

@@ -20,7 +20,7 @@
 
 #include "basin/types.h"
 
-#include "basin/core/lexer.h"
+#include "basin/frontend/lexer.h"
 
 #include "platform/array.h"
 
