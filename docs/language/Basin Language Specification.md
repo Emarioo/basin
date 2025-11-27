@@ -75,6 +75,10 @@
     - Build systems and workflows
     - Debugging and profiling tools
 
+15. Intermediate Representation
+   - Bytecode
+   - 
+
 <!-- 15. Examples
     - Simple "Hello, World!" program
     - Examples of common patterns and idioms
@@ -104,6 +108,14 @@ The Goal of Basin is:
 - Execute basin programs
 - Compile basin programs (to libraries and object files)
 - Compile and distribute basin programs (executables)
+
+
+## Requirements language
+
+## Requirements compiler
+A little strange to specify compiler specifics in "Basin Language Specification" but here they are.
+
+- Small codebase, 20K - 40K lines (if you can call that small)
 
 
 <!-- 
@@ -235,6 +247,8 @@ loop_expression := "while" "{" ( expression | block_expression )  "}"
 
 # 5. Types
 
+Types defined by the language are lowercase including `string`.
+
 ## Primitive types
 ```
 // integers
@@ -280,10 +294,165 @@ enum Ore {
 ## Struct types
 
 ```
-struct Block {
+struct Block  {
    valid: bool
    len: u32
    max: u32
    data: u8*
 }
 ```
+
+## Strings
+The language has a builtin string type.
+
+The classic `string` is a so called `builder` where you can slice and concatenate strings. Memory is allocated from an `allocator` present as a pointer field in the string struct. You may override this allocator or use the default heap allocator.
+
+Strings use UTF-8 encoding. However, and index and the length to the character data is byte-based, not rune based. `myString[1]` gets you the second byte in the utf-8 string, not the second rune. `import "string"` provides extra functions for utf-8, split, and path join.
+
+A string is implemented as a struct with these fields:
+```c
+struct string {
+   ptr: char*
+   len: u32
+   cap: u32
+   allocator: Allocator*
+}
+// 24 bytes on a 64-bit system
+```
+
+This string type is convenient in many use cases. For cases where it isn't optimal you can always make your own string type. Most string operations use character slices (`char[]`) which means that your string implementation can integrate with those operations.
+
+## Operations
+Operations can be divided into mutable and immutable. Immutable operations do not allocate memory or change the content of the string. Mutable operations do.
+
+### Comparison (immutable)
+```c
+a, b : string
+
+a == b
+a != b
+```
+
+### Slicing (immutable)
+```c
+a : string
+
+a[5]     // yields char
+a[1..4]  // yields char[]
+```
+
+### Concatenation (mutable)
+```c
+res, a, b : string
+
+res  := a + b
+res  := a + 'a'
+res  := a + "hello"
+```
+
+
+We want to support concatenating two literal strings.
+Concateting two variable slices
+
+```
+ROOT_PATH : char[] = "assets"   // default
+NAME : char[] = "settings.txt"  // normal
+
+res: string = ROOT_PATH + "/" + NAME
+```
+
+In embedded we don't have heap. char[] + char[] can't become string where default
+heap is used. if the context have an allocator then it's fine?
+
+if we export a function which concatenates strings then there is no context.
+(C doesn't have Basin context, when it calls Basin functions there also is no context). you can pass or put context in thread local storage, then we have context.
+
+so no string concatenation for char[]+char[] in exported functions? put string on stack? what if it's huge text? don't know that until runtime. fixed size strings by default. mixing fixed strings and heap strings is akward.
+
+basin runtime has a global variable that declares default allocator for strings.
+can be overriden if you wish. char[] + char[] will use that?
+
+you may want strings to use a special allocator while other memory (arrays) uses a different allocator.
+
+i32[.]
+
+@operator fn __cast<char[]>(arg: string) -> char[] {
+
+}
+
+operator cast<char[]>(arg: string) -> char[] {
+
+}
+
+### Content modification (mutable)
+```c
+a : string = "hello"
+
+a[1] = '4'
+```
+
+
+Const operations you perform on a string take character slices (`char[]`)
+ and not optimal where performance
+is critical. For those cases it is encouraged to allocate your own memoeruse your own string type or 
+
+i32*.bytes
+.bits
+nbytes
+nbits
+
+
+## Assignment
+
+
+```
+// infer
+hello := 214
+
+//
+okay := ( hello := 123;
+         yield hello + 23 )
+
+```
+
+
+
+# 15. Intermediate Representation
+
+While the Basin language doesn't require bytecode it makes sense
+to implement it for the compiler internals. Running bytecode instead of
+generating snippets of x86 or ARM (depending on host architecture) gives
+the compiler intricate control over the addresses that can and can't be
+accessed. Call IR instruction can easily be wrapped to call compiler functions,
+dynamic libraries (GLFW, OpenSSL), or plugins.
+
+## IR syntax
+Because the IR is an internal component in the compiler it doesn't
+need a syntax. However, it is convenient to have a way to describe
+IR in text for testing.
+
+### General Layout
+HM, we may need to handle struct types.
+Calling convention behaves differently if you have 16-byte struct vs larger.
+(if 16 then two 8-byte integers go into registers)
+
+```
+
+variable <name> <type> <>
+
+routine <name> <signature> <argument SSAs> <body>
+
+routine @hello () {
+
+<outputs...> = call <function> <inputs...>
+
+<result> = add <type>, <operand_0>, <operand_1>
+
+%1, %2 = call hello, %3, %4
+
+call_reg %9, %1, %2
+
+}
+```
+
+## 

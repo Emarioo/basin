@@ -186,6 +186,31 @@ typedef struct {
     int max;
 } IRFunction;
 
+typedef struct IRVariable {
+    string name;
+    u8     section_index;  // index into IRCollection's IRSections
+    u8     type;           // type
+    int    section_offset; // Offset into IRSection where data is located
+    int    size;           // size of variable
+} IRVariable;
+
+typedef struct IRSection {
+    string name;
+    Memory data;
+} IRSection;
+
+DEF_ARRAY(IRSection)
+
+DEF_ARRAY(IRVariable)
+
+DEF_ARRAY(IRFunction)
+
+typedef struct IRCollection {
+    Array_IRSection  sections;
+    Array_IRVariable variables;
+    Array_IRFunction functions;
+} IRCollection;
+
 typedef struct {
 
 } IRBuilder;
@@ -205,6 +230,14 @@ typedef enum {
     
     IR_TYPE_FLOAT32,
     IR_TYPE_FLOAT64,
+
+    // Here for calling conventions (some put 16-byte struct in two registers)
+    IR_TYPE_STRUCT8,
+    IR_TYPE_STRUCT16,
+    IR_TYPE_STRUCT32,
+    IR_TYPE_STRUCT64,
+    IR_TYPE_STRUCT128,
+    IR_TYPE_STRUCT_LARGE,
 } IRType;
 
 // This is the interface for building instructions. They are represented differently in binary.
