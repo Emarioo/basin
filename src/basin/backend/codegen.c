@@ -14,6 +14,7 @@ typedef struct {
 //      PUBLIC FUNCTIONS
 //###########################
 
+void x86_generate(CodegenContext* context);
 
 
 CodegenResult codegen_generate_function(const IRFunction* in_function, CodegenFunction** out_function, const PlatformOptions* options, BasinAllocator* allocator) {
@@ -26,12 +27,12 @@ CodegenResult codegen_generate_function(const IRFunction* in_function, CodegenFu
     if (result.error_type != CODEGEN_SUCCESS)
         return result;
 
-    switch(options->cpu_kind) {
-        case CPU_x86_64:
-            gen_x86();
-        case CPU_ARMv6:
-            gen_arm();
-    }
+    // switch(options->cpu_kind) {
+    //     case CPU_x86_64:
+    //         gen_x86();
+    //     case CPU_ARMv6:
+    //         gen_arm();
+    // }
 
     // debug info to consider
 
@@ -59,7 +60,7 @@ CodegenResult codegen_generate_function(const IRFunction* in_function, CodegenFu
 //#############################
 
 void x86_generate(CodegenContext* context) {
-    IRFunction* ir = context->ir_func;
+    const IRFunction* ir = context->ir_func;
     CodegenFunction* mac = context->machine_func;
 
     // optimization

@@ -75,11 +75,11 @@ typedef enum {
     IR_SECTION_LOCAL,
     IR_SECTION_PARAMETER,
     IR_SECTION_DATA,
-} _IRSection;
+} _IRSectionID;
 
 typedef u8 IROpcode;
 typedef u8 IROperand;
-typedef u8 IRSection;
+typedef u8 IRSectionID;
 typedef u32 IRLabel;
 typedef u32 IRFunction_id;
 
@@ -115,7 +115,7 @@ typedef struct {
 typedef struct {
     IROpcode opcode;
     IROperand output;
-    IRSection section;
+    IRSectionID section;
     int offset;
 } IRInstruction_address_of_variable;
 

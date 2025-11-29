@@ -23,7 +23,7 @@ class BuildConfig:
     # build_steps: list[str] = dataclasses.field(default_factory=list) # TODO: 
 
     # extra options, does not affect the binary
-    exe_output: str = "bin/btb"
+    exe_output: str = "bin/basin"
     # threads: int = multiprocessing.cdpu_count()
     verbose: bool = False
     silent: bool = False
@@ -55,6 +55,7 @@ def main():
 
     compile_tool(config)
 
+    print(f"Basin compiled, {config.exe_output}")
     exit(0)
 
 def compile_tool(config: BuildConfig):
