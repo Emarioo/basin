@@ -40,21 +40,21 @@ u32 driver_thread_run(DriverThread* thread_driver);
 void driver_run(Driver* driver) {
     // the meat and potatoes of the compiler, the game loop if you will
 
-    // TODO: Thread-less option (useful when using compiler as a library, you may not want it spawning a bunch of threads)
-
     driver->threads_len = 2; // TODO: Get thread count from somewhere
     driver->threads = HEAP_ALLOC_ARRAY(DriverThread, driver->threads_len);
     
     driver->idle_threads = 0;
 
-    for (int i=0;i<driver->threads_len;i++) {
-        driver->threads[i].driver = driver;
-        
-        spawn_thread(&driver->threads[i].thread, (u32(*)(void*))driver_thread_run, &driver->threads[i]);
-    }
-
-    for (int i=0;i<driver->threads_len;i++) {
-        join_thread(&driver->threads[i].thread);
+    if (driver->threads_len == 1) {
+        driver_thread_run(&driver->threads[0]);
+    } else {
+        for (int i=0;i<driver->threads_len;i++) {
+            driver->threads[i].driver = driver;
+            spawn_thread(&driver->threads[i].thread, (u32(*)(void*))driver_thread_run, &driver->threads[i]);
+        }
+        for (int i=0;i<driver->threads_len;i++) {
+            join_thread(&driver->threads[i].thread);
+        }
     }
     
     if(enabled_logging_driver) {

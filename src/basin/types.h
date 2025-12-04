@@ -22,3 +22,4 @@ typedef struct {
     ResultKind kind;
     string message;
 } Result;
+

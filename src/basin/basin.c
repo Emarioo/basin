@@ -2,6 +2,7 @@
 
 #include "basin/core/driver.h"
 #include "basin/logger.h"
+#include "basin/error.h"
 
 #include "platform/string.h"
 #include "platform/file.h"
@@ -51,12 +52,7 @@ BasinResult basin_compile_file(const char* path, const char* output_path, const 
     basin_string text = basin_read_whole_file(path, options);
 
     if(!text.ptr) {
-        int max = 512;
-        result.error_type = BASIN_FILE_NOT_FOUND;
-        char* text = basin_allocate(max, NULL, options);
-        ASSERT(result.error_message);
-        result.error_message = text;
-        result.compile_errors_len = snprintf(text, max, "Cannot read '%s'\n", path);
+        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", path);
         return result;
     }
     
@@ -173,3 +169,147 @@ BasinFS_FileInfo basin_file_info(const char* path, const BasinCompileOptions* op
     out.exists = get_file_info(path, &out.is_directory, &out.file_size);
     return out;
 }
+
+typedef char* cptr;
+DEF_ARRAY(cptr)
+
+BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* options) {
+    BasinResult result = { 0 };
+    result.error_type = BASIN_SUCCESS;
+    
+    Array_cptr ptr_list;
+    
+    array_init_cptr(&ptr_list, 50);
+
+    int head = 0;
+    int len = strlen(arguments);
+    bool in_string = 0;
+    bool in_word = 0;
+    int start_arg = 0;
+    while (head<len) {
+        char chr = arguments[head];
+        head++;
+
+        if (chr == '"') {
+            if (in_string) {
+                if (!in_word) {
+                    int length = head-1 - start_arg;
+                    char* arg = (char*)heap_alloc(length + 1);
+                    memcpy(arg, arguments + start_arg, length);
+                    arg[length] = '\0';
+                    array_push_cptr(&ptr_list, &arg);
+                }
+                in_string = false;
+                continue;
+            } else {
+                if (!in_word) {
+                    start_arg = head;
+                }
+                in_string = true;
+                continue;
+            }
+        }
+
+        if (in_string)
+            continue;
+
+        if (chr == ' ' || chr == '\n' || chr == '\t' || chr == '\r') {
+            if (in_word) {
+                int length = head-1 - start_arg;
+                char* arg = (char*)heap_alloc(length + 1);
+                memcpy(arg, arguments + start_arg, length);
+                arg[length] = '\0';
+                array_push_cptr(&ptr_list, &arg);
+                in_word = false;
+                continue;
+            }
+            continue;
+        }
+
+        if (!in_word) {
+            start_arg = head-1;
+            in_word = true;
+        }
+
+        if (head == len) {
+            int length = head - start_arg;
+            char* arg = (char*)heap_alloc(length + 1);
+            memcpy(arg, arguments + start_arg, length);
+            arg[length] = '\0';
+            array_push_cptr(&ptr_list, &arg);
+            in_word = false;
+            continue;
+        }
+    }
+    // @TODO Handle unterminated string
+    // @TODO Handle escape characters in string
+
+    result = basin_parse_argv(ptr_list.len, (const char**)ptr_list.ptr, options);
+
+    for (int i=0;i<ptr_list.len;i++) {
+        free(ptr_list.ptr[i]);
+    }
+
+    array_cleanup_cptr(&ptr_list);
+
+    return result;
+}
+
+BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* options) {
+    BasinResult result = { 0 };
+    result.error_type = BASIN_SUCCESS;
+
+    memset(options, 0, sizeof(*options));
+
+    if (argc == -1) {
+        argc++;
+        while (argv[argc++]) ;
+    }
+
+    int argi = 1;
+    while (argi < argc) {
+        const char* arg = argv[argi];
+        argi++;
+
+        if(!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
+            options->print_help = true;
+        } else if(!strcmp(arg, "--")) {
+            options->start_of_user_args = argi;
+            break;
+        } else if(!strcmp(arg, "-o")) {
+            if (argi >= argc) {
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing output path after '%s'\n", arg);
+                return result;
+            }
+            options->output_file = argv[argi];
+            argi++;
+        } else if(!strncmp(arg, "-O", 2)) {
+            options->optimize_flags = BASIN_OPTIMIZE_FLAG_all;
+        } else if(!strcmp(arg, "-g")) {
+            options->disable_debug = false;
+        // } else if(!strncmp(arg, "-I", 2)) {
+        //     int len = strlen(arg);
+        //     if (len == 2) {
+        //         if (argi >= argc) {
+        //             fprintf(stderr, "ERROR: Missing output path after '%s'\n", arg);
+        //             return 1;
+        //         }
+        //     }
+        //     output_file = argv[argi];
+        //     argi++;
+        } else if(arg[0] == '-') {
+            FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown argument '%s'. See --help\n", arg);
+            return result;
+        } else {
+            if (options->input_file) {
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Multiple input files are not allowed, '%s'\n", arg);
+                return result;
+            }
+            options->input_file = arg;
+        }
+    }
+
+    return result;
+}
+
+

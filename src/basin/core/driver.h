@@ -1,5 +1,17 @@
 /*
     Driver is the glue in the compiler. It manages threads, imports, memory, and steps to perform such as lexing, parsing, code gen
+
+    Driver begins empty.
+
+    User submits tasks to the driver.
+
+    User starts the driver which launches threads (unless thread count is set to 1).
+    The driver performs tasks and modifies the driver state until list is empty.
+
+    Driver now has source text, AST, IR, machine code in memory and intermediate
+    files written to the disc.
+
+    User queries the result of the tasks (compilation successful/failed)
 */
 
 #pragma once

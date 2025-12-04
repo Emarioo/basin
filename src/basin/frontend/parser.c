@@ -1,3 +1,8 @@
+/*
+    The parsing and matching pretty much always uses TokenExt since it encompasses
+    Token and TokenExt.
+*/
+
 #include "basin/frontend/parser.h"
 
 #include "platform/memory.h"
@@ -5,13 +10,11 @@
 #include <setjmp.h>
 #include <stdarg.h>
 
-#define match(KIND) (context->head < context->stream->tokens_len && context->stream->tokens[context->head].kind == (KIND) ? (context->head++, (const TokenExt*)&context->stream->tokens[context->head]) : (parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token"), &EOF_TOKEN_EXT))
-#define match_ext(KIND) (context->head+1 >= context->stream->tokens_len ? &EOF_TOKEN_EXT : (context->stream->tokens[context->head].kind == (KIND) ? (const TokenExt*)&context->stream->tokens[context->head+=2] : &EOF_TOKEN_EXT) )
-
+#define match(KIND) _match(context, KIND);
 // 0 current token
-#define peek(N) (context->head >= context->stream->tokens_len ? &EOF_TOKEN_EXT : (const TokenExt*)&context->stream->tokens[context->head + N])
+#define peek(N) _peek(context, N)
+#define advance() _advance(context)
 
-#define advance() (context->head >= context->stream->tokens_len ? &EOF_TOKEN : &context->stream->tokens[context->head++])
 
 typedef enum {
     COMPTIME_NONE,
@@ -23,14 +26,51 @@ typedef enum {
 typedef struct {
     TokenStream* stream;
     int head; // token head
-
+    
     ComptimeKind comptime_kind;
-
+    
     jmp_buf jump_state;
     TokenExt bad_token; // token causing bad syntax
     char error_message[256];
 } ParserContext;
 
+static const TokenExt* _match(ParserContext* context, TokenKind kind) {
+    if (context->head < context->stream->tokens_len && context->stream->tokens[context->head].kind == (kind)) {
+        const TokenExt* tok = (const TokenExt*)&context->stream->tokens[context->head];
+        context->head += 1 + (TOKEN_PER_EXT_TOKEN - 1) * IS_EXT_TOKEN(kind);
+        return tok;
+    } else {
+        parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token");
+        return &EOF_TOKEN_EXT;
+    }
+}
+
+static const TokenExt* _peek(ParserContext* context, int n) {
+    int head = context->head;
+    const TokenExt* tok;
+    while(n--) {
+        if (head >= context->stream->tokens_len)
+        return &EOF_TOKEN_EXT;
+        tok = (const TokenExt*)&context->stream->tokens[head];
+        if (IS_EXT_TOKEN(tok->kind))
+        head += TOKEN_PER_EXT_TOKEN;
+        else
+        head+=1;
+    }
+    return tok;
+}
+
+static const TokenExt* _advance(ParserContext* context) {
+    if (context->head >= context->stream->tokens_len)
+    return &EOF_TOKEN_EXT;
+    const TokenExt* tok;
+    tok = (const TokenExt*)&context->stream->tokens[context->head];
+    if (IS_EXT_TOKEN(tok->kind))
+        context->head += TOKEN_PER_EXT_TOKEN;
+    else
+        context->head += 1;
+    return tok;
+}
 
 ASTExpression* parse_expression(ParserContext* context);
 
@@ -110,8 +150,10 @@ ASTExpression* parse_expression(ParserContext* context) {
             parse_error(context, tok, "Import is not allowed in compile time expression. Use 'compiler_import(\"windows\")' from 'import \"compiler\"' instead.");
         }
 
-        const TokenExt* tok = match_ext(T_LITERAL_STRING);
+        const TokenExt* tok = match(T_LITERAL_STRING);
         check_error_ext(tok, "Expected a string");
+
+        // driver_submit_tokenize_task with import id, refer to it?
 
         // return expression?
 
@@ -124,7 +166,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             parse_error(context, tok, "Global variables are not allowed inside compile time expressions.");
         }
 
-        const TokenExt* tok = match_ext(T_IDENTIFIER);
+        const TokenExt* tok = match(T_IDENTIFIER);
         check_error_ext(tok, "Expected an identifier.");
             
         string name = DATA_FROM_TOKEN(tok);

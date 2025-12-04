@@ -60,11 +60,12 @@ typedef struct {
 } TokenExt;
 
 typedef struct {
+    u16       _reserved;
     ImportID  import_id;
     int       position;
 } SourceLocation;
 
-#define IS_EXT_TOKEN(K) ((K >= IDENTIFIER && K <= LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
+#define IS_EXT_TOKEN(K) ((K >= T_IDENTIFIER && K <= T_LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
 
 #define IS_KEYWORD(K) (K >= KEYWORD_BEGIN && K < KEYWORD_END)
 
@@ -72,7 +73,7 @@ typedef struct {
 
 #define DATA_FROM_TOKEN(T) { (T)->ptr_data+1, *((u8*)(T)->ptr_data), 0 }
 
-#define EXT_TOKEN_PER_TOKEN ((sizeof(TokenExt)+sizeof(Token)-1)/sizeof(Token))
+#define TOKEN_PER_EXT_TOKEN ((sizeof(TokenExt)+sizeof(Token)-1)/sizeof(Token))
 
 typedef struct {
     const Import* import;
@@ -84,7 +85,7 @@ typedef struct {
     int data_len, data_max;
 } TokenStream;
 
-static const Token EOF_TOKEN = { T_END_OF_FILE, 0, -1, -1 };
+// static const Token EOF_TOKEN = { T_END_OF_FILE, 0, -1, -1 };
 static const TokenExt EOF_TOKEN_EXT = { T_END_OF_FILE, 0, -1, -1, NULL };
 
 //###############################

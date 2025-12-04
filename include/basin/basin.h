@@ -56,7 +56,7 @@ typedef struct BasinFileSystem {
 
 typedef enum {
     BASIN_SUCCESS,
-    BASIN_INVALID_OPTIONS,
+    BASIN_INVALID_COMPILE_OPTIONS,
     BASIN_COMPILE_ERROR,
     BASIN_FILE_NOT_FOUND,
     BASIN_OUT_OF_MEMORY,
@@ -100,6 +100,11 @@ typedef struct BasinCompileOptions {
     const char* const* include_dirs;
     int                include_dirs_len;
 
+    const char*        input_file;
+    const char*        output_file;
+    bool               print_help;
+    int                start_of_user_args; // args passed to program/comp time execution
+
     BasinAllocator allocator;
     BasinFileSystem filesystem;
 } BasinCompileOptions;
@@ -114,20 +119,43 @@ extern "C" {
 //#########################################
 
 // Returned pointer is static, do not free it
-BASIN_API const char* basin_version(int version[3]);
+BASIN_API const char* basin_version(int out_version[3]);
 BASIN_API const char* basin_commit();
 BASIN_API const char* basin_build_date();
 
+/*
+
+*/
 BASIN_API BasinResult basin_compile_file(const char* path,           const char* output_path, const BasinCompileOptions* options);
 BASIN_API BasinResult basin_compile_text(const char* text, u64 size, const char* output_path, const BasinCompileOptions* options);
 
+/*
+    Creates compile options from a string of arguments
+
+    @param arguments String of command line arguments
+    @param options Pointer to options to fill with options
+*/
+BASIN_API BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* out_options);
+
+/*
+    Creates compile options from argv/argc from main function
+
+    @param argv Array of arguments
+    @param argc Number of arguments, if -1 then argv is assumed to be terminated by a NULL pointer.
+*/
+BASIN_API BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* out_options);
 
 //#########################################
 //         LOW LEVEL FUNCTIONS
 //#########################################
 
+typedef struct BasinDriver BasinDriver;
+typedef struct BasinTask BasinTask;
 
-
+// @TODO move driver functions here, or add wrappers for them here
+BASIN_API BasinResult basin_driver_create(BasinDriver** out_driver);
+BASIN_API BasinResult basin_driver_submit(BasinDriver* driver, BasinTask* task);
+BASIN_API BasinResult basin_driver_cleanup(BasinDriver* driver);
 
 //########################################
 //      USER OVERRIDABLE FUNCTIONS
@@ -146,6 +174,7 @@ BASIN_API void* basin_allocate(int new_size, void* old_ptr, const BasinCompileOp
 BASIN_API basin_string     basin_read_whole_file (const char* path,                       const BasinCompileOptions* options);
 BASIN_API bool             basin_write_whole_file(const char* path, char* data, u64 size, const BasinCompileOptions* options);
 BASIN_API BasinFS_FileInfo basin_file_info       (const char* path,                       const BasinCompileOptions* options);
+
 
 
 #ifdef __cplusplus
