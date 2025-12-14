@@ -1,6 +1,9 @@
 {
     "files.associations": {
         "*.log": "ansi",
-        "type_traits": "cpp"
+        "*.h": "c",
+        "type_traits": "cpp",
+        "typeinfo": "c",
+        "limits": "c"
     }
 }

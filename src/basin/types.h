@@ -10,7 +10,7 @@ typedef u16 ImportID;
 typedef struct {
     ImportID import_id;
     string path; // sometimes we don't have path, for small code created through metaprogramming for example.
-    string text;
+    string text; // text may be empty, in this case the driver needs to look at path and read the file
 } Import;
 
 typedef enum {

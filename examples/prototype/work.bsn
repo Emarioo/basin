@@ -1,0 +1,83 @@
+
+// build.bsn
+
+#import "build"
+
+/*
+
+build chip image
+
+
+Which files
+    This file needs to declare and specify which files to compile
+
+Which libraries
+    This file needs to link with libraries and tell you that some are missing.
+    Maybe auto download them? Ask user "hey do you want to auto download these"
+    Some might exist in the repo as single header libs or binaries
+
+Which compile flags
+    Arguments you pass to the build file which enables debug info, optimization level
+    and platform, chip
+    Whether logger is on/off or included, it could print actions the chip image does to UART or file
+
+Other actions
+    Argument to make a release, tar and package the binary and assets
+    Run tests but i would say that's a separate file
+    
+
+We want a reproducable setup like NixOS
+preferably fairly standardized for the common user of the software
+but room for customization for specific needs and convenience for developers.
+
+
+
+For a standard application we have
+    rootrepo/build.bsn - Builds binary in bin/app.exe, also provides release builds by default: bin/app-0.1.0-linux-x86_64.tar.gz (app-0.1.0-windows-x86_64.zip on Windows)
+
+We provide standard argument parsing module, some utility functions (optional but convenient)
+
+*/
+
+// parse arguments
+
+struct Options {
+    // -1       = not specified (use default from action)
+    // 0/false  = disable
+    // 1/true   = enable
+    debug    : s32 = -1
+    optimize : s32 = -1
+    logger   : s32 = -1
+
+    action_dev_build     : bool = true
+    action_release_build : bool = false
+}
+
+// perform argument actions
+
+fn main(argc: s32, argv: char**) {
+
+    args: char*[] = { argv, argc }
+
+    options: Options
+
+    argi := 0
+    while argi < args.len {
+        arg := args[argi]
+        argi++
+
+        if arg == "release" {
+            action_release = true
+        } else if arg == "debug" or arg.startswith("debug=") {
+            state = arg.split("=")[1]
+
+
+        } else if arg == "debug" {
+            
+        } else {
+            print("Unknown argument ", arg, "\n")
+            exit(1)
+        }
+    }
+
+}

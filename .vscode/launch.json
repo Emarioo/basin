@@ -5,7 +5,7 @@
         "type": "cppdbg",
         "request": "launch",
         "program": "${workspaceFolder}/bin/basin",
-        "args": ["dev.bsn", "-o", "dev.exe", "-O2", "-g", "--help"],
+        "args": ["dev.bsn"],
         "stopAtEntry": false,
         "cwd": "${workspaceFolder}",
         "environment": [],

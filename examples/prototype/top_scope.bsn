@@ -1,0 +1,131 @@
+
+
+
+
+/*
+Compiling main and util below will result in duplicate functions "main".
+*/
+
+// main.bsn
+
+#import "print"
+#import "util"
+
+fn main() {
+    print("Hello main\n")
+}
+
+// util.bsn
+
+#import "print"
+
+fn main() {
+    print("Hello util\n")
+}
+
+//#########################
+
+/*
+If we do 'basin main.bsn'
+The code in the global scope would run at compile time,
+so would the functions it calls.
+Then once compiled and we run it, we see runtime print message.
+
+If we open files, call OpenGL graphics library functions we need to
+turn an IR function with external function calls into x86 that calls
+specific functions from a dynamic library.
+Our program needs to specify which dynamic libraries to use and where they come from.
+*/
+
+// main.bsn
+
+#import "print"
+#import "util"
+
+print("Hello main, at compile time\n")
+
+fn main() {
+    print("Hello at runtime\n")
+}
+
+print("End main\n")
+
+
+// util.bsn
+
+Slice<T> char[]
+
+Range    2..5
+
+SrcLocation
+
+#import "print"
+
+struct string {
+    len: i32
+    cap: i32
+    data: char*
+    allocator: Allocator*
+}
+
+fn fstring(n: i32) -> string {
+    text: string
+    text.append(f"struct fstring_{n} \{\n")
+    text.append( "  len: i32\n")
+    text.append( "  cap: i32\n")
+    text.append(f"  data: char[{n}]\n")
+    text.append( "}\n")
+    compile_text(text, location=#location)
+    s: string
+    s.append(f"fstring_{n}")
+    return s
+}
+
+global version: fstring(200);
+
+global version2: fstring2<200>;
+
+struct fstring2<N> {
+    len: i32
+    cap: i32
+    data: char[N]
+}
+
+struct Array<T> {
+    len: i32
+    cap: i32
+    data: T*
+}
+
+struct fArray<T,N> {
+    len: i32
+    cap: i32
+    data: T[N]
+}
+
+fn add<Arr,T>(arr: Arr, element: T) {
+    @const
+    if Arr != fArray && Arr != Array
+        panic("add<Arr,T> takes Array or fArray")
+
+    @const
+    if Arr == fArray { // <- if expressions, selected at compile time
+        if arr.len >= arr.cap
+            panic("Out of bounds")
+    } else {
+        // resize Array
+    }
+
+    arr.data[arr.len] = element
+    arr.len++
+}
+
+
+fn end_func() {
+    print("End util")
+}
+
+print("Hello util, at compile time\n")
+
+end_func()
+

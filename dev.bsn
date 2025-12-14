@@ -1,10 +1,27 @@
 
+// x~ && 1 + 2 * 4
+
+my.field& & mask && active | oh~
+
 // Declare libraries and how to refer to them
-#library "Kernel" as Kernel
-#library MyGraphicsLibrary
+// #library "Kernel" as Kernel
+// #library MyGraphicsLibrary
 
 // Use @import annotation to set current library
 
+// print(f"Hello {n}, sour apple\n")
+// print(f"Hello {n}")
+/*
+print(f"{x}{y}")
+print(f"a{x}{y}")
+print(f"{x}a{y}")
+print(f"{x}{y}a")
+print(f"{x}a{y}a")
+print(f"a{x}a{y}")
+print(f"a{x}a{y}a")
+*/
+
+/*
 # { compiler_external_library("Kernel") }
 fn read_file(path: char*, data: void*, len: i32) -> i32;
 
@@ -31,3 +48,4 @@ fn InitGraphics();
 // Otherwise it looks like a forward declaration of a function only visible in this translation unit
 @import
 fn InitGraphics();
+*/

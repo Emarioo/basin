@@ -18,6 +18,7 @@
 
 #include "basin/types.h"
 #include "basin/frontend/lexer.h"
+#include "basin/basin.h"
 
 #include "platform/array.h"
 #include "platform/bucket_array.h"
@@ -31,7 +32,7 @@ typedef enum {
 } TaskKind;
 extern const char* const task_kind_names[TASK_COUNT];
 
-typedef struct {
+typedef struct Task {
     TaskKind kind;
     union {
         struct {
@@ -71,6 +72,8 @@ typedef struct Driver {
 
     DriverThread* threads;
     int threads_len;
+
+    const BasinCompileOptions* options;
 } Driver;
 
 // ##########################
@@ -89,4 +92,4 @@ void driver_run(Driver* driver);
 //      INTERNAL FUNCTIONS (can be used publicly too, for adding specialized tasks)
 // ############################
 
-Import* driver_create_import_id(Driver* driver, string path);
+Import* driver_create_import_id(Driver* driver, cstring path);

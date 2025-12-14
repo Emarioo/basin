@@ -96,6 +96,7 @@ typedef struct BasinCompileOptions {
     BasinBinaryType    binary_output_type;
     BasinOptimizeFlags optimize_flags;
     bool               disable_debug;
+    int                threads;
     
     const char* const* include_dirs;
     int                include_dirs_len;
@@ -126,8 +127,8 @@ BASIN_API const char* basin_build_date();
 /*
 
 */
-BASIN_API BasinResult basin_compile_file(const char* path,           const char* output_path, const BasinCompileOptions* options);
-BASIN_API BasinResult basin_compile_text(const char* text, u64 size, const char* output_path, const BasinCompileOptions* options);
+BASIN_API BasinResult basin_compile_file(const char* path,                             const char* output_path, const BasinCompileOptions* options);
+BASIN_API BasinResult basin_compile_text(const char* text, u64 size, const char* path, const char* output_path, const BasinCompileOptions* options);
 
 /*
     Creates compile options from a string of arguments

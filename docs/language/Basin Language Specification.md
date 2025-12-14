@@ -190,17 +190,41 @@ There are literal numbers, strings, characters, and booleans. They have specific
 - `"'hello' is here"`
 - `"hello\nhello2`
 
+**Formatted strings**
+- `f"Hello {num}\n"` -> "Hello ", num, "\n"
+- `f"Hello {num}"` -> "Hello ", num, "\n"
+```python
+f"{x}{y}"     ->  x, y
+f"a{x}{y}"    ->  "a", x, y
+f"{x}a{y}"    ->  x, "a", y
+f"{x}{y}a"    ->  x, y, "a"
+f"{x}a{y}a"   ->  x, "a", y, "a"
+f"a{x}a{y}"   ->  "a", x, "a", y
+f"a{x}a{y}a"  ->  "a", x, "a", y, "a"
+```
+
+- `f"Hello {name:14}"` padding is not supported yet.
+
 ## Special characters
 Operators and delimiters:
 ```
-+-*/=^&<>~!
-#
++-*/%^&<>~!
+=
+#@$
 ()[]{}
 ,.
 ```
 
 ## Whitespace
 Whitespace is mostly ignored except for a few instances described in [Syntax](/docs/language/Basin%20Language%20Specification.md#4.%20Syntax).
+
+Some operations in the language share special characters and whitespace is used to resolve the ambiguity.
+
+One instance is to resolve operator kind:
+- `variable&` means `ADDRESS OF variable`. ADDRESS OF is determined by no whitespace preceding the operator token.
+- `variable & MASK` means `bitwise AND operation on variable and MASK`
+- `variable& & MASK` means `bitwise AND operation on ADDRESS OF variable and MASK`
+- `variable & & MASK` is invalid syntax. Two XOR operations next to each other is not allowed since it's a binary operation (takes two inputs on left and right side).
 
 ## Comments
 ```
@@ -262,9 +286,9 @@ f32, f64 // 4,8 bytes
 bool, char // 1,1 bytes
 
 // pointers
-voidptr
-i32*
-char*
+void^
+i32^
+char^
 
 // function pointers
 fn()
@@ -298,9 +322,36 @@ struct Block  {
    valid: bool
    len: u32
    max: u32
-   data: u8*
+   data: u8^
 }
 ```
+
+### Bit fields
+
+```rust
+struct Register {
+   enable : u8
+   _reserved: u8[3]
+   data: u32
+}
+```
+
+## Polymorphic structs
+
+```rust
+struct Array<T> {
+    len: i32
+    cap: i32
+    data: T^
+}
+
+struct FixedArray<T,N> {
+    len: i32
+    cap: i32
+    data: T[N]
+}
+```
+
 
 ## Strings
 The language has a builtin string type.
@@ -310,7 +361,7 @@ The classic `string` is a so called `builder` where you can slice and concatenat
 Strings use UTF-8 encoding. However, and index and the length to the character data is byte-based, not rune based. `myString[1]` gets you the second byte in the utf-8 string, not the second rune. `import "string"` provides extra functions for utf-8, split, and path join.
 
 A string is implemented as a struct with these fields:
-```c
+```rust
 struct string {
    ptr: char*
    len: u32

@@ -33,3 +33,19 @@ struct Message {
                                    // just numbers that don't mean anything to the programmer because we think hexidecimal and bytes
 }
 
+
+
+
+struct MessageSmall {
+    pos: f32[2]
+}
+
+struct MessageBig {
+    matrix: f32[16]
+}
+
+struct MessageSmall {
+    kind: u32
+    small: MessageSmall  @offset(4)
+    big:   MessageBig    @offset(4)
+}

@@ -40,12 +40,16 @@ u32 driver_thread_run(DriverThread* thread_driver);
 void driver_run(Driver* driver) {
     // the meat and potatoes of the compiler, the game loop if you will
 
-    driver->threads_len = 2; // TODO: Get thread count from somewhere
+    if (driver->options->threads == 0)
+        driver->threads_len = 1;
+    else
+        driver->threads_len = driver->options->threads;
     driver->threads = HEAP_ALLOC_ARRAY(DriverThread, driver->threads_len);
     
     driver->idle_threads = 0;
 
     if (driver->threads_len == 1) {
+        driver->threads[0].driver = driver;
         driver_thread_run(&driver->threads[0]);
     } else {
         for (int i=0;i<driver->threads_len;i++) {
@@ -137,7 +141,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
             } break;
             case TASK_PARSE: {
                 AST* ast;
-                Result result = parse_stream(task.parse.stream, &ast);
+                Result result = parse_stream(driver, task.parse.stream, &ast);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
@@ -164,11 +168,17 @@ u32 driver_thread_run(DriverThread* thread_driver) {
     return 0;
 }
 
-Import* driver_create_import_id(Driver* driver, string path) {
+Import* driver_create_import_id(Driver* driver, cstring path) {
     ASSERT(driver->next_import_id+1 <= 0xFFFF);
 
+    // If we run driver again for incremental linking
+    // we may already have added the import, if so
+    // we can check if it was updated on disc
+    // if it was we create new import otherwise
+    // we reuse the import?
+
     Import import;
-    import.path = path;
+    import.path = string_clone_cstr(path);
     import.import_id = atomic_add(&driver->next_import_id, 1);
 
     lock_mutex(&driver->import_mutex);

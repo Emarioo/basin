@@ -34,14 +34,52 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
 
     // TODO: Optimize by reusing the int array per thread
     Array_int curly_depth;
-    array_init_int(&curly_depth, 10);
+    array_init(&curly_depth, 10);
     Array_int paren_depth;
-    array_init_int(&paren_depth, 10);
+    array_init(&paren_depth, 10);
 
     #define RESERVE_TOKEN() if (stream->tokens_len + 1 > stream->tokens_max) { stream->tokens = heap_realloc(stream->tokens, (stream->tokens_max*2 + 20) * sizeof(Token)); }
-    #define RESERVE_TOKEN_EXT() if (stream->tokens_len + EXT_TOKEN_PER_TOKEN > stream->tokens_max) { stream->tokens = heap_realloc(stream->tokens, (stream->tokens_max*2 + sizeof(TokenExt) + 20) * sizeof(Token)); }
+    #define RESERVE_TOKEN_EXT() if (stream->tokens_len + TOKEN_PER_EXT_TOKEN > stream->tokens_max) { stream->tokens = heap_realloc(stream->tokens, (stream->tokens_max*2 + sizeof(TokenExt) + 20) * sizeof(Token)); }
     #define RESERVE_DATA(N) if (stream->data_len + (N) > stream->data_max) { stream->data = heap_realloc(stream->data, (stream->data_max*2 + (N) + 500)); }
 
+
+    #define ADD_TOKEN(KIND,POS) do {                                    \
+            RESERVE_TOKEN();                                            \
+            Token* new_token = &stream->tokens[stream->tokens_len];     \
+            stream->tokens_len++;                                       \
+            new_token->import_id = import->import_id;                   \
+            new_token->flags = 0;                                       \
+            new_token->kind = KIND;                                     \
+            new_token->position = POS;                                  \
+            if (had_newline) new_token->flags |= TF_PRE_NEWLINE;        \
+            if (had_space)   new_token->flags |= TF_PRE_SPACE;          \
+            had_newline = false; had_space = false;                     \
+            added_normal_token = true;                                  \
+        } while (0)
+        
+    #define ADD_EXT_TOKEN(KIND,POS) (TokenExt*)&stream->tokens[stream->tokens_len]; do { \
+            RESERVE_TOKEN_EXT();                                                  \
+            TokenExt* new_token = (TokenExt*)&stream->tokens[stream->tokens_len]; \
+            stream->tokens_len += TOKEN_PER_EXT_TOKEN;                            \
+            new_token->import_id = import->import_id;                             \
+            new_token->flags = 0;                                                 \
+            new_token->kind = KIND;                                               \
+            new_token->position = POS;                                            \
+            if (had_newline) new_token->flags |= TF_PRE_NEWLINE;                  \
+            if (had_space)   new_token->flags |= TF_PRE_SPACE;                    \
+            had_newline = false; had_space = false;                               \
+            added_normal_token = false;                                           \
+        } while (0)
+
+    int fstring_level = 0;
+    int brace_depth = 0;
+
+    bool had_newline = false;
+    bool had_space   = false;
+    bool added_normal_token = false;
+
+    #define UPDATE_POST_NEWLINE() (stream->tokens_len ? stream->tokens[stream->tokens_len-(added_normal_token ? 1 : TOKEN_PER_EXT_TOKEN)].flags |= TF_POST_NEWLINE : 0 )
+    #define UPDATE_POST_SPACE() (stream->tokens_len ? stream->tokens[stream->tokens_len-(added_normal_token ? 1 : TOKEN_PER_EXT_TOKEN)].flags |= TF_POST_SPACE : 0 )
 
     int head = 0;
     while(head < import->text.len) {
@@ -51,30 +89,125 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
         char c3 = head + 2 < text.len ? text.ptr[head + 2] : 0;
         head++;
 
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f')
-            continue;
+        bool reached_end_brace = false;
+        bool parse_fstring = false;
+        if (fstring_level) {
+            if (c == '{') {
+                brace_depth++;
+            }
+            if (c == '}') {
+                brace_depth--;
+                if (brace_depth == 0) {
+                    // parse normal characters again
+                    parse_fstring = true;
+                    reached_end_brace = true;
+                }
+            }
+        }
 
+        if (c == 'f' && c2 == '"') {
+            // formatted string
+            head++;
+            fstring_level++;
+            parse_fstring = true;
+        }
+
+        if (parse_fstring) {
+            bool reached_brace = false;
+            int word_start = head;
+            while(head < text.len) {
+                char chr = text.ptr[head];
+                head++;
+
+                if (chr == '{') {
+                    brace_depth++;
+                    reached_brace = true;
+                    break;
+                }
+                if(chr == '"') {
+                    fstring_level--;
+                    break;
+                }
+            }
+            int word_end = head - 1;
+            int word_count = word_end - word_start;
+
+            if (reached_end_brace && word_count > 0) {
+                ADD_TOKEN(',', cur_head);
+            }
+            if ((!reached_end_brace && !reached_brace ) || word_count > 0) {
+                TokenExt* new_token = ADD_EXT_TOKEN(T_LITERAL_STRING, cur_head);
+
+                if(word_count > 65536) {
+                    // TODO: Proper error handling
+                    fprintf(stderr, "ERROR: Strings cannot be larger than 65536 characters (token was %d chars.)\n", word_count);
+                    ASSERT(false);
+                }
+
+                // TODO: Handle escape character
+
+                RESERVE_DATA(word_count + 2 + 1);
+                new_token->ptr_data = stream->data + stream->data_len;
+                stream->data_len += word_count + 2 + 1;
+                
+                *(u16*)new_token->ptr_data = word_count;
+                memcpy(new_token->ptr_data + 2, text.ptr + word_start, word_count);
+                new_token->ptr_data[2 + word_count] = '\0';
+            }
+
+            if (reached_brace && (word_count > 0 || reached_end_brace)) {
+                ADD_TOKEN(',', head-1);
+            }
+            continue;
+        }
+
+        if (c == '\n') {
+            had_newline = true;
+            UPDATE_POST_NEWLINE();
+            continue;
+        } else if (c == ' ' || c == '\t' || c == '\r' || c == '\f') {
+            had_space = true;
+            UPDATE_POST_SPACE();
+            continue;
+        }
 
         if (c=='/' && c2 == '/') {
+            had_space = true;
             head++;
             while(head < text.len) {
                 char chr = text.ptr[head];
                 head++;
                 if(chr == '\n') {
+                    had_newline = true;
+                    UPDATE_POST_NEWLINE();
                     break;
                 }
             }
             continue;
         }
         if (c=='/' && c2 == '*') {
+            had_space = true;
+            UPDATE_POST_SPACE();
             head++;
+            int depth = 1;
             while(head < text.len) {
                 char chr = text.ptr[head];
                 char chr2 = head+1 < text.len ? text.ptr[head+1] : 0;
                 head++;
+                if(chr == '\n') {
+                    had_newline = true;
+                    UPDATE_POST_NEWLINE();
+                }
+                if(chr == '/' && chr2 == '*') {
+                    head++;
+                    depth++;
+                    continue;
+                }
                 if(chr == '*' && chr2 == '/') {
                     head++;
-                    break;
+                    depth--;
+                    if(depth == 0)
+                        break;
                 }
             }
             continue;
@@ -98,21 +231,14 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
             }
             int word_end = head;
 
-            RESERVE_TOKEN_EXT()
-
-            TokenExt* new_token = (TokenExt*)&stream->tokens[stream->tokens_len];
-            stream->tokens_len += EXT_TOKEN_PER_TOKEN;
-
-            new_token->import_id = import->import_id;
-            new_token->kind = T_LITERAL_NUMBER;
-            new_token->position = cur_head;
+            TokenExt* new_token = ADD_EXT_TOKEN(T_LITERAL_INTEGER, cur_head);
 
             int word_count = word_end - word_start;
 
             if(word_count > 256) {
                 // TODO: Proper error handling
                 fprintf(stderr, "ERROR: Strings cannot be larger than 65536 characters (token was %d chars.)\n", word_count);
-                assert(false);
+                ASSERT(false);
             }
 
             RESERVE_DATA(word_count + 1 + 1);
@@ -139,35 +265,28 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
             }
             int word_end = head;
 
-            string word = {0};
+            cstring word = {0};
             word.ptr = text.ptr + word_start;
             word.len = word_end - word_start;
 
             // TODO: Optimize keyword comparison
             TokenKind kind = KEYWORD_BEGIN;
             while (kind < KEYWORD_END) {
-                if(string_equal_cstr(word, keyword_table[kind - KEYWORD_BEGIN])) {
+                if(string_equal_cstr(word, token_name_table[kind])) {
                     break;
                 }
                 kind++;
             }
 
             if(kind == KEYWORD_END) {
-                RESERVE_TOKEN_EXT();
-
-                TokenExt* new_token = (TokenExt*)&stream->tokens[stream->tokens_len];
-                stream->tokens_len += EXT_TOKEN_PER_TOKEN;
-        
-                new_token->import_id = import->import_id;
-                new_token->kind = T_IDENTIFIER;
-                new_token->position = cur_head;
+                TokenExt* new_token = ADD_EXT_TOKEN(T_IDENTIFIER, cur_head);
 
                 int word_count = word_end - word_start;
 
                 if(word_count > 256) {
                     // TODO: Proper error handling
                     fprintf(stderr, "ERROR: Identifiers cannot be larger than 256 characters (token was %d chars.)\n", word_count);
-                    assert(false);
+                    ASSERT(false);
                 }
 
                 RESERVE_DATA(word_count + 1 + 1);
@@ -178,14 +297,7 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
                 memcpy(new_token->ptr_data + 1, text.ptr + word_start, word_count);
                 new_token->ptr_data[1 + word_count] = '\0';
             } else {
-                RESERVE_TOKEN();
-
-                Token* new_token = &stream->tokens[stream->tokens_len];
-                stream->tokens_len++;
-        
-                new_token->import_id = import->import_id;
-                new_token->kind = kind;
-                new_token->position = cur_head;
+                ADD_TOKEN(kind, cur_head);
             }
             continue;
         }
@@ -203,14 +315,7 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
             }
             int word_end = head - 1;
 
-            RESERVE_TOKEN_EXT()
-
-            TokenExt* new_token = (TokenExt*)&stream->tokens[stream->tokens_len];
-            stream->tokens_len += EXT_TOKEN_PER_TOKEN;
-
-            new_token->import_id = import->import_id;
-            new_token->kind = T_LITERAL_STRING;
-            new_token->position = cur_head;
+            TokenExt* new_token = ADD_EXT_TOKEN(T_LITERAL_STRING, cur_head);
 
             int word_count = word_end - word_start;
 
@@ -232,58 +337,52 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
             continue;
         }
         
-        if(c == '{' || c == '}' || c == '(' || c == ')') {
-            RESERVE_TOKEN_EXT()
-            TokenExt* new_token = (void*)&stream->tokens[stream->tokens_len];
-            int token_index = stream->tokens_len;
-            stream->tokens_len += EXT_TOKEN_PER_TOKEN;
-            
-            new_token->import_id = import->import_id;
-            new_token->kind = c;
-            new_token->position = cur_head;
-            switch(c) {
-                case '{': {
-                    new_token->int_data = -1; // set later
-                    array_push_int(&curly_depth,&token_index);
-                } break;
-                case '}': {
-                    int index = array_last(&curly_depth);
-                    array_pop_int(&curly_depth);
+        // if(c == '{' || c == '}' || c == '(' || c == ')') {
+        //     int token_index = stream->tokens_len;
+        //     TokenExt* new_token = ADD_EXT_TOKEN(c, cur_head);
+        //     switch(c) {
+        //         case '{': {
+        //             new_token->int_data = -1; // set later
+        //             array_push(&curly_depth, &token_index);
+        //         } break;
+        //         case '}': {
+        //             int index = array_last(&curly_depth);
+        //             array_pop(&curly_depth);
 
-                    ASSERT_INDEX(index < stream->tokens_len);
-                    TokenExt* prev = (void*)&stream->tokens[index];
+        //             ASSERT_INDEX(index < stream->tokens_len);
+        //             TokenExt* prev = (void*)&stream->tokens[index];
 
-                    new_token->int_data = index;
-                    prev->int_data = token_index;
-                } break;
-                case '(': {
-                    new_token->int_data = -1; // set later
-                    array_push_int(&paren_depth,&token_index);
-                } break;
-                case ')': {
-                    int index = array_last(&paren_depth);
-                    array_pop_int(&paren_depth);
+        //             new_token->int_data = index;
+        //             prev->int_data = token_index;
+        //         } break;
+        //         case '(': {
+        //             new_token->int_data = -1; // set later
+        //             array_push(&paren_depth,&token_index);
+        //         } break;
+        //         case ')': {
+        //             if (paren_depth.len == 0) {
+        //                 fprintf(stderr, "ERROR: Unterminated parenthesis.\n");
+        //                 ASSERT(false);
+        //             }
+        //             int index = array_last(&paren_depth);
+        //             array_pop(&paren_depth);
 
-                    ASSERT_INDEX(index < stream->tokens_len);
-                    TokenExt* prev = (void*)&stream->tokens[index];
+        //             ASSERT_INDEX(index < stream->tokens_len);
+        //             TokenExt* prev = (void*)&stream->tokens[index];
 
-                    new_token->int_data = index;
-                    prev->int_data = token_index;
-                } break;
-                default: ASSERT(false);
-            }
-        } else {
-            RESERVE_TOKEN();
-            Token* new_token = &stream->tokens[stream->tokens_len];
-            stream->tokens_len++;
-
-            new_token->import_id = import->import_id;
-            new_token->kind = c;
-            new_token->position = cur_head;
-        }
+        //             new_token->int_data = index;
+        //             prev->int_data = token_index;
+        //         } break;
+        //         default: ASSERT(false);
+        //     }
+        // } else {
+        // }
+        ADD_TOKEN(c, cur_head);
     }
 
     *out_stream = stream;
+
+    // print_token_stream(stream);
 
     Result result;
     result.kind = SUCCESS;
@@ -293,37 +392,64 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
 void print_token_stream(TokenStream* stream) {
     printf("TokenStream, %d tokens\n", stream->tokens_len);
 
+    bool less = true;
+
     int head = 0;
     while(head < stream->tokens_len) {
         TokenExt* tok = (TokenExt*)&stream->tokens[head];
         if (IS_KEYWORD(tok->kind)) {
             head++;
-            printf(" %s, import %d, pos %d\n", keyword_table[tok->kind - KEYWORD_BEGIN], tok->import_id, tok->position);
+            if (less) {
+                printf("%s", token_name_table[tok->kind]);
+            } else {
+                printf(" %s, import %d, pos %d\n", token_name_table[tok->kind], tok->import_id, tok->position);
+            }
         } else if(IS_SPECIAL(tok->kind)) {
             if(tok->kind == '{' || tok->kind == '}' || tok->kind == '(' || tok->kind == ')') {
                 head += 2;
             } else {
                 head++;
             }
-            printf(" special, '%c', import %d, pos %d\n", (char)tok->kind, tok->import_id, tok->position);
+            if (less) {
+                printf("%c", (char)tok->kind);
+            } else {
+                printf(" special, '%c', import %d, pos %d\n", (char)tok->kind, tok->import_id, tok->position);
+            }
         } else if (tok->kind == T_IDENTIFIER) {
-            head += EXT_TOKEN_PER_TOKEN;
+            head += TOKEN_PER_EXT_TOKEN;
             int len = tok->ptr_data[0];
-            printf(" identifier, data '%.*s', import %d, pos %d\n", len, tok->ptr_data + 1, tok->import_id, tok->position);
-        } else if (tok->kind == T_LITERAL_NUMBER) {
-            head += EXT_TOKEN_PER_TOKEN;
+            if (less) {
+                printf("%.*s", len, tok->ptr_data + 1);
+            } else {
+                printf(" identifier, data '%.*s', import %d, pos %d\n", len, tok->ptr_data + 1, tok->import_id, tok->position);
+            }
+        } else if (tok->kind == T_LITERAL_INTEGER) {
+            head += TOKEN_PER_EXT_TOKEN;
             int len = tok->ptr_data[0];
-            printf(" number, data %.*s, import %d, pos %d\n", len, tok->ptr_data + 1, tok->import_id, tok->position);
+            
+            if (less) {
+                printf("%.*s", len, tok->ptr_data + 1);
+            } else {
+                printf(" number, data %.*s, import %d, pos %d\n", len, tok->ptr_data + 1, tok->import_id, tok->position);
+            }
         } else if (tok->kind == T_LITERAL_STRING) {
-            head += EXT_TOKEN_PER_TOKEN;
+            head += TOKEN_PER_EXT_TOKEN;
             int len = *(u16*)tok->ptr_data;
-            printf(" string, data \"%.*s\", import %d, pos %d\n", len, tok->ptr_data + 2, tok->import_id, tok->position);
+            if (less) {
+                printf(" \"%.*s\"", len, tok->ptr_data + 2);
+            } else {
+                printf(" string, data \"%.*s\", import %d, pos %d\n", len, tok->ptr_data + 2, tok->import_id, tok->position);
+            }
         } else if(tok->kind == T_END_OF_FILE) {
             head++;
-            printf(" EOF, import %d, pos %d\n", tok->import_id, tok->position);
+             if (less) {
+                printf(" EOF\n");
+            } else {
+                printf(" EOF, import %d, pos %d\n", tok->import_id, tok->position);
+            }
         } else {
             fprintf(stderr, "%s: unhandled kind %d\n", __func__, tok->kind);
-            assert(false);
+            ASSERT(false);
         }
     }
 }
@@ -418,6 +544,12 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
     return true;
 }
 
+SourceLocation location_from_token(const TokenExt* tok) {
+    SourceLocation loc;
+    loc.position = tok->position;
+    loc.import_id = tok->import_id;
+    return loc;
+}
 
 void token_stream_cleanup(TokenStream* stream) {
     if(stream->tokens)
@@ -427,8 +559,22 @@ void token_stream_cleanup(TokenStream* stream) {
     heap_free(stream);
 }
 
+const char* name_from_token(TokenKind kind) {
+    static char temp[8];
+    if (kind < 32) {
+        return token_name_table[kind];
+    }
+    temp[0] = kind;
+    temp[1] = '\0';
+    return temp;
+}
 
-char* keyword_table[KEYWORD_END - KEYWORD_BEGIN] = {
+char* token_name_table[NORMAL_TOKEN_END] = {
+    "eof",
+    "identifier",
+    "literal_integer",
+    "literal_float",
+    "literal_string",
     "struct",
     "fn",
     "enum",
@@ -444,5 +590,9 @@ char* keyword_table[KEYWORD_END - KEYWORD_BEGIN] = {
     "as",
     "in",
     "return",
-    "defer"
+    "yield",
+    "continue",
+    "break",
+    "defer",
 };
+

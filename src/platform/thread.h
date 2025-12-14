@@ -48,7 +48,7 @@ void cleanup_semaphore(Semaphore* semaphore);
 #endif
 
 void spawn_thread(Thread* thread, ThreadRoutine func, void* arg) {
-    #if OS_WINDOWS
+    #ifdef OS_WINDOWS
         u32 thread_id;
         // Unsafe casting routine pointer?
         HANDLE handle = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)func, arg, 0, (DWORD*)&thread_id);
@@ -135,7 +135,11 @@ void lock_mutex(Mutex* mutex) {
 }
 bool trylock_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
-        todo
+        u32 res = WaitForSingleObject((HANDLE)mutex->handle, 0);
+        if (res == WAIT_TIMEOUT)
+            return false;
+        ASSERT(res != WAIT_FAILED);
+        return true;
     #else
         int res;
         res = pthread_mutex_trylock((pthread_mutex_t*)mutex->handle);

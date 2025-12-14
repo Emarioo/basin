@@ -48,37 +48,31 @@ BasinResult basin_compile_file(const char* path, const char* output_path, const 
     
     // NOTE: We resolve import paths in a special way but this is the initial source file which
     //  is absolute or relative to current working directory. No resolving here.
-
     basin_string text = basin_read_whole_file(path, options);
-
     if(!text.ptr) {
         FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", path);
         return result;
     }
     
-    result = basin_compile_text(text.ptr, text.len, output_path, options);
+    result = basin_compile_text(text.ptr, text.len, path, output_path, options);
 
     basin_allocate(0, text.ptr, options);
 
     return result;
 }
 
-BasinResult basin_compile_text(const char* text, u64 size, const char* output_path, const BasinCompileOptions* options) {
+BasinResult basin_compile_text(const char* text, u64 size, const char* path, const char* output_path, const BasinCompileOptions* options) {
     BasinResult result = {};
 
     Driver* driver = driver_create();
-    
-    string no_path = {0};
-    no_path.ptr = "<unknown>";
-    no_path.len = strlen(no_path.ptr);
+    driver->options = options;
+
+    cstring no_path = cstr_cptr("<unknown>");
 
     Task task = {};
     task.kind = TASK_TOKENIZE;
-    // task.tokenize.text.ptr = text;
-    // task.tokenize.text.len = size;
     task.tokenize.import = driver_create_import_id(driver, no_path);
-    task.tokenize.import->text.ptr = (char*)text; // @const_cast
-    task.tokenize.import->text.len = size;
+    task.tokenize.import->text = string_clone(text, size);
 
     driver_add_task(driver, &task);
 
@@ -179,7 +173,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
     
     Array_cptr ptr_list;
     
-    array_init_cptr(&ptr_list, 50);
+    array_init(&ptr_list, 50);
 
     int head = 0;
     int len = strlen(arguments);
@@ -197,7 +191,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
                     char* arg = (char*)heap_alloc(length + 1);
                     memcpy(arg, arguments + start_arg, length);
                     arg[length] = '\0';
-                    array_push_cptr(&ptr_list, &arg);
+                    array_push(&ptr_list, &arg);
                 }
                 in_string = false;
                 continue;
@@ -219,7 +213,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
                 char* arg = (char*)heap_alloc(length + 1);
                 memcpy(arg, arguments + start_arg, length);
                 arg[length] = '\0';
-                array_push_cptr(&ptr_list, &arg);
+                array_push(&ptr_list, &arg);
                 in_word = false;
                 continue;
             }
@@ -236,7 +230,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
             char* arg = (char*)heap_alloc(length + 1);
             memcpy(arg, arguments + start_arg, length);
             arg[length] = '\0';
-            array_push_cptr(&ptr_list, &arg);
+            array_push(&ptr_list, &arg);
             in_word = false;
             continue;
         }
@@ -250,7 +244,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
         free(ptr_list.ptr[i]);
     }
 
-    array_cleanup_cptr(&ptr_list);
+    array_cleanup(&ptr_list);
 
     return result;
 }
@@ -297,6 +291,13 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
         //     }
         //     output_file = argv[argi];
         //     argi++;
+        } else if (!strcmp(arg, "-t")) {
+            if (argi >= argc) {
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing thread count after '%s'\n", arg);
+                return result;
+            }
+            options->threads = atoi(argv[argi]);
+            argi++;
         } else if(arg[0] == '-') {
             FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown argument '%s'. See --help\n", arg);
             return result;
