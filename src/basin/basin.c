@@ -67,11 +67,15 @@ BasinResult basin_compile_text(const char* text, u64 size, const char* path, con
     Driver* driver = driver_create();
     driver->options = options;
 
-    cstring no_path = cstr_cptr("<unknown>");
+    cstring c_path;
+    if (path)
+        c_path = cstr_cptr(path);
+    else
+        c_path = cstr_cptr("<unknown>");
 
     Task task = {};
     task.kind = TASK_TOKENIZE;
-    task.tokenize.import = driver_create_import_id(driver, no_path);
+    task.tokenize.import = driver_create_import_id(driver, c_path);
     task.tokenize.import->text = string_clone(text, size);
 
     driver_add_task(driver, &task);

@@ -18,9 +18,10 @@
 
 #pragma once
 
-#include "basin/frontend/lexer.h"
-#include "basin/frontend/ast.h"
+#include "basin/types.h"
 
 typedef struct Driver Driver;
+typedef struct AST AST;
+typedef struct TokenStream TokenStream;
 
-Result parse_stream(Driver*, TokenStream* stream, AST** out_ast);
+Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast);

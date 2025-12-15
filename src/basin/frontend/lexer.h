@@ -200,7 +200,8 @@ typedef struct {
     int       position;
 } SourceLocation;
 
-#define IS_EXT_TOKEN(K) ((K >= T_IDENTIFIER && K <= T_LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
+// #define IS_EXT_TOKEN(K) ((K >= T_IDENTIFIER && K <= T_LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
+#define IS_EXT_TOKEN(K) (K >= T_IDENTIFIER && K <= T_LITERAL_STRING)
 #define IS_EOF(TOK) ((TOK) == &EOF_TOKEN_EXT)
 
 #define IS_KEYWORD(K) (K >= KEYWORD_BEGIN && K < KEYWORD_END)
@@ -216,7 +217,7 @@ typedef struct {
 
 #define TOKEN_PER_EXT_TOKEN ((sizeof(TokenExt)+sizeof(Token)-1)/sizeof(Token))
 
-typedef struct {
+typedef struct TokenStream {
     const Import* import;
 
     Token* tokens;
@@ -242,7 +243,7 @@ const char* name_from_token(TokenKind token);
 
 SourceLocation location_from_token(const TokenExt* tok);
 
-bool compute_source_info(TokenStream* stream, TokenExt token, int* line, int* column, string* code);
+bool compute_source_info(TokenStream* stream, SourceLocation location, int* line, int* column, string* code);
 
 void print_token_stream(TokenStream* stream);
 

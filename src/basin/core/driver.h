@@ -24,10 +24,13 @@
 #include "platform/bucket_array.h"
 #include "platform/thread.h"
 
+typedef struct AST AST;
+
 typedef enum {
     TASK_INVALID,
     TASK_TOKENIZE,
     TASK_PARSE,
+    TASK_GEN_IR,
     TASK_COUNT,
 } TaskKind;
 extern const char* const task_kind_names[TASK_COUNT];
@@ -37,13 +40,15 @@ typedef struct Task {
     union {
         struct {
             Import* import;
-            // string text;
         } tokenize;
         struct {
             Import* import;
-            // string text;
             TokenStream* stream;
         } parse;
+        struct {
+            Import* import;
+            AST* ast;
+        } gen_ir;
     };
 } Task;
 

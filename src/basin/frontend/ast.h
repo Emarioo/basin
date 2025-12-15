@@ -11,7 +11,7 @@ typedef enum {
     EXPR_FOR,
     EXPR_WHILE,
     EXPR_IF,
-    EXPR_CALL, // also arithmetic, logical, comparison operation
+    EXPR_CALL,
     EXPR_RETURN,
     EXPR_YIELD,
     EXPR_CONTINUE,
@@ -158,8 +158,32 @@ typedef struct {
 } ASTExpression_Initializer;
 
 
-// Memory owner
 typedef struct {
+    string name; // named argument
+    ASTExpression* expr;
+} ASTExpression_Call_Argument;
+
+DEF_ARRAY(ASTExpression_Call_Argument);
+
+typedef struct {
+    // For now just expression, we may add more like named polymorphic arguments
+    // call<Key=int,Val=string>()
+    ASTExpression* expr; // type name, number or whatever
+} ASTExpression_Call_PolyArgument;
+
+DEF_ARRAY(ASTExpression_Call_PolyArgument);
+
+typedef struct {
+    NODE_BASE
+
+    ASTExpression* expr; // identifier or expr that evaluates to function pointer
+    Array_ASTExpression_Call_PolyArgument polymorphic_args;
+    Array_ASTExpression_Call_Argument arguments;
+} ASTExpression_Call;
+
+// Memory owner
+typedef struct AST {
+    TokenStream* stream;
     ASTExpression* global_block;
 } AST;
 
@@ -184,6 +208,12 @@ typedef struct {
     ASTExpression* body_expr;
 } ASTExpression_For;
 
+typedef struct {
+    NODE_BASE
+
+    ASTExpression* ref;
+    ASTExpression* value;
+} ASTExpression_Assign;
 
 typedef struct {
     NODE_BASE
@@ -236,7 +266,7 @@ typedef struct {
     SourceLocation location;
     string name;
     ASTType type_name;
-    // ASTExpression* type_expr;
+    ASTExpression* default_value;
 } ASTStruct_Field;
 
 DEF_ARRAY(ASTStruct_Field);
@@ -253,25 +283,83 @@ typedef struct {
 typedef struct {
     SourceLocation location;
     string name;
+    ASTType type_name;
+    ASTExpression* value;
+} ASTGlobal, ASTConstant;
+
+typedef struct {
+    SourceLocation location;
+    string name;
+    ASTType type_name;
+} ASTVariable;
+
+typedef struct {
+    SourceLocation location;
+    string name;
     Array_ASTStruct_Field fields;
 } ASTStruct;
 
+typedef struct {
+    SourceLocation location;
+    string name;
+    ASTExpression* default_value;
+} ASTEnum_Field;
+
+DEF_ARRAY(ASTEnum_Field);
+
+typedef struct {
+    SourceLocation location;
+    string name;
+    ASTType type_name; // base type, i8,u32...
+    Array_ASTEnum_Field members;
+} ASTEnum;
+
+typedef struct ASTExpression_Block ASTExpression_Block;
+
+typedef struct {
+    SourceLocation location;
+    string name; // may be empty otherwise name comes from 'import "util" as name'
+    bool shared;
+    
+    AST*                 ast;
+    ASTExpression_Block* block;
+} ASTImport;
+
 typedef ASTFunction* ASTFunctionP;
 typedef ASTStruct*   ASTStructP;
+typedef ASTEnum*     ASTEnumP;
+typedef ASTVariable* ASTVariableP;
+typedef ASTConstant* ASTConstantP;
+typedef ASTGlobal*   ASTGlobalP;
+typedef ASTImport*   ASTImportP;
 
 DEF_ARRAY(ASTFunctionP)
 DEF_ARRAY(ASTStructP)
+DEF_ARRAY(ASTEnumP)
+DEF_ARRAY(ASTVariableP)
+DEF_ARRAY(ASTConstantP)
+DEF_ARRAY(ASTGlobalP)
+DEF_ARRAY(ASTImport)
 
 
-typedef struct {
+typedef struct ASTExpression_Block {
     NODE_BASE
 
+    ASTExpression_Block* parent; // NULL means file level block
+    Array_ASTImport      imports;
+
     // Unordered list of functions, structs, enums, globals, constants
-    // Array_ASTExpressionP globals;
-    // Array_ASTExpressionP constants;
+    // Consider not making these pointers?
+    // Consider using small and large blocks.
+    // Large blocks for the global import scope
+    // small for all else.
+    // large blocks use bucket arrays?
+    Array_ASTVariableP   variables;
+    Array_ASTGlobalP     globals;
+    Array_ASTConstantP   constants;
     Array_ASTFunctionP   functions;
-    // Array_ASTExpressionP enums;
-    Array_ASTStructP structs;
+    Array_ASTEnumP       enums;
+    Array_ASTStructP     structs;
 
     // list of expressions
     Array_ASTExpressionP expressions;
@@ -280,5 +368,10 @@ typedef struct {
 
 void print_ast(AST* ast);
 void print_expression(ASTExpression* expr, int depth);
+void print_import(ASTImport* imp, int depth);
 void print_function(ASTFunction* func, int depth);
 void print_struct(ASTStruct* struc, int depth);
+void print_enum(ASTEnum* enu, int depth);
+void print_global(ASTGlobal* object, int depth);
+void print_constant(ASTConstant* object, int depth);
+void print_variable(ASTVariable* object, int depth);

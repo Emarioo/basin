@@ -3,8 +3,10 @@
     Token and TokenExt.
 */
 
-#include "basin/core/driver.h"
 #include "basin/frontend/parser.h"
+
+#include "basin/core/driver.h"
+#include "basin/frontend/ast.h"
 
 #include "platform/memory.h"
 
@@ -28,10 +30,13 @@ typedef struct {
     TokenStream* stream;
     int head; // token head
     
+    ASTExpression_Block* previous_block;
+
     ComptimeKind comptime_kind;
     
     jmp_buf jump_state;
     TokenExt bad_token; // token causing bad syntax
+    CLocation c_location; // token causing bad syntax
     char error_message[256];
 } ParserContext;
 
@@ -69,6 +74,7 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
     result.message.len = 0;
 
     AST* ast = HEAP_ALLOC_OBJECT(AST);
+    ast->stream = stream;
 
     ParserContext context = {0};
     context.stream = stream;
@@ -87,10 +93,12 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
     } else {
         int line, column;
         string code;
-        bool yes = compute_source_info(stream, context.bad_token, &line, &column, &code);
+        bool yes = compute_source_info(stream, location_from_token(&context.bad_token), &line, &column, &code);
 
         char buffer[1024];
-        snprintf(buffer, sizeof(buffer), "\033[31m%s:%d:%d:\033[0m %s\n%s", stream->import->path.ptr, line, column, context.error_message, code.ptr);
+        int len = 0;
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[37m%s:%d\033[0m\n", context.c_location.path, context.c_location.line);
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[31m%s:%d:%d:\033[0m %s\n%s", stream->import->path.ptr, line, column, context.error_message, code.ptr);
         result.kind = FAILURE;
         result.message = string_clone_cptr(buffer);
     }
@@ -98,9 +106,11 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
     return result;
 }
 
-#define check_error_ext(T, ...) ((T)->kind == T_END_OF_FILE ? parse_error(context, (const TokenExt*)(void*)(T), __VA_ARGS__) : 0)
+#define check_error_ext(T, ...) ((T)->kind == T_END_OF_FILE ? parse_error((const TokenExt*)(void*)(T), __VA_ARGS__) : 0)
 
-void parse_error(ParserContext* context, const TokenExt* tok, char* fmt, ...) {
+#define parse_error(TOK, FMT, ...) ( context->c_location.path = __FILE__, context->c_location.line = __LINE__, _parse_error(context, TOK, FMT __VA_OPT__(,)  __VA_ARGS__) )
+
+void _parse_error(ParserContext* context, const TokenExt* tok, char* fmt, ...) {
     context->bad_token = *(const TokenExt*)tok;
 
     va_list ap;
@@ -133,7 +143,7 @@ static const TokenExt* _match(ParserContext* context, TokenKind kind) {
         context->head += 1 + (TOKEN_PER_EXT_TOKEN - 1) * IS_EXT_TOKEN(kind);
         return tok;
     } else {
-        parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted %s", name_from_token(kind));
+        parse_error((const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted %s", name_from_token(kind));
         return &EOF_TOKEN_EXT;
     }
 }
@@ -170,9 +180,12 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
     }
     
     CREATE_EXPR(block_expr, ASTExpression_Block, EXPR_BLOCK, block_tok);
+    block_expr->parent = context->previous_block;
+    context->previous_block = block_expr;
 
     while (true) {
-        const TokenExt* tok = peek(0);
+        const TokenExt* tok  = peek(0);
+        const TokenExt* tok1 = peek(1);
 
         if (IS_EOF(tok) && at_file_scope) {
             break;
@@ -183,11 +196,10 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
             advance();
 
             if(IS_COMPTIME()) {
-                parse_error(context, tok, "Import is not allowed in compile time expression. Use 'compiler_import(\"windows\")' from 'import \"compiler\"' instead.");
+                parse_error(tok, "Import is not allowed in compile time expression. Use 'compiler_import(\"windows\")' from 'import \"compiler\"' instead.");
             }
 
             const TokenExt* tok = match(T_LITERAL_STRING);
-            check_error_ext(tok, "Expected a string");
 
             cstring path = DATA_FROM_STRING(tok);
         
@@ -198,32 +210,85 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
 
             driver_add_task(context->driver, &task);
 
+            // @TODO Submit ASTImport to tokenize task so it can be updated?
+            ASTImport new_import = {};
+            new_import.location = location_from_token(tok);
+            new_import.name = string_clone_cstr(path);
+            new_import.shared = false; // set from annontation @shared
+            array_push(&block_expr->imports, &new_import);
+
             // TODO: Parse as
 
             // @TODO Add import to scope tree
 
-        // } else if (tok->kind == T_GLOBAL) {
-        //     advance();
+        } else if (tok->kind == T_GLOBAL) {
+            advance();
             
-        //     if(IS_COMPTIME()) {
-        //         parse_error(context, tok, "Global variables are not allowed inside compile time expressions.");
-        //     }
-
-        //     const TokenExt* tok = match(T_IDENTIFIER);
-        //     check_error_ext(tok, "Expected an identifier.");
-                
-        //     cstring name = DATA_FROM_TOKEN(tok);
-
-        //     match(':');
-        // } else if (tok->kind == T_CONST) {
-        //     advance();
+            const TokenExt* ident_tok = match(T_IDENTIFIER);
+            match(':');
             
-        //     const TokenExt* tok = match(T_IDENTIFIER);
-        //     check_error_ext(tok, "Expected an identifier.");
-                
-        //     cstring name = DATA_FROM_TOKEN(tok);
+            ASTGlobal* data_object = HEAP_ALLOC_OBJECT(ASTGlobal);
+            data_object->location = location_from_token(ident_tok);
+            
+            cstring name = DATA_FROM_TOKEN(ident_tok);
+            data_object->name = string_clone_cstr(name);
+            
+            
+            data_object->type_name = parse_type(context);
+            
+            const TokenExt* equal_tok = peek(0);
+            if (equal_tok->kind == '=') {
+                data_object->value = parse_expression(context);
+            }
 
-        //     match(':');
+            array_push(&block_expr->globals, &data_object);
+        } else if (tok->kind == T_CONST) {
+            advance();
+            
+            const TokenExt* ident_tok = match(T_IDENTIFIER);
+            match(':');
+            
+            ASTConstant* data_object = HEAP_ALLOC_OBJECT(ASTConstant);
+            data_object->location = location_from_token(ident_tok);
+            
+            cstring name = DATA_FROM_TOKEN(ident_tok);
+            data_object->name = string_clone_cstr(name);
+            
+            data_object->type_name = parse_type(context);
+            
+            const TokenExt* equal_tok = peek(0);
+            if (equal_tok->kind == '=') {
+                data_object->value = parse_expression(context);
+            }
+            array_push(&block_expr->constants, &data_object);
+        } else if (tok->kind == T_IDENTIFIER && tok->kind == ':') {
+            advance();
+            advance();
+            
+            ASTVariable* data_object = HEAP_ALLOC_OBJECT(ASTVariable);
+            data_object->location = location_from_token(tok);
+            
+            cstring name = DATA_FROM_TOKEN(tok);
+            data_object->name = string_clone_cstr(name);
+
+            data_object->type_name = parse_type(context);
+            
+            const TokenExt* equal_tok = peek(0);
+            if (equal_tok->kind == '=') {
+
+                ASTExpression* rvalue = parse_expression(context);
+
+                CREATE_EXPR(expr_lval, ASTExpression_Identifier, EXPR_IDENTIFIER, tok);
+                expr_lval->name = string_clone_cstr(name);
+
+                CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok);
+                expr_assign->ref = (ASTExpression*) expr_lval;
+                expr_assign->value = rvalue;
+
+                array_push(&block_expr->expressions, (ASTExpression**)&expr_assign);
+            }
+
+            array_push(&block_expr->variables, &data_object);
 
         } else if (tok->kind == T_STRUCT) {
             
@@ -236,19 +301,33 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
             array_push(&block_expr->functions, &function);
 
         } else if (tok->kind == '}') {
-            if (at_file_scope) {
+            if (!at_file_scope) {
                 break;
             }
-            parse_error(context, tok, "Unexpected closing brace.");
+            parse_error(tok, "Unexpected closing brace. (at file scope)");
         } else {
             ASTExpression* expr = parse_expression(context);
-            array_push(&block_expr->expressions, &expr);
+
+            const TokenExt* equal_tok = peek(0);
+            if (equal_tok->kind == '=') {
+                ASTExpression* rvalue = parse_expression(context);
+
+                CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok);
+                expr_assign->ref = expr;
+                expr_assign->value = rvalue;
+
+                array_push(&block_expr->expressions, (ASTExpression**)&expr_assign);
+            } else {
+                array_push(&block_expr->expressions, &expr);
+            }
         }
     }
 
     if (!at_file_scope) {
         match('}');
     }
+
+    context->previous_block = block_expr->parent;
 
     return (ASTExpression*)block_expr;
 }
@@ -308,7 +387,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             while (1) {
                 expr = parse_expression(context);
                 if (!expr) {
-                    parse_error(context, tok0, "Expected an expression (if condition).");
+                    parse_error(tok0, "Expected an expression (if condition).");
                 }
 
                 array_push(&out_expr->exprs, &expr);
@@ -339,7 +418,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             while (1) {
                 expr = parse_expression(context);
                 if (!expr) {
-                    parse_error(context, tok0, "Expected an expression (if condition).");
+                    parse_error(tok0, "Expected an expression (if condition).");
                 }
 
                 array_push(&out_expr->exprs, &expr);
@@ -361,12 +440,12 @@ ASTExpression* parse_expression(ParserContext* context) {
         const TokenExt* tok0 = peek(0);
         ASTExpression* expr = parse_expression(context);
         if (!expr)
-            parse_error(context, tok0, "Expected an expression (if condition).");
+            parse_error(tok0, "Expected an expression (if condition).");
 
         const TokenExt* tok1 = peek(0);
         ASTExpression* body = parse_expression(context);
         if (!body)
-            parse_error(context, tok1, "Expected an expression (if body).");
+            parse_error(tok1, "Expected an expression (if body).");
         
         ASTExpression* else_body = NULL;
 
@@ -376,7 +455,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             const TokenExt* else_expr_tok = peek(0);
             else_body = parse_expression(context);
             if (!else_body) {
-                parse_error(context, else_expr_tok, "Expected an expression (else body).");
+                parse_error(else_expr_tok, "Expected an expression (else body).");
             }
         }
         
@@ -463,7 +542,7 @@ ASTExpression* parse_expression(ParserContext* context) {
     //     advance();
 
     //     if(IS_COMPTIME()) {
-    //         parse_error(context, tok, "Nesting compile time expressions is not allowed.");
+    //         parse_error(tok, "Nesting compile time expressions is not allowed.");
     //     }
 
     //     ComptimeKind compttime_kind = COMPTIME_NORMAL;
@@ -540,17 +619,25 @@ ASTExpression* parse_expression(ParserContext* context) {
                         }
 
                         ASTExpression_Initializer_Element element = {};
+                        
+                        if (tok->kind == T_IDENTIFIER && tok1->kind == '=') {
+                            advance();
+                            advance();
+                            cstring name = DATA_FROM_IDENTIFIER(tok);
+                            element.name = string_clone_cstr(name);
+                        }
+
                         element.expr = parse_expression(context);
                         array_push(&expr->elements, &element);
 
-                        const TokenExt* tok_delim = peek(0);
-                        if (tok_delim->kind == ']') {
+                        tok = peek(0);
+                        if (tok->kind == ']') {
                             continue;
-                        } else if (tok_delim->kind == ',') {
+                        } else if (tok->kind == ',') {
                             advance();
                             continue;
                         } else {
-                            parse_error(context, tok_delim, "Expected ',' or ']' to end or continue initializer.");
+                            parse_error(tok, "Expected ',' or ']' to end or continue initializer.");
                         }
                     }
 
@@ -603,7 +690,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                     array_push(&ops, (ASTExpression**)&expr);
                     continue;
                 } else {
-                    parse_error(context, tok0, "Not a valid token for expression (primary value)");
+                    parse_error(tok0, "Not a valid token for expression (primary value)");
                 }
                 expect_value = false;
                 continue;
@@ -715,7 +802,81 @@ ASTExpression* parse_expression(ParserContext* context) {
                     expr->expr = last_expr;
                     exprs.ptr[exprs.len-1] = (ASTExpression*)expr;
                     continue;
-                }  else {
+                } else {
+                    Array_ASTExpression_Call_PolyArgument polyargs = {};
+                    
+                    bool parsed_poly_args = false;
+                    if (tok0->kind == '<' && !HAS_PRE_WHITESPACE(tok0)) {
+                        advance();
+                        parsed_poly_args = true;
+                        
+                        while (true) {
+                            const TokenExt* tok = peek(0);
+                            if (tok->kind == '>') {
+                                advance();
+                                break;
+                            }
+                            ASTExpression_Call_PolyArgument arg = {};
+                            arg.expr = parse_expression(context);
+                            array_push(&polyargs, &arg);
+
+                            tok = peek(0);
+
+                            if (tok->kind == '>') {
+                                continue;
+                            } else if (tok->kind == ',') {
+                                advance();
+                                continue;
+                            } else {
+                                parse_error(tok, "Expected '>' or ',' to continue or end polymorphic arguments.");
+                            }
+                        }
+                    }
+
+                    if (tok0->kind == '(' || parsed_poly_args) {
+                        match('(')
+                        CREATE_EXPR(expr, ASTExpression_Call, EXPR_CALL, tok0);
+                        expr->polymorphic_args = polyargs;
+                        
+                        while (true) {
+                            const TokenExt* tok = peek(0);
+                            if (tok->kind == ')') {
+                                advance();
+                                break;
+                            }
+                            
+                            ASTExpression_Call_Argument arg = {};
+
+                            const TokenExt* tok1 = peek(1);
+
+                            if (tok->kind == T_IDENTIFIER && tok1->kind == '=') {
+                                advance();
+                                advance();
+                                cstring name = DATA_FROM_IDENTIFIER(tok);
+                                arg.name = string_clone_cstr(name);
+                            }
+
+                            arg.expr = parse_expression(context);
+                            array_push(&expr->arguments, &arg);
+                            
+                            tok = peek(0);
+
+                            if (tok->kind == ')') {
+                                continue;
+                            } else if (tok->kind == ',') {
+                                advance();
+                                continue;
+                            } else {
+                                parse_error(tok, "Expected ')' or ',' to continue or end function arguments.");
+                            }
+                        }
+
+                        ASTExpression* last_expr = array_last(&exprs);
+                        expr->expr = last_expr;
+                        exprs.ptr[exprs.len-1] = (ASTExpression*)expr;
+                        continue;
+                    }
+
                     end_of_expression = true;
                 }
                 if (operation) {
@@ -831,7 +992,7 @@ ASTFunction* parse_function(ParserContext* context) {
 
             array_push(&out_function->parameters, &parameter);
         } else {
-            parse_error(context, tok, "Expected a parameter, 'item : i32;'");
+            parse_error(tok, "Expected a parameter, 'item : i32;'");
         }
         if (tok->kind == ',') {
             advance();
@@ -839,7 +1000,7 @@ ASTFunction* parse_function(ParserContext* context) {
         } else if(tok->kind == ')') {
             continue;
         } else {
-            parse_error(context, tok, "Expected a ')' or ','");
+            parse_error(tok, "Expected a ')' or ','");
         }
     }
 
@@ -883,7 +1044,7 @@ ASTFunction* parse_function(ParserContext* context) {
                 advance();
                 continue;
             } else {
-                parse_error(context, tok, "Expected a return value, '-> i32, i32'");
+                parse_error(tok, "Expected a return value, '-> i32, i32'");
             }
         }
     }
@@ -939,7 +1100,7 @@ ASTStruct* parse_struct(ParserContext* context) {
             advance();
             break;
         } else {
-            parse_error(context, tok, "Expected a field, 'item : i32;'");
+            parse_error(tok, "Expected a field, 'item : i32;'");
         }
         // @TODO Parse function
     }
@@ -957,7 +1118,7 @@ ASTType parse_type(ParserContext* context) {
         cstring str = DATA_FROM_IDENTIFIER(tok);
         type_name = string_clone_cstr(str);
     } else {
-        parse_error(context, tok, "Invalid type.");
+        parse_error(tok, "Invalid type.");
     }
     return type_name;
 }

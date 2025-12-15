@@ -19,9 +19,9 @@ void print_expression(ASTExpression* _expr, int depth) {
         case EXPR_BLOCK: {
             ASTExpression_Block* expr = (ASTExpression_Block*)_expr;
             printf("BLOCK\n");
-            for (int i=0;i<expr->expressions.len;i++) {
+            for (int i=0;i<expr->imports.len;i++) {
                 print_indent(depth);
-                print_expression(expr->expressions.ptr[i], depth + 1);
+                print_import(&expr->imports.ptr[i], depth + 1);
             }
             for (int i=0;i<expr->functions.len;i++) {
                 print_indent(depth);
@@ -30,6 +30,26 @@ void print_expression(ASTExpression* _expr, int depth) {
             for (int i=0;i<expr->structs.len;i++) {
                 print_indent(depth);
                 print_struct(expr->structs.ptr[i], depth + 1);
+            }
+            for (int i=0;i<expr->enums.len;i++) {
+                print_indent(depth);
+                print_enum(expr->enums.ptr[i], depth + 1);
+            }
+            for (int i=0;i<expr->globals.len;i++) {
+                print_indent(depth);
+                print_global(expr->globals.ptr[i], depth + 1);
+            }
+            for (int i=0;i<expr->constants.len;i++) {
+                print_indent(depth);
+                print_constant(expr->constants.ptr[i], depth + 1);
+            }
+            for (int i=0;i<expr->variables.len;i++) {
+                print_indent(depth);
+                print_variable(expr->variables.ptr[i], depth + 1);
+            }
+            for (int i=0;i<expr->expressions.len;i++) {
+                print_indent(depth);
+                print_expression(expr->expressions.ptr[i], depth + 1);
             }
         } break;
         case EXPR_FOR: {
@@ -78,8 +98,25 @@ void print_expression(ASTExpression* _expr, int depth) {
             print_expression(expr->else_expr, depth + 1);
         } break;
         case EXPR_CALL: {
-            // ASTExpression_Call* expr = (ASTExpression_Call*)_expr;
-            printf("CALL\n");
+            ASTExpression_Call* expr = (ASTExpression_Call*)_expr;
+            printf("CALL ");
+            print_expression(expr->expr, depth + 1);
+
+            for (int i=0;i<expr->polymorphic_args.len;i++) {
+                print_indent(depth);
+                printf("polyarg%d: ", i);
+                print_expression(expr->polymorphic_args.ptr[i].expr, depth + 1);
+            }
+
+            for (int i=0;i<expr->arguments.len;i++) {
+                print_indent(depth);
+
+                if (expr->arguments.ptr[i].name.ptr)
+                    printf("%s: ", expr->arguments.ptr[i].name.ptr);
+                else
+                    printf("arg%d: ", i);
+                print_expression(expr->arguments.ptr[i].expr, depth + 1);
+            }
         } break;
         case EXPR_RETURN: {
             ASTExpression_Return* expr = (ASTExpression_Return*)_expr;
@@ -109,7 +146,14 @@ void print_expression(ASTExpression* _expr, int depth) {
             printf("ASSEMBLY\n");
         } break;
         case EXPR_ASSIGN: {
+            ASTExpression_Assign* expr = (ASTExpression_Assign*)_expr;
             printf("ASSIGN\n");
+            
+            print_indent(depth);
+            print_expression(expr->ref, depth + 1);
+            
+            print_indent(depth);
+            print_expression(expr->value, depth + 1);
         } break;
         case EXPR_MEMBER: {
             ASTExpression_Member* expr = (ASTExpression_Member*)_expr;
@@ -194,10 +238,43 @@ void print_expression(ASTExpression* _expr, int depth) {
 }
 void print_function(ASTFunction* func, int depth) {
     print_indent(depth);
-    printf("FUNCTION\n");
+    printf("FUNCTION %s\n", func->name.ptr);
+
+    print_indent(depth);
+    print_expression(func->body, depth + 1);
+
+    // for (int i=0;i<func->parameters.len;i++) {
+    //     print_indent(depth);
+    //     print_struct(expr->structs.ptr[i], depth + 1);
+    // }
+    // for (int i=0;i<func->return_values.len;i++) {
+    //     print_indent(depth);
+    //     print_struct(expr->structs.ptr[i], depth + 1);
+    // }
 }
 void print_struct(ASTStruct* struc, int depth) {
     print_indent(depth);
-    printf("STRUCT\n");
+    printf("STRUCT %s\n", struc->name.ptr);
 }
+void print_enum(ASTEnum* enu, int depth) {
+    print_indent(depth);
+    printf("ENUM %s : %s\n", enu->name.ptr, enu->type_name.ptr);
+}
+void print_global(ASTGlobal* object, int depth) {
+    print_indent(depth);
+    printf("GLOBAL %s : %s\n", object->name.ptr, object->type_name.ptr);
+}
+void print_constant(ASTConstant* object, int depth) {
+    print_indent(depth);
+    printf("GLOBAL %s : %s\n", object->name.ptr, object->type_name.ptr);
+}
+void print_variable(ASTVariable* object, int depth) {
+    print_indent(depth);
+    printf("VARIABLE %s : %s\n", object->name.ptr, object->type_name.ptr);
+}
+void print_import(ASTImport* imp, int depth) {
+    print_indent(depth);
+    printf("IMPORT %s (shared: %d)\n", imp->name.ptr, (int)imp->shared);
+}
+
 

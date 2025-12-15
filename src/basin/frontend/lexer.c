@@ -454,7 +454,7 @@ void print_token_stream(TokenStream* stream) {
     }
 }
 
-bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int* out_column, string* out_code) {
+bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_line, int* out_column, string* out_code) {
     if(out_line) {
         *out_line = 0;
     }
@@ -466,7 +466,7 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
         out_code->len = 0;
         out_code->max = 0;
     }
-    if(token.kind == T_END_OF_FILE) {
+    if(location.import_id == INVALID_IMPORT_ID) {
         return false;
     }
     
@@ -488,7 +488,7 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
         head++;
 
         if(chr == '\n') {
-            if(head > token.position) {
+            if(head > location.position) {
                 head--;
                 break;
             }
@@ -498,7 +498,7 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
             nr_tabs=0;
             continue;
         }
-        if(head < token.position) {
+        if(head <= location.position) {
             column+=1;
             if(chr == '\t') {
                 nr_tabs++;
@@ -521,8 +521,8 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
 
         out_code->len = len + 1 // length of characters on the line + newline
             + (column-1) + 1 + 1; // amount of spaces + arrow + newline
-        out_code->max = out_code->len + 1; // +1 for null character
-        out_code->ptr = heap_alloc(out_code->max);
+        out_code->max = out_code->len;
+        out_code->ptr = heap_alloc(out_code->max + 1); // +1 for null character
         memcpy(out_code->ptr, code, len);
         out_code->ptr[len] = '\n';
         out_code->ptr[out_code->len] = '\0';
@@ -531,10 +531,10 @@ bool compute_source_info(TokenStream* stream, TokenExt token, int* out_line, int
 
         int arrow_head = 0;
         while(arrow_head < nr_tabs) {
-            arrow_code[arrow_head++] += '\t';
+            arrow_code[arrow_head++] = '\t';
         }
         while(arrow_head < column-1) {
-            arrow_code[arrow_head++] += ' ';
+            arrow_code[arrow_head++] = ' ';
         }
         arrow_code[arrow_head] = '^';
         arrow_code[arrow_head+1] = '\n';

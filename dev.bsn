@@ -1,7 +1,13 @@
 
 // x~ && 1 + 2 * 4
 
-my.field& & mask && active | oh~
+// my.field& & mask && active | oh~
+
+import "./util.bsn"
+
+fn main() {
+    hello(greatness, 1 + 2)
+}
 
 // Declare libraries and how to refer to them
 // #library "Kernel" as Kernel

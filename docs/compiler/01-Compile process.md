@@ -36,3 +36,4 @@ If lexing or parsing fails we immediately stop and mark that import as failed. W
 We can lex/parse multiple fails and have them all fail. That's okay. We just don't try to catch more erros by continuing parsing.
 
 If parser lexer fails, WE DO NOT continue to the type checker phase. Because an import with a function we need may have failed and we don't have access to it so identifier lookup will fail creating tons of errors.
+

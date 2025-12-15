@@ -23,3 +23,9 @@ typedef struct {
     string message;
 } Result;
 
+typedef struct {
+    const char* path;
+    int line;
+} CLocation;
+
+#define CLOCATION { __FILE__, __LINE__ }

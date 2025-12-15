@@ -31,7 +31,7 @@ In your program you may create multiple **States**, and start the **Driver** for
 It is recommended to have one **State** because the compiler can reuse processed imports.
 
 
-```
+```c
 
 // determines allocator, file api, thread api
 PlatformOptions platform_options = {

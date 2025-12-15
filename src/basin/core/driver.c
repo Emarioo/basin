@@ -3,6 +3,8 @@
 #include "basin/logger.h"
 #include "basin/frontend/lexer.h"
 #include "basin/frontend/parser.h"
+#include "basin/backend/gen_ir.h"
+#include "basin/backend/ir.h"
 
 #include "platform/memory.h"
 
@@ -147,6 +149,20 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     fprintf(stderr, "%s", result.message.ptr);
                 } else {
                     fprintf(stderr, "Parse success\n");
+                    
+                    task.kind = TASK_GEN_IR;
+                    task.gen_ir.ast = ast;
+                    driver_add_task_with_thread_id(driver, &task, id);
+                }
+            } break;
+            case TASK_GEN_IR: {
+                IRCollection* collection = (IRCollection*)HEAP_ALLOC_OBJECT(IRCollection);
+                Result result = generate_ir(driver, task.gen_ir.ast, &collection);
+                if(result.kind != SUCCESS) {
+                    // Print message. We are done with this series of tasks
+                    fprintf(stderr, "%s", result.message.ptr);
+                } else {
+                    fprintf(stderr, "Gen ir success\n");
                 }
             } break;
             default: {
@@ -157,8 +173,6 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
         // once done, we may add new tasks, atomically, with mutex
         // loop again find a new task
-
-        
     }
 
     if(enabled_logging_driver) {

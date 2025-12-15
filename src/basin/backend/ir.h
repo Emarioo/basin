@@ -212,7 +212,7 @@ typedef struct IRCollection {
 } IRCollection;
 
 typedef struct {
-
+    IRCollection collection;
 } IRBuilder;
 
 // bool, char, pointers are integers

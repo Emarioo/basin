@@ -45,8 +45,8 @@ string string_clone_cptr(const char* text) {
 string string_clone(const char* text, int len) {
     string out;
     out.len = len;
-    out.max = out.len + 1;
-    out.ptr = heap_alloc(out.max);
+    out.max = out.len;
+    out.ptr = heap_alloc(out.max + 1);
     if(out.len);
         memcpy(out.ptr, text, out.len);
     out.ptr[out.len] = '\0';
