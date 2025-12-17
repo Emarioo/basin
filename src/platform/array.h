@@ -17,6 +17,7 @@
 #define array_cleanup(ARR) _array_cleanup((Array*)(ARR), sizeof(*(ARR)->ptr))
 #define array_last(ARR) (ASSERT_INDEX((ARR)->len > 0), (ARR)->ptr[(ARR)->len-1])
 #define array_get(ARR, INDEX) (ASSERT_INDEX(INDEX < (ARR)->len), (ARR)->ptr[INDEX])
+#define array_size(ARR) ((ARR)->len)
 
 typedef struct {
     void* ptr;

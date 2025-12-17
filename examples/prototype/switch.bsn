@@ -1,0 +1,55 @@
+
+
+switch x {
+    1:
+        print("1")
+    2:
+        // no curly-braces is convenient
+        print("hello")
+        print("2")
+        // it's difficult to determine the end of the case
+        // since next tokens and AST are
+        //  } to end switch
+        //  <expression> :  to start new case
+        // The expression can be for the case '2' block
+        // or for the next case, in this instance case 3
+        // i guess parse_block_expression can look at : after parsing expression
+        // and if so it's a new case.
+    3:
+        print("3")
+        // We need to handle this which is a new case or a declaration
+        // we will detect it as declaration unless we have special handling.
+        END: hello
+
+        // We may want to write this how to detect this as a new case instead of a
+        // declaration, we don't get parse error on (compute()) because it's a valid expression, it calls a function so it doesn't do nothing. if compute() was 5 then we could error and say "expression does nothing".
+    ENUM_A: hello(compute())
+}
+
+
+// This won't work because : is the cast operator
+switch x {
+    case 1:
+        print("1")
+    case 2:
+        print("1")
+        print("2")
+    case 3:
+        print("3")
+}
+
+
+
+// fool proof syntax
+// case starts an entry
+// if we see case when parse_block_expression then it's the end
+// of the switch.
+switch x {
+    case 1
+        print("1")
+    case 2
+        print("1")
+        print("2")
+    default
+        print("3")
+}

@@ -62,11 +62,11 @@ void print_expression(ASTExpression* _expr, int depth) {
             printf("index: %s\n", expr->index_name.ptr);
 
             print_indent(depth);
-            printf("condition:\n");
+            printf("condition: ");
             print_expression(expr->condition_expr, depth + 1);
 
             print_indent(depth);
-            printf("body:\n");
+            printf("body: ");
             print_expression(expr->body_expr, depth + 1);
         } break;
         case EXPR_WHILE: {
@@ -74,11 +74,11 @@ void print_expression(ASTExpression* _expr, int depth) {
             printf("WHILE\n");
             
             print_indent(depth);
-            printf("condition:\n");
+            printf("condition: ");
             print_expression(expr->condition_expr, depth + 1);
 
             print_indent(depth);
-            printf("body:\n");
+            printf("body: ");
             print_expression(expr->body_expr, depth + 1);
         } break;
         case EXPR_IF: {
@@ -86,16 +86,40 @@ void print_expression(ASTExpression* _expr, int depth) {
             printf("IF\n");
             
             print_indent(depth);
-            printf("condition:\n");
+            printf("condition: ");
             print_expression(expr->condition_expr, depth + 1);
 
             print_indent(depth);
-            printf("body:\n");
+            printf("body: ");
             print_expression(expr->body_expr, depth + 1);
             
             print_indent(depth);
-            printf("else:\n");
+            printf("else: ");
             print_expression(expr->else_expr, depth + 1);
+        } break;
+        case EXPR_SWITCH: {
+            ASTExpression_Switch* expr = (ASTExpression_Switch*)_expr;
+            printf("SWITCH\n");
+            
+            print_indent(depth);
+            printf("selector: ");
+            print_expression(expr->selector, depth + 1);
+            
+            for (int i=0;i<expr->cases.len;i++) {
+                print_indent(depth);
+                if (expr->cases.ptr[i].condition) {
+                    printf("case_%d: ", i);
+                    print_expression(expr->cases.ptr[i].condition, depth + 2);
+                } else {
+                    printf("default:\n");
+                }
+                print_indent(depth+1);
+                if (expr->cases.ptr[i].body) {
+                    print_expression(expr->cases.ptr[i].body, depth + 2);
+                } else {
+                    printf("empty");
+                }
+            }
         } break;
         case EXPR_CALL: {
             ASTExpression_Call* expr = (ASTExpression_Call*)_expr;
@@ -253,27 +277,21 @@ void print_function(ASTFunction* func, int depth) {
     // }
 }
 void print_struct(ASTStruct* struc, int depth) {
-    print_indent(depth);
     printf("STRUCT %s\n", struc->name.ptr);
 }
 void print_enum(ASTEnum* enu, int depth) {
-    print_indent(depth);
     printf("ENUM %s : %s\n", enu->name.ptr, enu->type_name.ptr);
 }
 void print_global(ASTGlobal* object, int depth) {
-    print_indent(depth);
     printf("GLOBAL %s : %s\n", object->name.ptr, object->type_name.ptr);
 }
 void print_constant(ASTConstant* object, int depth) {
-    print_indent(depth);
     printf("GLOBAL %s : %s\n", object->name.ptr, object->type_name.ptr);
 }
 void print_variable(ASTVariable* object, int depth) {
-    print_indent(depth);
     printf("VARIABLE %s : %s\n", object->name.ptr, object->type_name.ptr);
 }
 void print_import(ASTImport* imp, int depth) {
-    print_indent(depth);
     printf("IMPORT %s (shared: %d)\n", imp->name.ptr, (int)imp->shared);
 }
 

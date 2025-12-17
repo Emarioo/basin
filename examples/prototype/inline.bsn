@@ -1,0 +1,62 @@
+/*
+
+
+*/
+
+
+
+
+@inline fn error(message: string, args: ..., context: Context* = context) {
+    _walk_error(context, message, args)
+}
+
+fn _walk_error(context: Context*, message: string, args: string[] = []) {
+    printf(f"ERROR: {message}", args)
+    longjmp(context.jmpbuf)
+}
+
+fn walk_root(context: Context*, node: Node*) {
+    init_walk(context)
+
+    walk_node(context, node)
+
+    cleanup_walk(context)
+}
+fn walk_node(context: Context*, node: Node*) { 
+    
+    switch node.size {
+        case BINARY:
+            walk_node(context, node.left)
+            walk_node(context, node.right)
+        case UNARY:
+            walk_node(context, node.left)
+        case:
+            // casting node to string
+            error(f"Unknown node {node : string}\n", [ f"{__FILE__}:{__LINE__}\n", "useless text\n" ])
+            // error turns into
+            // _walk_error(context, f"Unknown node {node : string}\n", [ f"{__FILE__}:{__LINE__}\n", "useless text\n" ])
+    }
+}
+
+
+fn cast(node: Node*) -> string {
+    return node.name
+}
+
+
+@section(".text") global extra_code: u8[1024]
+
+@section(".data") fn extra_code(x: i32) {
+
+}
+
+
+# {
+    import "IRBuilder"
+
+    IRBuilder* builder = create_builder_from_current_workspace()
+    builder.init_function("__extra_code")
+
+
+    extra_code
+}

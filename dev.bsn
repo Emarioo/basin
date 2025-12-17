@@ -5,9 +5,17 @@
 
 import "./util.bsn"
 
-fn main() {
-    hello(greatness, 1 + 2)
+switch x.y + 23 {
+    case 23 + 5
+        print(Hello)
+        print(23)
+    default
+        print(23)
 }
+
+// fn main() {
+//     hello(greatness, 1 + 2)
+// }
 
 // Declare libraries and how to refer to them
 // #library "Kernel" as Kernel

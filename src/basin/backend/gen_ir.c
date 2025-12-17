@@ -14,7 +14,7 @@
 typedef struct {
     Driver* driver;
     AST* ast;
-    IRCollection* collection;
+    IRBuilder builder;
     
     jmp_buf jump_state;
     SourceLocation bad_location;
@@ -37,7 +37,7 @@ Result generate_ir(Driver* driver, AST* ast, IRCollection** out_collection) {
     GenIRContext context = {0};
     context.driver = driver;
     context.ast = ast;
-    context.collection = *out_collection;
+    context.builder.collection = *out_collection;
 
     int res = setjmp(context.jump_state);
 
@@ -75,4 +75,6 @@ void walk(GenIRContext* context, ASTExpression* _expr) {
 
 void generate_function(GenIRContext* context, ASTFunction* func) {
     printf("Gen Func %s\n", func->name.ptr);
+
+    // context->builder.collection->functions
 }

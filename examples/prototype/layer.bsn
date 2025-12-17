@@ -1,0 +1,27 @@
+
+
+// layer.bsn
+
+import "layer_win.bsn"
+
+fn gettime() -> u64 {
+    _gettime()
+}
+
+// layer_win.bsn
+
+fn _gettime() -> u64 {
+    @import(win32_kernel) fn GetTime() -> u64;
+    
+    return GetTime()
+}
+
+// layer_win.bsn
+
+fn _gettime() -> u64 {
+    return asm -> u64 {
+        mov eax, 236 // imagine this is get_time
+        syscall
+        ret 
+    }
+}

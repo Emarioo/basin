@@ -11,6 +11,7 @@ typedef enum {
     EXPR_FOR,
     EXPR_WHILE,
     EXPR_IF,
+    EXPR_SWITCH,
     EXPR_CALL,
     EXPR_RETURN,
     EXPR_YIELD,
@@ -229,6 +230,21 @@ typedef struct {
     ASTExpression* body_expr;
     ASTExpression* else_expr;
 } ASTExpression_If;
+
+
+typedef struct {
+    ASTExpression* condition; // NULL for default case
+    ASTExpression* body;
+} ASTExpression_Switch_Case;
+
+DEF_ARRAY(ASTExpression_Switch_Case)
+
+typedef struct {
+    NODE_BASE
+
+    ASTExpression* selector;
+    Array_ASTExpression_Switch_Case cases; // only last case may be the default case, default case is optional
+} ASTExpression_Switch;
 
 typedef struct {
     NODE_BASE

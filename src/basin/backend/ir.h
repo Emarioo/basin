@@ -7,7 +7,9 @@
 #pragma once
 
 #include "platform/array.h"
+#include "platform/atomic_array.h"
 #include "platform/string.h"
+#include "platform/thread.h"
 
 typedef enum {
     IR_ADD,
@@ -77,9 +79,9 @@ typedef enum {
     IR_SECTION_DATA,
 } _IRSectionID;
 
-typedef u8 IROpcode;
-typedef u8 IROperand;
-typedef u8 IRSectionID;
+typedef u8  IROpcode;
+typedef u8  IROperand;
+typedef u8  IRSectionID;
 typedef u32 IRLabel;
 typedef u32 IRFunction_id;
 
@@ -186,13 +188,13 @@ typedef struct {
     int max;
 } IRFunction;
 
-typedef struct IRVariable {
+typedef struct IRDataObject {
     string name;
     u8     section_index;  // index into IRCollection's IRSections
     u8     type;           // type
     int    section_offset; // Offset into IRSection where data is located
     int    size;           // size of variable
-} IRVariable;
+} IRDataObject;
 
 typedef struct IRSection {
     string name;
@@ -201,18 +203,28 @@ typedef struct IRSection {
 
 DEF_ARRAY(IRSection)
 
-DEF_ARRAY(IRVariable)
+DEF_ARRAY(IRDataObject)
 
 DEF_ARRAY(IRFunction)
 
+DEF_ATOMIC_ARRAY(IRSection)
+DEF_ATOMIC_ARRAY(IRDataObject)
+DEF_ATOMIC_ARRAY(IRFunction)
+
+typedef struct IRProgram {
+    AtomicArray_IRSection    sections;
+    AtomicArray_IRDataObject variables;
+    AtomicArray_IRFunction   functions;
+} IRProgram;
 typedef struct IRCollection {
-    Array_IRSection  sections;
-    Array_IRVariable variables;
-    Array_IRFunction functions;
+    AtomicArray_IRSection    sections;
+    AtomicArray_IRDataObject variables;
+    AtomicArray_IRFunction   functions;
 } IRCollection;
 
 typedef struct {
-    IRCollection collection;
+    // IRProgram* collection;
+    IRCollection* collection;
 } IRBuilder;
 
 // bool, char, pointers are integers

@@ -1,0 +1,33 @@
+
+
+fn val() -> f32, i32 {
+    return 5, 5
+}
+
+// declare types
+v : f32, res : i32 = val()
+
+// multi declare one type
+v, res : i32
+
+// infer types
+v, res := val()
+
+// just assignment
+v, res = val()
+
+
+// partly infer types
+v:, res = val()
+v=, res := val()
+
+// partly declare types
+v:f32, res = val()
+v=, res:i32 = val()
+
+a, v:, res = val() // infer a and v
+a=, v:, res = val() // infer only v
+
+
+// for consistency with muilti value assignment we allow this
+v:, res : i32

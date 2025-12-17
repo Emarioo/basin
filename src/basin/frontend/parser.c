@@ -13,7 +13,7 @@
 #include <setjmp.h>
 #include <stdarg.h>
 
-#define match(KIND) _match(context, KIND);
+#define match(KIND) ( context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match(context, KIND) )
 // 0 current token
 #define peek(N) _peek(context, N)
 #define advance() _advance(context)
@@ -52,10 +52,15 @@ typedef struct {
     V->kind = KIND;                       \
     V->location = location_from_token(TOK);
 
+    
+typedef enum {
+    IN_FILE_SCOPE   = 0x1,
+    IN_CASE_SCOPE = 0x2,
+} ParseBlockFlags;
 
 ASTType parse_type(ParserContext* context);
 ASTExpression* parse_expression(ParserContext* context);
-ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope);
+ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags);
 ASTFunction* parse_function(ParserContext* context);
 ASTStruct* parse_struct(ParserContext* context);
 
@@ -143,7 +148,7 @@ static const TokenExt* _match(ParserContext* context, TokenKind kind) {
         context->head += 1 + (TOKEN_PER_EXT_TOKEN - 1) * IS_EXT_TOKEN(kind);
         return tok;
     } else {
-        parse_error((const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted %s", name_from_token(kind));
+        _parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted '%s'", name_from_token(kind));
         return &EOF_TOKEN_EXT;
     }
 }
@@ -172,10 +177,14 @@ void exit_comptime_mode(ParserContext* context) {
 
 #define IS_COMPTIME() (context->comptime_kind != COMPTIME_NONE)
 
-ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope) {
+
+ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags) {
+
+    bool in_file_scope = block_flags & IN_FILE_SCOPE;
+    bool in_case_scope = block_flags & IN_CASE_SCOPE;
 
     const TokenExt* block_tok = peek(0);
-    if (!at_file_scope) {
+    if (!in_file_scope && !in_case_scope) {
         match('{');
     }
     
@@ -187,7 +196,7 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
         const TokenExt* tok  = peek(0);
         const TokenExt* tok1 = peek(1);
 
-        if (IS_EOF(tok) && at_file_scope) {
+        if (IS_EOF(tok) && in_file_scope) {
             break;
         }
 
@@ -301,10 +310,15 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
             array_push(&block_expr->functions, &function);
 
         } else if (tok->kind == '}') {
-            if (!at_file_scope) {
+            if (!in_file_scope) {
                 break;
             }
             parse_error(tok, "Unexpected closing brace. (at file scope)");
+        } else if (tok->kind == T_CASE || tok->kind == T_DEFAULT) {
+            if (in_case_scope) {
+                break;
+            }
+            parse_error(tok, "'case' and 'default' is only allowed in switch scopes.");
         } else {
             ASTExpression* expr = parse_expression(context);
 
@@ -323,7 +337,7 @@ ASTExpression* parse_block_expression(ParserContext* context, bool at_file_scope
         }
     }
 
-    if (!at_file_scope) {
+    if (!in_file_scope && !in_case_scope) {
         match('}');
     }
 
@@ -437,6 +451,8 @@ ASTExpression* parse_expression(ParserContext* context) {
     } else if (tok->kind == T_IF) {
         advance();
 
+        CREATE_EXPR(out_expr, ASTExpression_If, EXPR_IF, tok)
+
         const TokenExt* tok0 = peek(0);
         ASTExpression* expr = parse_expression(context);
         if (!expr)
@@ -459,12 +475,69 @@ ASTExpression* parse_expression(ParserContext* context) {
             }
         }
         
-        ASTExpression_If* out_expr = HEAP_ALLOC_OBJECT(ASTExpression_If);
-        out_expr->kind             = EXPR_IF;
-        out_expr->location         = location_from_token(tok);
         out_expr->condition_expr   = expr;
         out_expr->body_expr        = body;
         out_expr->else_expr        = else_body;
+
+        return (ASTExpression*)out_expr;
+    
+    } else if (tok->kind == T_SWITCH) {
+        advance();
+
+        const TokenExt* tok0 = peek(0);
+        ASTExpression* expr = parse_expression(context);
+        if (!expr)
+            parse_error(tok0, "Expected an expression (if condition).");
+        
+        match('{');
+        
+        CREATE_EXPR(out_expr, ASTExpression_Switch, EXPR_SWITCH, tok0)
+        out_expr->selector = expr;
+
+        bool has_default = false;
+
+        while (true) {
+            const TokenExt* tok = peek(0);
+
+            ASTExpression_Switch_Case switch_case = {};
+
+            if (tok->kind == '}') {
+                advance();
+                break;
+
+            } else if(tok->kind == T_CASE) {
+                advance();
+                
+                switch_case.condition = parse_expression(context);
+                
+                const TokenExt* tok0 = peek(0);
+                if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
+                    // no body
+                } else {
+                    switch_case.body = parse_block_expression(context, IN_CASE_SCOPE);
+                }
+
+            } else if(tok->kind == T_DEFAULT) {
+                advance();
+                
+                if (has_default) {
+                    // @TODO Show location of previous default case.
+                    parse_error(tok, "Switch may only have one default case.");
+                }
+                has_default = true;
+                
+                const TokenExt* tok0 = peek(0);
+                if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
+                    // no body
+                } else {
+                    switch_case.body = parse_block_expression(context, IN_CASE_SCOPE);
+                }
+                
+            } else {
+                parse_error(tok, "Expected '}' to close switch or 'case' to define a case and some code to run.");
+            }
+            array_push(&out_expr->cases, &switch_case);
+        }
 
         return (ASTExpression*)out_expr;
 
@@ -834,7 +907,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                     }
 
                     if (tok0->kind == '(' || parsed_poly_args) {
-                        match('(')
+                        match('(');
                         CREATE_EXPR(expr, ASTExpression_Call, EXPR_CALL, tok0);
                         expr->polymorphic_args = polyargs;
                         
