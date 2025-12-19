@@ -1,0 +1,14 @@
+
+
+global compute_counter: i32
+fn compute() -> i32 {
+    compute_counter++
+    text: string = read_whole_file("version.txt")
+    return compute_counter + text.len;
+}
+global num: i32 = compute()
+
+
+
+
+// @TODO How to conditionally compile inline assembly

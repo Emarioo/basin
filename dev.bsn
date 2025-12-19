@@ -3,15 +3,23 @@
 
 // my.field& & mask && active | oh~
 
-import "./util.bsn"
+// import "./util.bsn"
 
-switch x.y + 23 {
-    case 23 + 5
-        print(Hello)
-        print(23)
-    default
-        print(23)
-}
+import "compiler"
+
+game_ws := create_workspace()
+game_ws.compile()
+
+platform_ws := create_workspace()
+platform_ws.compile()
+
+// switch x.y + 23 {
+//     case 23 + 5
+//         print(Hello)
+//         print(23)
+//     default
+//         print(23)
+// }
 
 // fn main() {
 //     hello(greatness, 1 + 2)

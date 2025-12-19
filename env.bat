@@ -1,3 +1,3 @@
 @echo off
 
-set PATH=%PATH%;D:\dev\basin\bin
+set PATH=%~dp0bin;%PATH%

@@ -1,0 +1,14 @@
+
+#import "basin"
+#import "file"
+
+// This is work in progress. Do we support adding library directories at compile time? maybe?
+// Do we support prio on compile time expressions? maybe? Could also be a bad idea.
+
+@prio(999999) # {
+    basin_root := parent_dir(parent_dir(__FILE__))
+    ws := current_workspace()
+    ws.add_library_dir(f"{basin_root}/libs/glfw/lib")
+    ws.add_library_dir(f"{basin_root}/libs/glew/lib")
+    ws.add_library_dir(f"{basin_root}/libs/stb_image/lib")
+}
