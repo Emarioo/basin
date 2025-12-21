@@ -1,0 +1,41 @@
+/*
+    How to handle inline assembly on multiple platforms.
+*/
+
+import "compiler" as compiler
+
+fn open(pathname: char*, flags: i32, mode: i32) -> i32 {
+    // NOTE: The compiler guarantees that the 
+    //   stack pointer is 16-byte aligned
+    //   when entering the inline assembly body.
+    //   Arguments you pass to asm are passed
+    //   the same way as the ABI for function calls.
+    const AT_FDCWD = -100
+    switch compiler.platform() {
+        case BASIN_TARGET_ARCH_x86_64, BASIN_TARGET_ARCH_x86
+            return asm(AT_FDCWD, pathname, flags, mode) -> i32 {
+                mov r10, rcx // 4th argument is passed in r10 to syscalls
+                mov eax, 257 // openat
+                syscall
+            }
+
+        case BASIN_TARGET_ARCH_arm_64
+            return asm(AT_FDCWD, pathname, flags, mode) -> i32 {
+                li x8, 56 // openat
+                svc #0
+            }
+        default # crash("Unhandled platform",__FUNCTION__, __FILE__, __LINE__)
+    }
+}
+
+
+
+fn main() {
+    size := # {
+        fd := open("version.txt".ptr, O_READ, 0)
+        buf: stat
+        statf(fd, &buf)
+
+        yield buf.st_size
+    }
+}

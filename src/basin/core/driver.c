@@ -5,6 +5,7 @@
 #include "basin/frontend/parser.h"
 #include "basin/backend/gen_ir.h"
 #include "basin/backend/ir.h"
+#include "basin/error.h"
 
 #include "platform/memory.h"
 
@@ -47,6 +48,11 @@ void driver_run(Driver* driver) {
     else
         driver->threads_len = driver->options->threads;
     driver->threads = HEAP_ALLOC_ARRAY(DriverThread, driver->threads_len);
+
+    driver->collection = (IRCollection*)HEAP_ALLOC_OBJECT(IRCollection);
+    atomic_array_init(&driver->collection->functions, 1000, 1000);
+    atomic_array_init(&driver->collection->sections, 1000, 1000);
+    atomic_array_init(&driver->collection->variables, 1000, 1000);
     
     driver->idle_threads = 0;
 
@@ -130,6 +136,14 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         // Perform task
         switch(task.kind) {
             case TASK_TOKENIZE: {
+                if (!task.tokenize.import->text.ptr) {
+                    BasinResult result = {};
+                    basin_string text = basin_read_whole_file(task.tokenize.import->path.ptr, driver->options);
+                    if(!text.ptr) {
+                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task.tokenize.import->path.ptr);
+                        break;
+                    }
+                }
                 TokenStream* stream;
                 Result result = tokenize(task.tokenize.import, &stream);
                 if(result.kind != SUCCESS) {
@@ -145,6 +159,8 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 AST* ast;
                 Result result = parse_stream(driver, task.parse.stream, &ast);
                 if(result.kind != SUCCESS) {
+                    print_ast(ast);
+
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
                 } else {
@@ -156,8 +172,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 }
             } break;
             case TASK_GEN_IR: {
-                IRCollection* collection = (IRCollection*)HEAP_ALLOC_OBJECT(IRCollection);
-                Result result = generate_ir(driver, task.gen_ir.ast, &collection);
+                Result result = generate_ir(driver, task.gen_ir.ast, driver->collection);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);

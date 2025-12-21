@@ -2,6 +2,8 @@
 
 #include "basin/types.h"
 
+#include "platform/array.h"
+
 #define DEBUG_BUILD
 
 //#################################
@@ -22,6 +24,9 @@ typedef enum {
     T_ENUM,
     T_GLOBAL,
     T_IMPORT,
+    T_LIBRARY,
+    T_AS,
+    T_FROM,
     T_CONST,
     T_VAR,
     T_FOR,
@@ -31,7 +36,6 @@ typedef enum {
     T_SWITCH,
     T_CASE,
     T_DEFAULT,
-    T_AS,
     T_IN,
     T_RETURN,
     T_YIELD,
@@ -227,6 +231,8 @@ typedef struct TokenStream {
 
     char* data;
     int data_len, data_max;
+
+    Array_int line_positions;
 } TokenStream;
 
 // static const Token EOF_TOKEN = { T_END_OF_FILE, 0, -1, -1 };

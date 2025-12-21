@@ -1,0 +1,1034 @@
+/*
+    This file contains Unix specific features.
+    - Wrapper for syscalls
+    
+    Note that this module is just for convenience.
+    The headers for Linux are complex with many #ifdefs (struct_stat.h for example)
+    so this file assumes x86_64 and other things. It should be fine on a modern 64-bit x86 Linux machine.
+
+    Most macros are copied from /usr/include/x86_64-linux-gnu/bits/...
+
+    TODO: getaddrinfo is not a syscall and exists in libc so we must link with it if the user uses it.
+*/
+    #import "Logger"
+
+#if OS_LINUX // wraps everything in this file
+
+#load "libc.so.6" as LibC
+#load "libdl.so" as LibDL
+
+#macro STDIN_FILENO  0
+#macro STDOUT_FILENO 1
+#macro STDERR_FILENO 2
+
+/* open/fcntl.  */
+#macro O_RDONLY     0o0
+#macro O_WRONLY     0o1
+#macro O_RDWR       0o2
+#macro O_CREAT    0o100 /* Not fcntl.  */
+#macro O_EXCL     0o200 /* Not fcntl.  */
+#macro O_NOCTTY    0o400 /* Not fcntl.  */
+#macro O_TRUNC   0o1000 /* Not fcntl.  */
+#macro O_APPEND   0o2000
+#macro O_NONBLOCK   0o4000
+#macro O_SYNC        0o4010000
+#macro O_ASYNC  0o20000
+#macro O_LARGEFILE 0o100000
+#macro O_DIRECTORY 0o200000
+#macro O_NOFOLLOW 0o400000
+#macro O_CLOEXEC   0o2000000
+#macro O_DIRECT  0o40000
+#macro O_NOATIME   0o1000000
+#macro O_PATH     0o10000000
+#macro O_DSYNC  0o10000
+#macro O_TMPFILE   (0o20000000 | O_DIRECTORY)
+
+#macro SEEK_SET 0 // seeks from start
+#macro SEEK_CUR 1 // seeks from current
+#macro SEEK_END 2 // seels from end
+
+#macro PROT_READ 0x1  /* Page can be read.  */
+#macro PROT_WRITE 0x2  /* Page can be written.  */
+#macro PROT_EXEC 0x4  /* Page can be executed.  */
+#macro PROT_NONE 0x0  /* Page can not be accessed.  */
+
+/* Sharing types (must choose one and only one of these).  */
+#macro MAP_SHARED 0x01  /* Share changes.  */
+#macro MAP_PRIVATE 0x02  /* Changes are private.  */
+#macro MAP_SHARED_VALIDATE 0x03 /* Share changes and validate
+        extension flags.  */
+#macro MAP_TYPE 0x0f  /* Mask for type of mapping.  */
+
+/* Other flags.  */
+#macro MAP_FIXED 0x10  /* Interpret addr exactly.  */
+#macro MAP_ANONYMOUS 0x20  /* Don't use a file.  */
+#macro MAP_32BIT 0x40  /* Only give out 32-bit addresses.  */
+
+#macro MAP_GROWSDOWN 0x00100  /* Stack-like segment.  */
+#macro MAP_DENYWRITE 0x00800  /* ETXTBSY.  */
+#macro MAP_EXECUTABLE 0x01000  /* Mark it as an executable.  */
+#macro MAP_LOCKED 0x02000  /* Lock the mapping.  */
+#macro MAP_NORESERVE 0x04000  /* Don't check for reservations.  */
+#macro MAP_POPULATE 0x08000  /* Populate (prefault) pagetables.  */
+#macro MAP_NONBLOCK 0x10000  /* Do not block on IO.  */
+#macro MAP_STACK 0x20000  /* Allocation is for a stack.  */
+#macro MAP_HUGETLB 0x40000  /* Create huge page mapping.  */
+#macro MAP_SYNC 0x80000  /* Perform synchronous page
+        faults for the mapping.  */
+#macro MAP_FIXED_NOREPLACE 0x100000 /* MAP_FIXED but do not unmap
+        underlying mapping.  */
+
+#macro GRND_NONBLOCK 0x01
+#macro GRND_RANDOM 0x02
+
+#macro DT_UNKNOWN 0
+#macro DT_FIFO  1
+#macro DT_CHR   2
+#macro DT_DIR   4
+#macro DT_BLK   6
+#macro DT_REG   8
+#macro DT_LNK   10
+#macro DT_SOCK  12
+#macro DT_WHT   14
+
+#macro S_IFMT   0o170000 // bit mask for the file type bit field
+#macro S_IFSOCK 0o140000 // socket
+#macro S_IFLNK  0o120000 // symbolic link
+#macro S_IFREG  0o100000 // regular file
+#macro S_IFBLK  0o060000 // block device
+#macro S_IFDIR  0o040000 // directory
+#macro S_IFCHR  0o020000 // character device
+#macro S_IFIFO  0o010000 // FIFO
+
+#macro S_ISUID  0o4000 /* Set user ID on execution.  */
+#macro S_ISGID  0o2000 /* Set group ID on execution.  */
+#macro S_ISVTX  0o1000 /* Save swapped text after use (sticky).  */
+#macro S_IRUSR  0o400 /* Read by owner.  */
+#macro S_IWUSR  0o200 /* Write by owner.  */
+#macro S_IXUSR  0o100 /* Execute by owner.  */
+
+
+#macro P_ALL  0 /* Wait for any child.  */
+#macro P_PID  1 /* Wait for specified process.  */
+#macro P_PGID 2 /* Wait for members of process group.  */
+
+
+/* Bits in the third argument to `waitpid'.  */
+#macro	WNOHANG		1	/* Don't block waiting.  */
+#macro	WUNTRACED	2	/* Report status of stopped children.  */
+
+/* Bits in the fourth argument to `waitid'.  */
+#macro WSTOPPED	2	/* Report stopped child (same as WUNTRACED). */
+#macro WEXITED	4	/* Report dead child.  */
+#macro WCONTINUED	8	/* Report continued child.  */
+#macro WNOWAIT	0x01000000 /* Don't reap, just poll status.  */
+
+/* If WIFEXITED(STATUS), the low-order 8 bits of the status.  */
+#macro	WEXITSTATUS(status)	(((status) & 0xff00) >> 8)
+
+/* If WIFSIGNALED(STATUS), the terminating signal.  */
+#macro	WTERMSIG(status)	((status) & 0x7f)
+
+/* If WIFSTOPPED(STATUS), the signal that stopped the child.  */
+#macro	WSTOPSIG(status)	WEXITSTATUS(status)
+
+/* Nonzero if STATUS indicates normal termination.  */
+#macro	WIFEXITED(status)	(WTERMSIG(status) == 0)
+
+/* Nonzero if STATUS indicates termination by a signal.  */
+#macro WIFSIGNALED(status) ((cast<char> (((status) & 0x7f) + 1) >> 1) > 0)
+
+/* Nonzero if STATUS indicates the child is stopped.  */
+#macro	WIFSTOPPED(status)	(((status) & 0xff) == 0x7f)
+
+/* Nonzero if STATUS indicates the child continued after a stop.  We only
+   macro this if <bits/waitflags.h> provides the WCONTINUED flag bit.  */
+#macro WIFCONTINUED(status)	((status) == __W_CONTINUED)
+
+/* Nonzero if STATUS indicates the child dumped core.  */
+#macro	WCOREDUMP(status)	((status) & __WCOREFLAG)
+
+/* Macros for constructing status values.  */
+// #macro	__W_EXITCODE(ret, sig)	((ret) << 8 | (sig))
+// #macro	__W_STOPCODE(sig)	((sig) << 8 | 0x7f)
+// #macro __W_CONTINUED		0xffff
+// #macro	__WCOREFLAG		0x80
+
+#macro SIGCHLD		17	/* Child terminated or stopped.  */
+
+#macro CLD_EXITED 1               /* Child has exited.  */
+#macro  CLD_KILLED 2                   /* Child was killed.  */
+#macro  CLD_DUMPED 3                   /* Child terminated abnormally.  */
+#macro  CLD_TRAPPED 4                  /* Traced child has trapped.  */
+#macro  CLD_STOPPED 5                  /* Child has stopped.  */
+#macro  CLD_CONTINUED 6                 /* Stopped child has continued.  */
+
+#macro	R_OK	4		/* Test for read permission.  */
+#macro	W_OK	2		/* Test for write permission.  */
+#macro	X_OK	1		/* Test for execute permission.  */
+#macro	F_OK	0		/* Test for existence.  */
+
+#macro SOCK_STREAM    1
+#macro SOCK_DGRAM     2
+#macro SOCK_RAW       3
+#macro SOCK_RDM       4
+#macro SOCK_SEQPACKET 5
+#macro SOCK_DCCP      6
+#macro SOCK_PACKET    10  
+
+#macro SOCK_NONBLOCK   O_NONBLOCK
+
+// include/linux/socket.h
+#macro AF_INET		2	/* Internet IP Protocol 	*/
+// #macro AF_INET6
+// TODO: Add more AF_
+
+#macro SOL_SOCKET 1
+#macro SO_REUSEADDR 2
+
+#macro SHUT_RD 0
+#macro SHUT_WR 1
+#macro SHUT_RDWR 2
+
+#macro INADDR_ANY 0
+
+
+#macro clockid_t i32
+/* Identifier for system-wide realtime clock.  */
+#macro CLOCK_REALTIME                 0
+/* Monotonic system-wide clock.  */
+#macro CLOCK_MONOTONIC                1
+/* High-resolution timer from the CPU.  */
+#macro CLOCK_PROCESS_CPUTIME_ID       2
+/* Thread-specific CPU-time clock.  */
+#macro CLOCK_THREAD_CPUTIME_ID        3
+/* Monotonic system-wide clock, not adjusted for frequency scaling.  */
+#macro CLOCK_MONOTONIC_RAW            4
+/* Identifier for system-wide realtime clock, updated only on ticks.  */
+#macro CLOCK_REALTIME_COARSE          5
+/* Monotonic system-wide clock, updated only on ticks.  */
+#macro CLOCK_MONOTONIC_COARSE         6
+/* Monotonic system-wide clock that includes time spent in suspension.  */
+#macro CLOCK_BOOTTIME                 7
+/* Like CLOCK_REALTIME but also wakes suspended system.  */
+#macro CLOCK_REALTIME_ALARM           8
+/* Like CLOCK_BOOTTIME but also wakes suspended system.  */
+#macro CLOCK_BOOTTIME_ALARM           9
+/* Like CLOCK_REALTIME but in International Atomic Time.  */
+#macro CLOCK_TAI                      11
+
+
+
+// /usr/include/x86_64-linux-gnu/asm/signal.h:
+// /usr/include/asm-generic/signal-defs.h:
+#macro SIGHUP           1 /* Hangup.  */
+#macro SIGINT           2 /* Interactive attention signal.  */
+#macro SIGQUIT          3 /* Quit.  */
+#macro SIGILL           4 /* Illegal instruction.  */
+#macro SIGTRAP          5 /* Trace/breakpoint trap.  */
+#macro SIGABRT          6 /* Abnormal termination.  */
+#macro SIGIOT           6
+#macro SIGBUS           7 /* Bus error.  */
+#macro SIGFPE           8 /* Erroneous arithmetic operation.  */
+#macro SIGKILL          9 /* Killed.  */
+#macro SIGUSR1         10 /* User-defined signal 1.  */
+#macro SIGSEGV         11 /* Invalid access to storage.  */
+#macro SIGUSR2         12 /* User-defined signal 2.  */
+#macro SIGPIPE         13 /* Broken pipe.  */
+#macro SIGALRM         14 /* Alarm clock.  */
+#macro SIGTERM         15 /* Termination request.  */
+#macro SIGSTKFLT       16
+#macro SIGCHLD         17
+#macro SIGCONT         18
+#macro SIGSTOP         19
+#macro SIGTSTP         20
+#macro SIGTTIN         21
+#macro SIGTTOU         22
+#macro SIGURG          23
+#macro SIGXCPU         24
+#macro SIGXFSZ         25
+#macro SIGVTALRM       26
+#macro SIGPROF         27
+#macro SIGWINCH        28
+#macro SIGIO           29
+#macro SIGPOLL         SIGIO
+/*
+#define SIGLOST         29
+*/
+#macro SIGPWR          30
+#macro SIGSYS          31
+#macro SIGUNUSED       31
+
+/* Bits in `sa_flags'.  */
+#macro SA_NOCLDSTOP  1		 /* Don't send SIGCHLD when children stop.  */
+#macro SA_NOCLDWAIT  2		 /* Don't create zombie on child death.  */
+#macro SA_SIGINFO    4		 /* Invoke signal-catching function with
+				    three arguments instead of one.  */
+// #if defined __USE_XOPEN_EXTENDED || defined __USE_MISC
+#macro SA_ONSTACK   0x08000000 /* Use signal stack by using `sa_restorer'. */
+// #endif
+// #if defined __USE_XOPEN_EXTENDED || defined __USE_XOPEN2K8
+#macro SA_RESTART   0x10000000 /* Restart syscall on signal return.  */
+#macro SA_NODEFER   0x40000000 /* Don't automatically block the signal when
+				    its handler is being executed.  */
+#macro SA_RESETHAND 0x80000000 /* Reset to SIG_DFL on entry to handler.  */
+// #endif
+// #ifdef __USE_MISC
+#macro SA_INTERRUPT    0x20000000 /* Historical no-op.  */
+#macro SA_RESTORER     0x04000000
+
+/* Values for the HOW argument to `sigprocmask'.  */
+#macro	SIG_BLOCK     0		 /* Block signals.  */
+#macro	SIG_UNBLOCK   1		 /* Unblock signals.  */
+#macro	SIG_SETMASK   2		 /* Set the set of blocked signals.  */
+
+enum Syscall_x86 {
+    SYS_read                  = 0
+    SYS_write                 = 1
+    SYS_open                  = 2
+    SYS_close                 = 3
+    SYS_stat                  = 4
+    SYS_fstat                 = 5
+    SYS_lstat                 = 6
+    SYS_poll                  = 7
+    SYS_lseek                 = 8
+    SYS_mmap                  = 9
+    SYS_mprotect              = 10
+    SYS_munmap                = 11
+    SYS_rt_sigaction          = 13
+    SYS_rt_sigprocmask        = 14
+    SYS_rt_sigreturn          = 15
+    SYS_access                = 21
+    SYS_pipe                  = 22
+    SYS_dup                   = 32
+    SYS_dup2                  = 33
+    SYS_nanosleep             = 35
+    SYS_sendfile              = 40
+    SYS_socket                = 41
+    SYS_connect               = 42
+    SYS_accept                = 43
+    SYS_sendto                = 44
+    SYS_recvfrom              = 45
+    SYS_sendmsg               = 46
+    SYS_recvmsg               = 47
+    SYS_shutdown              = 48
+    SYS_bind                  = 49
+    SYS_listen                = 50
+    SYS_getsockname           = 51
+    SYS_setsockopt            = 54
+    SYS_getsockopt            = 55
+    SYS_fork                  = 57
+    SYS_vfork                 = 58
+    SYS_execve                = 59
+    SYS_exit                  = 60
+    SYS_kill                  = 62
+    SYS_getdents              = 78
+    SYS_getcwd                = 79
+    SYS_rename                = 82
+    SYS_mkdir                 = 83
+    SYS_rmdir                 = 84
+    SYS_unlink                = 87
+    SYS_getdents64            = 217
+    SYS_clock_getres          = 227
+    SYS_clock_gettime         = 228
+    SYS_clock_settime         = 229
+    SYS_waitid                = 247
+    SYS_getrandom             = 318
+}
+
+const x86_64 = compiler.BASIN_TARGET_ARCH_x86_64
+const arm_64 = compiler.BASIN_TARGET_ARCH_arm_64
+
+// NOTE: The compiler guarantees that the 
+//   stack pointer is 16-byte aligned
+//   when entering the inline assembly body.
+//   Arguments you pass to asm are passed
+//   the same way as the ABI for function calls.
+
+fn _call4(arg0, arg1, arg2, arg3 : sword, sys: i32) -> sword {
+    switch compiler.platform() {
+        case x86_64
+            return asm(arg0, arg1, arg2, arg3, sys) -> i32 {
+                mov r10, rcx // 4th argument is passed in r10 to syscalls
+                mov eax, 257 // openat
+                syscall
+            }
+
+        case arm_64
+            return asm(arg0, arg1, arg2, arg3) -> i32 {
+                li x8, 56 // openat
+                svc #0
+            }
+    }
+}
+
+#import "compiler" as compiler
+
+const _base_syscall = # {
+    ws   : BasinWorkspace* = compiler.current_workspace()
+    ast  : AST*            = compiler.get_ast(ws, __FILE__)
+    func : ASTFunction*    = compiler.get_function(ast, __FUNCTION__)
+    syscall_enum: ASTEnum*
+    switch compiler.target_platform() {
+        case x86_64
+            syscall_enum = compiler.get_enum(ast, "Syscall_x86")
+        default crash()
+    }
+
+    compiler.alloc_expr(ASTFunction)
+    compiler.create_ast()
+
+    func.body 
+}
+
+fn open(pathname: char*, flags: i32, mode: i32) -> i32 {
+    const AT_FDCWD = -100
+    _base_syscall
+
+    switch compiler.platform() {
+        case x86_64
+            return _call4(AT_FDCWD, pathname, flags, mode, Syscall_x86.SYS_openat) : i32
+        case arm_64
+            return _call4(AT_FDCWD, pathname, flags, mode, Syscall_arm.SYS_openat) : i32
+    }
+}
+
+fn openat(dirfd: i32, pathname: char*, flags: i32, mode: i32) -> i32 {
+    _base_syscall
+    switch compiler.platform() {
+        case BASIN_TARGET_ARCH_x86_64
+            return _call4(dirfd, pathname, flags, mode, Syscall_x86.SYS_openat) : i32
+        case BASIN_TARGET_ARCH_arm_64
+            return _call4(dirfd, pathname, flags, mode, Syscall_arm.SYS_openat) : i32
+    }
+}
+
+// General macro for all syscalls
+#macro SYSCALL(NAME, RETURN_TYPE, ...)
+
+fn @unixcall @asm NAME( SYSCALL_args(...) ) -> RETURN_TYPE {
+    push rbp // 16-byte align, I assume syscalls require that
+
+    // parameters have already been set
+    mov r10, rcx // 4th argument is passed through r10, not rcx
+    mov eax, SYS_ ## NAME
+    syscall
+
+    pop rbp
+    ret
+}
+#endmacro
+#macro SYSCALL_VOID(NAME, ...)
+fn @unixcall @asm NAME( SYSCALL_args(...) ) {
+    push rbp // 16-byte align, I assume syscalls require that
+    
+    // parameters have already been set
+    mov r10, rcx // 4th argument is passed through r10, not rcx
+    mov eax, SYS_ ## NAME
+    syscall
+    
+    pop rbp
+    ret
+}
+#endmacro
+#macro SYSCALL_args(X,...) X, SYSCALL_args(...)
+#macro SYSCALL_args(X) X
+#macro SYSCALL_args() #endmacro
+// More than 6 arguments must be passed to the stack
+// which the SYSCALL macro doesn't account for.
+#macro SYSCALL_args(a,b,c,d,e,f,g) CANT_HAVE_7_ARGS_TO_SYSCALL
+
+// Function calls
+// TODO: ALL OF THESE HAVE NOT BEEN TESTED!
+SYSCALL(read,  i32,  fd: i32, buf: void*, count: u32)
+SYSCALL(write, i32,  fd: i32, buf: void*, count: u32)
+SYSCALL(open,  i32,  path: char*, flags: i32, mode: i32 = 0)
+SYSCALL(close, i32,  fd: i32)
+SYSCALL(stat,  i32,  pathname: char*, statbuf: stat*)
+SYSCALL(fstat, i32,  fd: i32, statbuf: stat*);
+SYSCALL(lstat, i32,  pathname: char*, statbuf: stat*)
+SYSCALL(lseek, i32,  fd: i32, offset: i32, whence: i32)
+SYSCALL(mmap,  void*, addr: void*, length: i32, prot: i32, flags: i32, fd: i32, offset: i32)
+SYSCALL(mprotect,  i32, addr: void*, len: i32, prot: i32);
+SYSCALL(munmap,    i32, addr: void*, length: i32)
+
+SYSCALL(rt_sigaction, i32, signum: i32, act: sigaction_t*, old_act: sigaction_t*, sigsetsize: i64)
+SYSCALL(rt_sigprocmask, i32, how: i32, set: sigset_t*, oset: sigset_t*, sigsetsize: i64)
+SYSCALL_VOID(rt_sigreturn)
+// fn @oscall sigaction(signum: i32, act: sigaction_t*, old_act: sigaction_t*) -> i32 {
+//     if !act.sa_restorer {
+//         act.sa_flags |= SA_RESTORER
+//         act.sa_restorer = tramp
+//     }
+//     fn @oscall tramp() {
+//         rt_sigreturn()
+//     }
+//     return rt_sigaction(signum, act, old_act, sizeof sigset_t)
+// }
+// fn @oscall sigprocmask(signum: i32, set: sigset_t*, oset: sigset_t*) -> i32 {
+//     return rt_sigprocmask(signum, set, oset, sizeof sigset_t)
+// }
+
+//  NOTE: I don't know how to use rt_sigaction without Glibc so in the meantime we can use these.
+fn @import(LibC) sigaction(signum: i32, act: sigaction_t*, old_act: sigaction_t*) -> i32
+fn @import(LibC) signal(n: i32, f: fn@oscall(i32)) -> i32
+
+// flags to dlopen
+#macro RTLD_LAZY          0x00001
+#macro RTLD_NOW           0x00002
+#macro RTLD_BINDING_MASK  0x3
+#macro RTLD_NOLOAD        0x00004
+#macro RTLD_DEEPBIND      0x00008
+#macro RTLD_GLOBAL        0x00100
+#macro RTLD_LOCAL         0
+#macro RTLD_NODELETE      0x01000
+
+fn @import(LibDL) dlopen(filename: char*, flags: i32) -> void*;
+fn @import(LibDL) dlclose(handle: void*) -> i32;
+fn @import(LibDL) dlsym(handle: void*, symbol: char*) -> void*;
+fn @import(LibDL) dlerror() -> char*;
+
+SYSCALL(access,  i32, path: char*, mode: i32)
+SYSCALL(pipe,  i32, fildes: i32*)
+
+SYSCALL(dup, i32, fildes: i32)
+SYSCALL(dup2, i32, oldfd: i32, newfd: i32)
+
+SYSCALL(nanosleep, i32, rqtp: timespec*, rmtp: timespec*)
+
+SYSCALL(sendfile, i64, out_fd: i32, in_fd: i32, offset: i64*, count: i64)
+
+SYSCALL(socket, i32, domain: i32, type: i32, protocol: i32)
+SYSCALL(connect, i32, sockfd: i32, addr: sockaddr*, addrlen: i32)
+SYSCALL(accept, i32, sockfd: i32, addr: sockaddr*, addrlen: i32*)
+// SYSCALL(sendto, i32, sockfd: i32, buf: void*, len: i32, flags: i32, dest_addr: sockaddr*, addrlen: i32)
+// SYSCALL(recvfrom, i32, )
+// SYSCALL(sendmsg, i32, )
+// SYSCALL(recvmsg, i32, )
+SYSCALL(shutdown, i32, sockfd: i32, how: i32)
+SYSCALL(bind, i32, sockfd: i32, addr: sockaddr*, addrlen: i32)
+#macro SOMAXCONN 4096
+SYSCALL(listen, i32, sockfd: i32, backlog: i32)
+SYSCALL(getsockname, i32, sockfd: i32, addr: sockaddr*, addrlen: i32*)
+
+SYSCALL(setsockopt, i32, sockfd: i32, level: i32, optname: i32, optval: char*, optlen: i32)
+SYSCALL(getsockopt, i32, sockfd: i32, level: i32, optname: i32, optval: char*, optlen: i32)
+
+SYSCALL(fork,   i32)
+SYSCALL(vfork,  i32)
+// environment variables can be be acquired from the envp argument in main(argc: i32, argv: char**, envp: char**)
+SYSCALL(execve, i32, pathname: char*, argv: char**, envp: char**)
+SYSCALL_VOID(exit, status: i32)
+
+SYSCALL(kill, i32, pid: i32, sig: i32)
+
+SYSCALL(getcwd, char*, buf: char*, size: i32)
+
+SYSCALL(rename, i32, oldpath: char*, newpath: char*)
+SYSCALL(mkdir, i32, pathname: char*, mode: i32)
+SYSCALL(rmdir, i32, pathname: char*)
+
+// SYSCALL(getdents, i32, fd: i32, dirp: linux_dirent*, count: u32);
+SYSCALL(getdents64, i32, fd: i32, dirp: void*, count: u32);
+
+SYSCALL(clock_getres,  i32, clockid: clockid_t, res: timespec*);
+SYSCALL(clock_gettime, i32, clockid: clockid_t, tp: timespec*);
+SYSCALL(clock_settime, i32, clockid: clockid_t, tp: timespec*);
+
+SYSCALL(waitid, i32, type: i32, id: i32, info: siginfo_t*, options: i64, ru: void* = null);
+
+SYSCALL(getrandom, i32, buf: void*, buflen: u32, flags: u32);
+
+// NOTE: These are also defined in Windows.btb
+// htonq, ntohq (64-bit swap?)
+fn htonl(hostlong: u32) -> u32 {
+    // TODO: We assume the program is compiled for x86 (little endian)
+    //   If we support ARM, we need to change this.
+    return asm<u32>(hostlong) {
+        pop rax
+        bswap eax
+        push rax
+    }
+    // return (hostlong << 24) | ((hostlong << 8) & 0xFF0000) | (hostlong >> 24) | ((hostlong >> 8) & 0xFF00) 
+}
+fn htons(hostshort: u16) -> u16 {
+    return asm<u32>(hostshort) {
+        pop rax
+        xchg al, ah
+        push rax
+    }
+    // return (hostshort << 8) | (hostshort >> 8)
+}
+fn ntohl(netlong: u32) -> u32 {
+    return htonl(netlong)
+    // return (netlong << 24) | ((netlong << 8) & 0xFF0000) | (netlong >> 24) | ((netlong >> 8) & 0xFF00) 
+}
+fn ntohs(netshort: u16) -> u16 {
+    return htons(netlong)
+    // return (netshort << 8) | (netshort >> 8)
+}
+
+// We rely on libc for these, implementing them myself would be a little rough
+fn @import(LibC) getaddrinfo(node: char*,
+    service: char*,
+    hints: addrinfo*,
+    res: addrinfo**) -> i32;
+fn @import(LibC) freeaddrinfo(res: addrinfo*);
+
+// environ is used by ExecuteCommand when global_environment doesn't exist
+global @import(LibC) environ: char**;
+
+
+#load "libpthread.so.0" as pthreads
+
+// #macro pthread_t u64
+struct pthread_t {
+    data: u64
+}
+
+fn @import(pthreads) pthread_create(thread: pthread_t*,
+    attr: pthread_attr_t*,
+    start_routine: fn @oscall (void*)->void*,
+    arg: void*) -> i32;
+fn @import(pthreads) pthread_join(thread: pthread_t, retval: void**) -> i32;
+fn @import(pthreads) pthread_exit(retval: void*);
+fn @import(pthreads) pthread_self() -> pthread_t;
+
+fn @import(pthreads) pthread_mutex_destroy(mutex: pthread_mutex_t*) -> i32;
+fn @import(pthreads) pthread_mutex_init(mutex: pthread_mutex_t*, attr: pthread_mutexattr_t*) -> i32;
+fn @import(pthreads) pthread_mutex_trylock(mutex: pthread_mutex_t*) -> i32
+fn @import(pthreads) pthread_mutex_lock(mutex: pthread_mutex_t*) -> i32
+fn @import(pthreads) pthread_mutex_unlock(mutex: pthread_mutex_t*) -> i32
+
+/*###############
+    STRUCTS
+##############*/
+
+// changes based on arch, arch is x86_64
+#macro __SIZEOF_PTHREAD_ATTR_T 56
+#macro __SIZEOF_PTHREAD_MUTEX_T 40
+#macro __SIZEOF_PTHREAD_MUTEXATTR_T 4
+
+struct pthread_attr_t {
+    _: u8[__SIZEOF_PTHREAD_ATTR_T]
+}
+struct pthread_mutex_t {
+    _: u8[__SIZEOF_PTHREAD_MUTEX_T]
+}
+struct pthread_mutexattr_t {
+    _: u8[__SIZEOF_PTHREAD_MUTEXATTR_T]
+}
+
+// I could not find the correct stat structure anywhere but
+// this structure seems to be correct.
+struct stat {
+    // st_dev:         u64;  /* Device.  */
+    // st_ino:         u64;  /* File serial number. */ 
+    // st_nlink:       u32;  /* Link count.  */
+    // _pad23:         u32;
+    
+    // st_mode:        u32;  /* File mode.  */
+    // st_uid:         u32;  /* User ID of the file's owner. */
+    // st_gid:         u32;  /* Group ID of the file's group.*/
+    
+    // st_rdev:        u64;  /* Device number, if device.  */
+
+    // st_size:        i64;  /* Size of file, in bytes.  */
+    // st_blksize:     u64;  /* Optimal block size for I/O.  */
+    // st_blocks:      u64;  /* Number 512-byte blocks allocated. */
+
+    // st_atime:       u64;  /* Time of last access.  */
+    // st_atime_nsec:  u64;  /* Time of last access.  */
+    // st_mtime:       u64;  /* Time of last modification.  */
+    // st_mtime_nsec:  u64;  /* Time of last modification.  */
+    // st_ctime:       u64;  /* Time of last status change.  */
+    // st_ctime_nsec:  u64;  /* Time of last status change.  */
+    
+    st_dev:         u64;  /* Device.  */
+    st_ino:         u64;  /* File serial number. */ 
+    st_nlink:       u64;  /* Link count.  */
+    // _pad23:         u32;
+    
+    st_mode:        u32;  /* File mode.  */
+    st_uid:         u32;  /* User ID of the file's owner. */
+    st_gid:         u32;  /* Group ID of the file's group.*/
+    _pad0:          u32;  /* Group ID of the file's group.*/
+    
+    st_rdev:        u64;  /* Device number, if device.  */
+    st_size:        i64;  /* Size of file, in bytes.  */
+    st_blksize:     i64;  /* Optimal block size for I/O.  */
+    st_blocks:      i64;  /* Number 512-byte blocks allocated. */
+
+    st_atime:       u64;  /* Time of last access.  */
+    st_atime_nsec:  u64;  /* Time of last access.  */
+    st_mtime:       u64;  /* Time of last modification.  */
+    st_mtime_nsec:  u64;  /* Time of last modification.  */
+    st_ctime:       u64;  /* Time of last status change.  */
+    st_ctime_nsec:  u64;  /* Time of last status change.  */
+    
+    __unused0:      i64;
+    __unused1:      i64;
+    __unused2:      i64;
+};
+
+#macro ino64_t u64
+#macro off64_t i64
+#macro ino_t u32
+#macro off_t i32
+
+struct linux_dirent {
+    d_ino: ino_t;    /* 64-bit inode number */
+    d_off: off_t;    /* Not an offset; see getdents() */
+    d_reclen: u16; /* Size of this dirent */
+
+    d_name: char[1]; /* Filename (null-terminated) */
+
+    // access through *(cast<u8*>ptr + d_reclen - 1)
+    // d_type: u8;   /* File type */
+};
+
+struct linux_dirent64 {
+    d_ino: ino64_t;    /* 64-bit inode number */
+    d_off: off64_t;    /* Not an offset; see getdents() */
+    d_reclen: u16; /* Size of this dirent */
+    d_type: u8;   /* File type */
+
+    d_name: char[1]; /* Filename (null-terminated) */
+};
+
+struct timespec {
+    tv_sec: i64;
+    tv_nsec: i64;
+}
+
+
+
+// This struct may be incorrect, I could not find a struct that matched
+// the values that waitid returned but this order and integer sizes seem to work.
+struct siginfo_t {
+    si_signo: i32;
+    si_errno: i32;
+    si_code : i32;
+    uid: i32;
+    pid: i32;
+    status: i64;
+}
+// struct sigset_t {
+//     n: i32[16]; // (1024 / (8 * sizeof (unsigned long int)))
+// }
+struct  sigset_t {
+    x: i64;
+}
+#macro FN_SIGACTION fn @oscall(i32, siginfo_t*, void*)
+#macro FN_HANDLER fn@oscall(i32)
+struct sigaction_t {
+    // union { // TODO: Implement unions
+    sa_sigaction: FN_SIGACTION;
+    // sa_handler: FN_HANDLER;
+    // }
+    sa_mask: sigset_t;
+    sa_flags: i32;
+    sa_restorer: fn @oscall();
+}
+
+// from netinet/in.h
+#macro IPPROTO_TCP 6
+#macro IPPROTO_UDP 17
+
+// base sockaddr
+struct sockaddr {
+    sa_family: i16;
+    padding: u8[14];
+}
+// cast to sockaddr in function calls
+struct sockaddr_in {
+    sin_family: u16;
+    sin_port: u16;
+    sin_addr: u32;
+    padding: u8[8]; // sockaddr_in should be padded to 16 bytes
+}
+struct addrinfo {
+    ai_flags: i32;
+    ai_family: i32;
+    ai_socktype: i32;
+    ai_protocol: i32;
+    ai_addrlen: i64;
+    ai_addr: sockaddr*;
+    ai_canonname: char*;
+    ai_next: addrinfo*;
+}
+
+
+#macro EPERM    1 /* Operation not permitted */
+#macro ENOENT   2 /* No such file or directory */
+#macro ESRCH    3 /* No such process */
+#macro EINTR    4 /* Interrupted system call */
+#macro EIO      5 /* I/O error */
+#macro ENXIO    6 /* No such device or address */
+#macro E2BIG    7 /* Argument list too long */
+#macro ENOEXEC  8 /* Exec format error */
+#macro EBADF    9 /* Bad file number */
+#macro ECHILD   10 /* No child processes */
+#macro EAGAIN   11 /* Try again */
+#macro ENOMEM   12 /* Out of memory */
+#macro EACCES   13 /* Permission denied */
+#macro EFAULT   14 /* Bad address */
+#macro ENOTBLK  15 /* Block device required */
+#macro EBUSY    16 /* Device or resource busy */
+#macro EEXIST   17 /* File exists */
+#macro EXDEV    18 /* Cross-device link */
+#macro ENODEV   19 /* No such device */
+#macro ENOTDIR  20 /* Not a directory */
+#macro EISDIR   21 /* Is a directory */
+#macro EINVAL   22 /* Invalid argument */
+#macro ENFILE   23 /* File table overflow */
+#macro EMFILE   24 /* Too many open files */
+#macro ENOTTY   25 /* Not a typewriter */
+#macro ETXTBSY  26 /* Text file busy */
+#macro EFBIG    27 /* File too large */
+#macro ENOSPC   28 /* No space left on device */
+#macro ESPIPE   29 /* Illegal seek */
+#macro EROFS    30 /* Read-only file system */
+#macro EMLINK   31 /* Too many links */
+#macro EPIPE    32 /* Broken pipe */
+#macro EDOM     33 /* Math argument out of domain of func */
+#macro ERANGE   34 /* Math result not representable */
+
+#macro ENOSYS          38      /* Invalid system call number */
+
+#macro ENOTEMPTY       39      /* Directory not empty */
+#macro ELOOP           40      /* Too many symbolic links encountered */
+#macro EWOULDBLOCK     EAGAIN  /* Operation would block */
+#macro ENOMSG          42      /* No message of desired type */
+#macro EIDRM           43      /* Identifier removed */
+#macro ECHRNG          44      /* Channel number out of range */
+#macro EL2NSYNC        45      /* Level 2 not synchronized */
+#macro EL3HLT          46      /* Level 3 halted */
+#macro EL3RST          47      /* Level 3 reset */
+#macro ELNRNG          48      /* Link number out of range */
+#macro EUNATCH         49      /* Protocol driver not attached */
+#macro ENOCSI          50      /* No CSI structure available */
+#macro EL2HLT          51      /* Level 2 halted */
+#macro EBADE           52      /* Invalid exchange */
+#macro EBADR           53      /* Invalid request descriptor */
+#macro EXFULL          54      /* Exchange full */
+#macro ENOANO          55      /* No anode */
+#macro EBADRQC         56      /* Invalid request code */
+#macro EBADSLT         57      /* Invalid slot */
+
+// #macro EDEADLOCK       EDEADLK
+
+#macro EBFONT          59      /* Bad font file format */
+#macro ENOSTR          60      /* Device not a stream */
+#macro ENODATA         61      /* No data available */
+#macro ETIME           62      /* Timer expired */
+#macro ENOSR           63      /* Out of streams resources */
+#macro ENONET          64      /* Machine is not on the network */
+#macro ENOPKG          65      /* Package not installed */
+#macro EREMOTE         66      /* Object is remote */
+#macro ENOLINK         67      /* Link has been severed */
+#macro EADV            68      /* Advertise error */
+#macro ESRMNT          69      /* Srmount error */
+#macro ECOMM           70      /* Communication error on send */
+#macro EPROTO          71      /* Protocol error */
+#macro EMULTIHOP       72      /* Multihop attempted */
+#macro EDOTDOT         73      /* RFS specific error */
+#macro EBADMSG         74      /* Not a data message */
+#macro EOVERFLOW       75      /* Value too large for macrod data type */
+#macro ENOTUNIQ        76      /* Name not unique on network */
+#macro EBADFD          77      /* File descriptor in bad state */
+#macro EREMCHG         78      /* Remote address changed */
+#macro ELIBACC         79      /* Can not access a needed shared library */
+#macro ELIBBAD         80      /* Accessing a corrupted shared library */
+#macro ELIBSCN         81      /* .lib section in a.out corrupted */
+#macro ELIBMAX         82      /* Attempting to link in too many shared libraries */
+#macro ELIBEXEC        83      /* Cannot exec a shared library directly */
+#macro EILSEQ          84      /* Illegal byte sequence */
+#macro ERESTART        85      /* Interrupted system call should be restarted */
+#macro ESTRPIPE        86      /* Streams pipe error */
+#macro EUSERS          87      /* Too many users */
+#macro ENOTSOCK        88      /* Socket operation on non-socket */
+#macro EDESTADDRREQ    89      /* Destination address required */
+#macro EMSGSIZE        90      /* Message too long */
+#macro EPROTOTYPE      91      /* Protocol wrong type for socket */
+#macro ENOPROTOOPT     92      /* Protocol not available */
+#macro EPROTONOSUPPORT 93      /* Protocol not supported */
+#macro ESOCKTNOSUPPORT 94      /* Socket type not supported */
+#macro EOPNOTSUPP      95      /* Operation not supported on transport endpoint */
+#macro EPFNOSUPPORT    96      /* Protocol family not supported */
+#macro EAFNOSUPPORT    97      /* Address family not supported by protocol */
+#macro EADDRINUSE      98      /* Address already in use */
+#macro EADDRNOTAVAIL   99      /* Cannot assign requested address */
+#macro ENETDOWN        100     /* Network is down */
+#macro ENETUNREACH     101     /* Network is unreachable */
+#macro ENETRESET       102     /* Network dropped connection because of reset */
+#macro ECONNABORTED    103     /* Software caused connection abort */
+#macro ECONNRESET      104     /* Connection reset by peer */
+#macro ENOBUFS         105     /* No buffer space available */
+#macro EISCONN         106     /* Transport endpoint is already connected */
+#macro ENOTCONN        107     /* Transport endpoint is not connected */
+#macro ESHUTDOWN       108     /* Cannot send after transport endpoint shutdown */
+#macro ETOOMANYREFS    109     /* Too many references: cannot splice */
+#macro ETIMEDOUT       110     /* Connection timed out */
+#macro ECONNREFUSED    111     /* Connection refused */
+#macro EHOSTDOWN       112     /* Host is down */
+#macro EHOSTUNREACH    113     /* No route to host */
+#macro EALREADY        114     /* Operation already in progress */
+#macro EINPROGRESS     115     /* Operation now in progress */
+#macro ESTALE          116     /* Stale file handle */
+#macro EUCLEAN         117     /* Structure needs cleaning */
+#macro ENOTNAM         118     /* Not a XENIX named type file */
+#macro ENAVAIL         119     /* No XENIX semaphores available */
+#macro EISNAM          120     /* Is a named type file */
+#macro EREMOTEIO       121     /* Remote I/O error */
+#macro EDQUOT          122     /* Quota exceeded */
+
+#macro ENOMEDIUM       123     /* No medium found */
+#macro EMEDIUMTYPE     124     /* Wrong medium type */
+#macro ECANCELED       125     /* Operation Canceled */
+#macro ENOKEY          126     /* Required key not available */
+#macro EKEYEXPIRED     127     /* Key has expired */
+#macro EKEYREVOKED     128     /* Key has been revoked */
+#macro EKEYREJECTED    129     /* Key was rejected by service */
+
+
+fn name_of_error(err: i64) -> char[] {
+    err = -err;
+    // TODO: Make a global table of strings.
+    switch (err) {
+        #macro SWITCH_CASES(X,Y,...) case X: return Y; SWITCH_CASES(...)
+        SWITCH_CASES(
+            EPERM,"EPERM",
+            ENOENT, "ENOENT",
+            ESRCH, "ESRCH",
+            EINTR, "EINTR",
+            EIO, "EIO",
+            ENXIO, "ENXIO",
+            E2BIG, "E2BIG",
+            ENOEXEC, "ENOEXEC",
+            EBADF, "EBADF",
+            ECHILD, "ECHILD",
+            EAGAIN, "EAGAIN",
+            ENOMEM, "ENOMEM",
+            EACCES, "EACCES",
+            EFAULT, "EFAULT",
+            ENOTBLK, "ENOTBLK",
+            EBUSY, "EBUSY",
+            EEXIST, "EEXIST",
+            EXDEV, "EXDEV",
+            ENODEV, "ENODEV",
+            ENOTDIR, "ENOTDIR",
+            EISDIR, "EISDIR",
+            EINVAL, "EINVAL",
+            ENFILE, "ENFILE",
+            EMFILE, "EMFILE",
+            ENOTTY, "ENOTTY",
+            ETXTBSY, "ETXTBSY",
+            EFBIG, "EFBIG",
+            ENOSPC, "ENOSPC",
+            ESPIPE, "ESPIPE",
+            EROFS, "EROFS",
+            EMLINK, "EMLINK",
+            EPIPE, "EPIPE",
+            EDOM, "EDOM",
+            ERANGE, "ERANGE",
+            ENOSYS, "ENOSYS",                    /* Invalid system call number */
+            ENOTEMPTY, "ENOTEMPTY",              /* Directory not empty */
+            ELOOP, "ELOOP",                      /* Too many symbolic links encountered */
+            EWOULDBLOCK, "EWOULDBLOCK",          /* Operation would block */
+            ENOMSG, "ENOMSG",                    /* No message of desired type */
+            EIDRM, "EIDRM",                      /* Identifier removed */
+            ECHRNG, "ECHRNG",                    /* Channel number out of range */
+            EL2NSYNC, "EL2NSYNC",                /* Level 2 not synchronized */
+            EL3HLT, "EL3HLT",                    /* Level 3 halted */
+            EL3RST, "EL3RST",                    /* Level 3 reset */
+            ELNRNG, "ELNRNG",                    /* Link number out of range */
+            EUNATCH, "EUNATCH",                  /* Protocol driver not attached */
+            ENOCSI, "ENOCSI",                    /* No CSI structure available */
+            EL2HLT, "EL2HLT",                    /* Level 2 halted */
+            EBADE, "EBADE",                      /* Invalid exchange */
+            EBADR, "EBADR",                      /* Invalid request descriptor */
+            EXFULL, "EXFULL",                    /* Exchange full */
+            ENOANO, "ENOANO",                    /* No anode */
+            EBADRQC, "EBADRQC",                  /* Invalid request code */
+            EBADSLT, "EBADSLT",                  /* Invalid slot */
+            // EDEADLOCK, "EDEADLOCK",              
+            EBFONT, "EBFONT",                    /* Bad font file format */
+            ENOSTR, "ENOSTR",                    /* Device not a stream */
+            ENODATA, "ENODATA",                  /* No data available */
+            ETIME, "ETIME",                      /* Timer expired */
+            ENOSR, "ENOSR",                      /* Out of streams resources */
+            ENONET, "ENONET",                    /* Machine is not on the network */
+            ENOPKG, "ENOPKG",                    /* Package not installed */
+            EREMOTE, "EREMOTE",                  /* Object is remote */
+            ENOLINK, "ENOLINK",                  /* Link has been severed */
+            EADV, "EADV",                        /* Advertise error */
+            ESRMNT, "ESRMNT",                    /* Srmount error */
+            ECOMM, "ECOMM",                      /* Communication error on send */
+            EPROTO, "EPROTO",                    /* Protocol error */
+            EMULTIHOP, "EMULTIHOP",              /* Multihop attempted */
+            EDOTDOT, "EDOTDOT",                  /* RFS specific error */
+            EBADMSG, "EBADMSG",                  /* Not a data message */
+            EOVERFLOW, "EOVERFLOW",              /* Value too large for macrod data type */
+            ENOTUNIQ, "ENOTUNIQ",                /* Name not unique on network */
+            EBADFD, "EBADFD",                    /* File descriptor in bad state */
+            EREMCHG, "EREMCHG",                  /* Remote address changed */
+            ELIBACC, "ELIBACC",                  /* Can not access a needed shared library */
+            ELIBBAD, "ELIBBAD",                  /* Accessing a corrupted shared library */
+            ELIBSCN, "ELIBSCN",                  /* .lib section in a.out corrupted */
+            ELIBMAX, "ELIBMAX",                  /* Attempting to link in too many shared libraries */
+            ELIBEXEC, "ELIBEXEC",                /* Cannot exec a shared library directly */
+            EILSEQ, "EILSEQ",                    /* Illegal byte sequence */
+            ERESTART, "ERESTART",                /* Interrupted system call should be restarted */
+            ESTRPIPE, "ESTRPIPE",                /* Streams pipe error */
+            EUSERS, "EUSERS",                    /* Too many users */
+            ENOTSOCK, "ENOTSOCK",                /* Socket operation on non-socket */
+            EDESTADDRREQ, "EDESTADDRREQ",        /* Destination address required */
+            EMSGSIZE, "EMSGSIZE",                /* Message too long */
+            EPROTOTYPE, "EPROTOTYPE",            /* Protocol wrong type for socket */
+            ENOPROTOOPT, "ENOPROTOOPT",          /* Protocol not available */
+            EPROTONOSUPPORT, "EPROTONOSUPPORT",  /* Protocol not supported */
+            ESOCKTNOSUPPORT, "ESOCKTNOSUPPORT",  /* Socket type not supported */
+            EOPNOTSUPP, "EOPNOTSUPP",            /* Operation not supported on transport endpoint */
+            EPFNOSUPPORT, "EPFNOSUPPORT",        /* Protocol family not supported */
+            EAFNOSUPPORT, "EAFNOSUPPORT",        /* Address family not supported by protocol */
+            EADDRINUSE, "EADDRINUSE",            /* Address already in use */
+            EADDRNOTAVAIL, "EADDRNOTAVAIL",      /* Cannot assign requested address */
+            ENETDOWN, "ENETDOWN",                /* Network is down */
+            ENETUNREACH, "ENETUNREACH",          /* Network is unreachable */
+            ENETRESET, "ENETRESET",              /* Network dropped connection because of reset */
+            ECONNABORTED, "ECONNABORTED",        /* Software caused connection abort */
+            ECONNRESET, "ECONNRESET",            /* Connection reset by peer */
+            ENOBUFS, "ENOBUFS",                  /* No buffer space available */
+            EISCONN, "EISCONN",                  /* Transport endpoint is already connected */
+            ENOTCONN, "ENOTCONN",                /* Transport endpoint is not connected */
+            ESHUTDOWN, "ESHUTDOWN",              /* Cannot send after transport endpoint shutdown */
+            ETOOMANYREFS, "ETOOMANYREFS",        /* Too many references: cannot splice */
+            ETIMEDOUT, "ETIMEDOUT",              /* Connection timed out */
+            ECONNREFUSED, "ECONNREFUSED",        /* Connection refused */
+            EHOSTDOWN, "EHOSTDOWN",              /* Host is down */
+            EHOSTUNREACH, "EHOSTUNREACH",        /* No route to host */
+            EALREADY, "EALREADY",                /* Operation already in progress */
+            EINPROGRESS, "EINPROGRESS",          /* Operation now in progress */
+            ESTALE, "ESTALE",                    /* Stale file handle */
+            EUCLEAN, "EUCLEAN",                  /* Structure needs cleaning */
+            ENOTNAM, "ENOTNAM",                  /* Not a XENIX named type file */
+            ENAVAIL, "ENAVAIL",                  /* No XENIX semaphores available */
+            EISNAM, "EISNAM",                    /* Is a named type file */
+            EREMOTEIO, "EREMOTEIO",              /* Remote I/O error */
+            EDQUOT, "EDQUOT",                    /* Quota exceeded */
+            ENOMEDIUM, "ENOMEDIUM",              /* No medium found */
+            EMEDIUMTYPE, "EMEDIUMTYPE",          /* Wrong medium type */
+            ECANCELED, "ECANCELED",              /* Operation Canceled */
+            ENOKEY, "ENOKEY",                    /* Required key not available */
+            EKEYEXPIRED, "EKEYEXPIRED",          /* Key has expired */
+            EKEYREVOKED, "EKEYREVOKED",          /* Key has been revoked */
+            EKEYREJECTED, "EKEYREJECTED",        /* Key was rejected by service */
+
+            
+        )
+    }
+    return "<unnamed>"
+}
+
+#endif // OS_LINUX

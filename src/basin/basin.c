@@ -318,3 +318,28 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
 }
 
 
+const char* basin_target_arch_string(BasinTargetArch arch) {
+    static const char* names[BASIN_TARGET_ARCH_COUNT] = {
+        "none",
+        "host",
+        "x86",
+        "x86_64",
+        "arm",
+        "aarch64",
+    };
+    if (arch < 0 || arch >= BASIN_TARGET_ARCH_COUNT)
+        return NULL;
+    return names[arch];
+}
+
+const char* basin_target_os_string(BasinTargetOS os) {
+    static const char* names[BASIN_TARGET_OS_COUNT] = {
+        "none",
+        "host",
+        "windows",
+        "linux",
+    };
+    if (os < 0 || os >= BASIN_TARGET_OS_COUNT)
+        return NULL;
+    return names[os];
+}

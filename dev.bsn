@@ -5,13 +5,15 @@
 
 // import "./util.bsn"
 
-import "compiler"
+// import "compiler"
 
-game_ws := create_workspace()
-game_ws.compile()
+// game_ws := create_workspace()
+// game_ws.compile()
 
-platform_ws := create_workspace()
-platform_ws.compile()
+// platform_ws := create_workspace()
+// platform_ws.compile()
+
+print(__LINE__, __FUNC__, __FILE__)
 
 // switch x.y + 23 {
 //     case 23 + 5

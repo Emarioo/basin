@@ -31,6 +31,7 @@ typedef struct {
     int head; // token head
     
     ASTExpression_Block* previous_block;
+    ASTFunction*         current_function;
 
     ComptimeKind comptime_kind;
     
@@ -62,6 +63,7 @@ ASTType parse_type(ParserContext* context);
 ASTExpression* parse_expression(ParserContext* context);
 ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags);
 ASTFunction* parse_function(ParserContext* context);
+ASTEnum* parse_enum(ParserContext* context);
 ASTStruct* parse_struct(ParserContext* context);
 
 // ASTExpression* create_expression(ParserContext* context, ExpressionKind kind) {
@@ -299,6 +301,11 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
 
             array_push(&block_expr->variables, &data_object);
 
+        } else if (tok->kind == T_ENUM) {
+            
+            ASTEnum* enu = parse_enum(context);
+            array_push(&block_expr->enums, &enu);
+
         } else if (tok->kind == T_STRUCT) {
             
             ASTStruct* struc = parse_struct(context);
@@ -508,7 +515,17 @@ ASTExpression* parse_expression(ParserContext* context) {
             } else if(tok->kind == T_CASE) {
                 advance();
                 
-                switch_case.condition = parse_expression(context);
+                while (true) {
+                    ASTExpression* expr = parse_expression(context);
+
+                    array_push(&switch_case.conditions, &expr);
+
+                    const TokenExt* tok = peek(0);
+                    if (tok->kind != ',') {
+                        break;
+                    }
+                    advance();
+                }
                 
                 const TokenExt* tok0 = peek(0);
                 if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
@@ -672,12 +689,60 @@ ASTExpression* parse_expression(ParserContext* context) {
                 if (tok0->kind == T_IDENTIFIER) {
                     advance();
 
-                    CREATE_EXPR(expr, ASTExpression_Identifier, EXPR_IDENTIFIER, tok0);
-
                     cstring name = DATA_FROM_IDENTIFIER(tok0);
-                    expr->name = string_clone_cstr(name);
+                    if (string_equal_cstr(name, "__FUNC__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                        expr->literal_kind = EXPR_LITERAL_STRING;
 
-                    array_push(&exprs, (ASTExpression**)&expr);
+                        if (context->current_function) {
+                            expr->string_value = string_clone_cstr(cstr(context->current_function->name));
+                        } else {
+                            // @TODO No function means top scope.
+                            //    Would empty string be better?
+                            expr->string_value = string_clone_cptr("__topexpr__");
+                        }
+
+                        array_push(&exprs, (ASTExpression**)&expr);
+                    } else if (string_equal_cstr(name, "__LINE__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                        expr->literal_kind = EXPR_LITERAL_STRING;
+
+                        SourceLocation loc = location_from_token(tok0);
+                        int line = 0;
+                        bool res = compute_source_info(context->stream, loc, &line, NULL, NULL);
+                        ASSERT(res);
+                        
+                        char buffer[13];
+                        snprintf(buffer, sizeof(buffer), "%d", line);
+                        expr->string_value = string_clone_cptr(buffer);
+
+                        array_push(&exprs, (ASTExpression**)&expr);
+                    } else if (string_equal_cstr(name, "__COLUMN__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                        expr->literal_kind = EXPR_LITERAL_STRING;
+
+                        SourceLocation loc = location_from_token(tok0);
+                        int column = 0;
+                        bool res = compute_source_info(context->stream, loc, &column, NULL, NULL);
+                        ASSERT(res);
+
+                        char buffer[13];
+                        snprintf(buffer, sizeof(buffer), "%d", column);
+                        expr->string_value = string_clone_cptr(buffer);
+
+                        array_push(&exprs, (ASTExpression**)&expr);
+                    } else if (string_equal_cstr(name, "__FILE__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                        expr->literal_kind = EXPR_LITERAL_STRING;
+                        expr->string_value = string_clone_cstr(cstr(context->stream->import->path));
+
+                        array_push(&exprs, (ASTExpression**)&expr);
+                    } else {
+                        CREATE_EXPR(expr, ASTExpression_Identifier, EXPR_IDENTIFIER, tok0);
+                        expr->name = string_clone_cstr(name);
+                        array_push(&exprs, (ASTExpression**)&expr);
+                    }
+
                 } else if (tok0->kind == '[') {
                     advance();
                     
@@ -1036,6 +1101,9 @@ ASTFunction* parse_function(ParserContext* context) {
 
     match('(');
 
+    ASTFunction* prev_func = context->current_function;
+    context->current_function = out_function;
+
     // Parse arguments
     while (true) {
 
@@ -1128,8 +1196,69 @@ ASTFunction* parse_function(ParserContext* context) {
         out_function->body = body;
     }
 
+    context->current_function = prev_func;
+
     return out_function;
 }
+
+ASTEnum* parse_enum(ParserContext* context) {
+    match(T_ENUM);
+
+    advance();
+
+    const TokenExt* tok = match(T_IDENTIFIER);
+    check_error_ext(tok, "Expected an identifier.");
+    
+    cstring name = DATA_FROM_IDENTIFIER(tok);
+    
+    ASTEnum* out_enum = HEAP_ALLOC_OBJECT(ASTEnum);
+    out_enum->name      = string_clone_cstr(name);
+    out_enum->location  = location_from_token(tok);
+
+    tok = peek(0);
+    if (tok->kind == ':') {
+        advance();
+        out_enum->type_name = parse_type(context);
+    }
+
+    match('{');
+
+    while (true) {
+
+        const TokenExt* tok = peek(0);
+
+        if (tok->kind == T_IDENTIFIER) {
+            advance();
+
+            ASTEnum_Field field = {};
+
+            cstring field_name  = DATA_FROM_IDENTIFIER(tok);
+            field.name          = string_clone_cstr(field_name);
+            field.location      = location_from_token(tok);
+            
+            const TokenExt* tok = peek(0);
+            if (tok->kind == '=') {
+                advance();
+                field.default_value = parse_expression(context);
+            }
+
+            tok = peek(0);
+            if (tok->kind == ',') {
+                advance();
+            }
+
+            array_push(&out_enum->fields, &field);
+        } else if (tok->kind == '}') {
+            advance();
+            break;
+        } else {
+            parse_error(tok, "Expected a field, 'item = 5,'");
+        }
+    }
+
+    return out_enum;
+}
+
 
 ASTStruct* parse_struct(ParserContext* context) {
     match(T_STRUCT);
@@ -1156,19 +1285,19 @@ ASTStruct* parse_struct(ParserContext* context) {
 
             match(':');
 
-            ASTType type_name = parse_type(context);
+            ASTStruct_Field field = {};
+            cstring field_name = DATA_FROM_IDENTIFIER(tok);
+            field.name         = string_clone_cstr(field_name);
+            field.location     = location_from_token(tok);
+            field.type_name = parse_type(context);
+
+            array_push(&out_struct->fields, &field);
 
             const TokenExt* tok = peek(0);
             if (tok->kind == ';') {
                 advance();
             }
-            ASTStruct_Field field;
-            cstring field_name = DATA_FROM_IDENTIFIER(tok);
-            field.name         = string_clone_cstr(field_name);
-            field.location     = location_from_token(tok);
-            field.type_name    = type_name;
 
-            array_push(&out_struct->fields, &field);
         } else if (tok->kind == '}') {
             advance();
             break;

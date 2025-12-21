@@ -107,10 +107,13 @@ void print_expression(ASTExpression* _expr, int depth) {
             
             for (int i=0;i<expr->cases.len;i++) {
                 print_indent(depth);
-                if (expr->cases.ptr[i].condition) {
+                if (expr->cases.ptr[i].conditions.len != 0) {
                     printf("case_%d: ", i);
-                    print_expression(expr->cases.ptr[i].condition, depth + 2);
-                } else {
+                }
+                for (int ic=0;ic<expr->cases.ptr[i].conditions.len;ic++) {
+                    print_expression(expr->cases.ptr[i].conditions.ptr[ic], depth + 2);
+                }
+                if (expr->cases.ptr[i].conditions.len == 0) {
                     printf("default:\n");
                 }
                 print_indent(depth+1);

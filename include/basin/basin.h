@@ -64,12 +64,22 @@ typedef enum {
 } BasinError;
 
 typedef enum {
-    BASIN_TARGET_host,
-    BASIN_TARGET_windows_x86_64,
-    BASIN_TARGET_linux_x86_64,
-    BASIN_TARGET_arm,     // baremetal
-    BASIN_TARGET_aarch64, // baremetal
-} BasinTarget;
+    BASIN_TARGET_ARCH_none,
+    BASIN_TARGET_ARCH_host,
+    BASIN_TARGET_ARCH_x86,
+    BASIN_TARGET_ARCH_x86_64,
+    BASIN_TARGET_ARCH_arm,
+    BASIN_TARGET_ARCH_arm_64,
+    BASIN_TARGET_ARCH_COUNT,
+} BasinTargetArch;
+
+typedef enum {
+    BASIN_TARGET_OS_none,
+    BASIN_TARGET_OS_host,
+    BASIN_TARGET_OS_windows,
+    BASIN_TARGET_OS_linux,
+    BASIN_TARGET_OS_COUNT,
+} BasinTargetOS;
 
 typedef enum {
     BASIN_BINARY_executable,
@@ -92,7 +102,8 @@ typedef struct {
 } BasinResult;
 
 typedef struct BasinCompileOptions {
-    BasinTarget        target;
+    BasinTargetArch    target_arch;
+    BasinTargetOS      target_os;
     BasinBinaryType    binary_output_type;
     BasinOptimizeFlags optimize_flags;
     bool               disable_debug;
@@ -145,6 +156,10 @@ BASIN_API BasinResult basin_parse_arguments(const char* arguments, BasinCompileO
     @param argc Number of arguments, if -1 then argv is assumed to be terminated by a NULL pointer.
 */
 BASIN_API BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* out_options);
+
+
+BASIN_API const char* basin_target_arch_string(BasinTargetArch arch);
+BASIN_API const char* basin_target_os_string(BasinTargetOS os);
 
 //#########################################
 //         LOW LEVEL FUNCTIONS

@@ -1,0 +1,131 @@
+
+enum FileHandle : uword { INVALID }
+
+enum FileFlags {
+    READ   = 0x1,
+    WRITE  = 0x2,
+    CREATE = 0x4,
+    TRUNC  = 0x8,
+}
+
+import "compiler" as compiler
+import "platform/windows" as windows
+import "platform/linux" as linux
+
+// These assume the handle is valid
+@private fn TO_OS(h: FileHandle) -> uword { return h:uword - 1 }
+@private fn FROM_OS(h: uword) -> FileHandle { return (h+1):FileHandle }
+
+fn file_open(path: string, flags: FileFlags, out_fileSize: uword* = null) -> FileHandle {
+    fh: FileHandle
+
+    switch compiler.os() {
+        case BASIN_TARGET_OS_windows
+            access: i32 = windows.GENERIC_READ|windows.GENERIC_WRITE
+            sharing: i32 = windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE
+            
+            if 0 == flags & .WRITE
+                access = GENERIC_READ
+            
+            creation: i32 = OPEN_EXISTING;
+            if flags & .CREATE
+                creation = OPEN_ALWAYS
+            if flags & .TRUNC
+                creation = CREATE_ALWAYS;
+
+            handle := windows.CreateFileA(path.ptr, access, sharing, null, creation, FILE_ATTRIBUTE_NORMAL, null)
+
+            if handle == windows.INVALID_HANDLE_VALUE
+                return FileHandle.INVALID
+
+            if out_fileSize {
+                res := windows.GetFileSizeEx(handle, out_fileSize);
+                if (!res) {
+                    res = windows.CloseHandle(handle)
+                    if !res {
+                        // TODO: I don't think this should fail since CreateFileA succeded.   
+                    }
+                    return FileHandle.INVALID
+                }
+                // On failure out_fileSize is left untouched
+            }
+
+            fh = FROM_OS(handle)
+
+        case BASIN_TARGET_OS_linux
+            open_flags, mode: i32
+            
+            if flags & .READ
+                open_flags = linux.O_RDONLY
+            if flags & .WRITE
+                open_flags = linux.O_RDWR | linux.O_CREAT
+            if flags & .CREATE || flags & .TRUNC {
+                open_flags = linux.O_CREAT | linux.O_TRUNC | linux.O_RDWR;
+                mode = 0o644;
+            }
+
+            fd := linux.open(path.ptr, open_flags, mode)
+            if fd < 0
+                return FileHandle.INVALID
+
+            if out_fileSize {
+                info: linux.stat
+                res := linux.fstat(fd, &info)
+                if res < 0 {
+                    linux.close(fd)
+                    return FileHandle.INVALID
+                }
+                out_fileSize* = info.st_size
+            }
+
+            fh = FROM_OS(fd)
+    }
+    return fh
+}
+fn file_close(fh: FileHandle) {
+
+    switch compiler.os() {
+        case BASIN_TARGET_OS_windows
+            handle: HANDLE = TO_OS(fh)
+            res := CloseHandle(handle)
+            // @TODO Print error
+
+        case BASIN_TARGET_OS_linux
+            fd := TO_OS(fh)
+            res := linux.close(fd)
+            // @TODO Print error
+    }
+}
+fn file_write(fh: FileHandle, buffer: u8[]) -> uword {
+    return file_write(fh, buffer.ptr, buffer.len)
+}
+fn file_write(fh: FileHandle, buffer: void*, size: uword) -> uword {
+    switch compiler.os() {
+        case BASIN_TARGET_OS_windows
+            assert(size <= 0xFFFF_FFFF) // ReadFile takes 32-bit int as parameter
+            small_size := size:u32
+
+            handle := TO_OS(fh)
+            bytes: u32
+            yes := windows.ReadFile(handle, buffer, small_size, &bytes, null)
+            if !yes
+                return 0 // @TODO Handle error
+            return bytes
+
+        case BASIN_TARGET_OS_linux
+            fd := TO_OS(fh)
+            bytes := linux.read(fd, buffer, size)
+            if bytes < 0
+                return bytes // TODO: Handle error
+            return bytes
+        default #crash("Unsupported target", compiler.os)
+    }
+}
+fn file_read() -> FileHandle {
+    fh: FileHandle
+
+}
+
+fn directory_create() {
+
+}

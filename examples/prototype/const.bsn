@@ -1,0 +1,120 @@
+
+// Behaviour of constants
+
+// we naively define these constants with signed 32-bit integer
+const VALUE_MIN : s32 = 10
+const VALUE_MAX : s32 = 110
+
+fn print_range(val: u32) {
+    // We compare our 'val' with the constants and get 
+    //   "ERROR: Cannot compare u32 <= i32. Cast one of the operands to the other type."
+    while val >= VALUE_MIN && val < VALUE_MAX {
+        print(f"Yes {i}")
+        i++
+    }
+
+    // To solve it we either change vals type to signed integer
+    tmp_val : s32 = val
+    // or cast value before comparing (could also cast MIN,MAX)
+    while val : s32 >= VALUE_MIN && val : s32 < VALUE_MAX
+    // or change type of constants to unsigned
+    const VALUE_MIN : u32 = 10
+    const VALUE_MAX : u32 = 110
+
+    // However changing types of constants might not work because
+    // you might be comparing with signed value in one place
+    // and in another place you may compare with an unsigned value.
+
+    // I suppose if you do mix the types on values then it's good 
+    // that the constant's types cause these errors because it makes us think.
+    // it might be something simple
+    // like implicitly trying to convert value_min u64 for i32 though.
+    // we might have chosen u64 because most of the time we compare it with that value.
+
+    // i'm mostly rambling but what we should consider is untyped constants:
+    const VALUE_MIN = 123
+
+    // May or may not work for arrays and structs too.
+    const CSTR = {"cstr", 4}
+
+    // this would be a string view since
+    // we have no allocator and string.cap is zero
+    x: string = CSTR
+
+    // These untyped constants can replace some of the macro functionality.
+    // Perhaps all contants are untyped? altough being able to be typed as it's use cases.
+    // I'm thinking that identifiers in const are resolved at the location the constant is used?
+
+    // Can be used for aliasing perhaps?
+    const ctx = g_global_context
+}
+
+
+// The second part is aliasing types.
+
+// For readability in code we want to define an integer with a different name.
+// Current ways to do this are:
+enum HANDLE_ENUM : u64 { }
+struct HANDLE_STRUCT { raw : u64 }
+
+// Depending on what we do with const we may also have
+const HANDLE_CONST = u64
+
+// The difference between them is that with struct you can't perform addition without operator overloading and HANDLE_CONST is treated as an integer allowing more implicit casts.
+
+a,b: HANDLE_ENUM
+a + b      // ok
+n: u64 = a // ERROR, must cast to u64 first
+
+a,b: HANDLE_STRUCT
+a + b // ERROR, unless you add operator overloading
+
+a,b : HANDLE_CONST
+a + b      // ok
+n: u64 = a // ok
+
+// I suppose these are nice options but do we want something else?
+// For example using enum for HANDLE is really strange since a HANDLE could be a pointer and very large value, it can't be enumerated.
+
+// Let's suppose those are fine we now have function pointers.
+// They are less confusing than C but still annoying to type.
+
+// My suggestion is:
+
+const FARPROC = @conv(win64) fn () -> i64
+
+// Other option is
+alias   FARPROC = ...
+typedef FARPROC = ...
+
+// If we don't want const to be used for expressions/values AND types then we would
+// need either alias or typedef
+
+// I want to use as few keywords as possible and I think
+//    const FARPROC = fn ()
+// if okay. Zig does similar things.
+
+
+// We have untyped const where uses of the constant will result in an AST clone.
+const add_ab = a + b // identifiers are not unresolved because we type them when the constant is used
+
+fn func(a, b : i32) {
+    return add_ab
+}
+
+
+// We have typed const where we do type the expression and insert the result.
+const typed_add_ab : i32 = a + b // ERROR: 'a' is not defined
+
+fn compute(a,b:i32) -> i32 { return a*b }
+
+const typed_add_ab : i32 = compute(5,3) // compute is calculated here once
+const compute_add_ab = compute(5,3)     // AST is copied to the instances
+
+fn func(a, b : i32) {
+    return typed_add_ab // 15 is inserted in all these places
+}
+
+fn func(a, b : i32) {
+    return compute_add_ab // compute(5,3) is calculated for each instance
+}

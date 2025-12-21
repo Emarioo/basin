@@ -1,0 +1,199 @@
+/*
+    How do we have a platform independent function
+    that imports OS functions based on the operating system?
+*/
+
+// First how would we do this in C (written in Basin syntax)
+
+// ##########################
+// Preprocessor with conditional compilation using the C #ifdef feature.
+// We would implement this in the tokenization pass (preproc and tokenize merged into one).
+// ##########################
+
+/*
+    I do not want a preprocessor even though it's merged with the tokenizer.
+    1. The code in the disabled section is not parsed or type checked which
+       means your program can compile just fine on linux but cause errors
+       on Windows because you modified parameters and forgot to update the Windows
+       code. If you make a change like this you would probably test it on Windows
+       anyway so perhaps not a big deal but still not ideal.
+    2. i guess that's it?
+*/
+
+struct FileHandle {
+    handle: u64
+}
+
+fn open_file(path: string) -> FileHandle {
+    fh: FileHandle
+
+    #ifdef OS_WINDOWS
+        @import fn CreateFile(path: char*) -> HANDLE
+        fh.handle = CreateFile(path.ptr) : u64
+    #else
+        @import fn fopen(path: char*) -> FILE*
+        fh.handle = fopen(path.ptr) : u64
+    #endif
+
+    return fh
+}
+
+
+// ##########################
+// Conditional compilation with const evaluation.
+// ##########################
+
+/*
+    This is closer to 'when' in Odin. Probably the best solution?
+*/
+
+struct FileHandle {
+    handle: u64
+}
+
+fn open_file(path: string) -> FileHandle {
+    fh: FileHandle
+
+    @const if platform() == "windows" {
+        @import fn CreateFile(path: char*) -> HANDLE
+
+        fh.handle = CreateFile(path.ptr) : u64
+    } else {
+        @import fn fopen(path: char*) -> FILE*
+        
+        fh.handle = fopen(path.ptr) : u64
+    }
+
+    return fh
+}
+
+
+// ##########################
+// Conditional imports.
+// ##########################
+
+/*
+    Once again we have the problem with not parsing and type checking the other implementation.
+    You make some modifications to the platform build on Linux it works fine, commit then done.
+    Someone tries on Windows and they get compile errors because you changed arguments.
+*/
+
+// platform.bsn
+struct FileHandle {
+    handle: u64
+}
+
+#ifdef OS_WINDOWS
+    #import "platform_windows"
+#else
+    #import "platform_linux"
+#endif
+
+// platform_windows.bsn
+#import "platform" // import FileHandle
+
+fn open_file(path: string) -> FileHandle {
+    fh: FileHandle
+
+    @import fn CreateFile(path: char*) -> HANDLE
+    fh.handle = CreateFile(path.ptr) : u64
+
+    return fh
+}
+
+// platform_linux.bsn
+#import "platform" // import FileHandle
+
+fn open_file(path: string) -> FileHandle {
+    fh: FileHandle
+
+    @import fn fopen(path: char*) -> FILE*
+    fh.handle = fopen(path.ptr) : u64
+
+    return fh
+}
+
+
+
+
+// ##########################
+// Declare open_file in OS independent platform.bsn
+// then compile the OS specific .bsn file as separate object file
+// and link with it.
+// ##########################
+
+/*
+    We leave the conditional compilation to the user to compile the appropriate object files.
+    BIG hassle?
+
+    If you do 'basin main.bsn -o main.exe' then either in main.bsn you would
+    add workspace at compile time to we would need toon the command line we can automatically
+
+    In your build script (python for example) you would have:
+    
+        o_files = "main.o"
+        os.system("basin main.bsn -o main.o")
+        if platform.system() == "windows"
+            os.system("basin $BASIN_ROOT/modules/windows.bsn -o windows.o")
+            o_files += " windows.o"
+        else
+            os.system("basin $BASIN_ROOT/modules/linux.bsn -o linux.o")
+            o_files += " linux.o"
+
+        os.system(f"gcc {o_files} -o main.exe")
+
+
+    Now all your programs will have main.bsn which compiles to main.o and
+    windows.o or linux.o which you link with. Suddenly we can't just
+    compile basin ...
+*/
+
+// platform.bsn
+struct FileHandle {
+    handle: u64
+}
+
+@import fn open_file(path: string) -> FileHandle
+
+// windows.bsn
+fn open_file(path: string) -> FileHandle {
+    fh: FileHandle
+
+    @import fn CreateFile(path: char*) -> HANDLE
+    fh.handle = CreateFile(path.ptr) : u64
+
+    return fh
+}
+
+// linux.bsn
+fn open_file(path: string) -> FileHandle {
+    fh: FileHandle
+
+    @import fn fopen(path: char*) -> FILE*
+    fh.handle = fopen(path.ptr) : u64
+
+    return fh
+}
+
+
+// ##################################3
+// More comptime execution thing for conditional imports?
+// ##################################3
+
+import "compiler" as compiler
+/* import is syntactic sugar for
+   
+    ws := compiler.current_workspace()
+    ast := compiler.current_ast(ws, __FILE__)
+    compiler.add_import(ast, "compiler")
+*/
+
+// Conditional import
+ws  := compiler.current_workspace()
+ast := compiler.current_ast(ws, __FILE__)
+switch compiler.platform() {
+    case compiler.BASIN_TARGET_OS_windows
+        compiler.add_import(ast, "platform/windows", "windows")
+    case compiler.BASIN_TARGET_OS_linux
+        compiler.add_import(ast, "platform/linux", "linux")
+}

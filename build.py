@@ -19,6 +19,7 @@ class BuildConfig:
     optimize: bool = False
     # tracy: bool = False
     bin_dir: str = "bin"
+    lib_dir: str = "lib"
     int_dir: str = "bin/int"
     # build_steps: list[str] = dataclasses.field(default_factory=list) # TODO: 
 
@@ -42,6 +43,9 @@ def main():
 
         if arg == "clean":
             action_clean = True
+        else:
+            print(f"Unknown argument '{arg}'", file=sys.stderr)
+            exit(1)
 
     if shutil.which("gcc") is None:
         print(f"{COLOR_RED}ERROR:{COLOR_RESET} Missing GNU Compiler")
@@ -50,6 +54,8 @@ def main():
     if action_clean:
         if os.path.exists(config.bin_dir):
             shutil.rmtree(config.bin_dir)
+        if os.path.exists(config.lib_dir):
+            shutil.rmtree(config.lib_dir)
         if os.path.exists(config.int_dir):
             shutil.rmtree(config.int_dir)
 
@@ -60,6 +66,7 @@ def main():
 
 def compile_tool(config: BuildConfig):
     os.makedirs(config.bin_dir, exist_ok=True)
+    os.makedirs(config.lib_dir, exist_ok=True)
     os.makedirs(config.int_dir, exist_ok=True)
 
     ROOT = os.path.dirname(__file__)
@@ -132,13 +139,19 @@ def compile_tool(config: BuildConfig):
     if runtime.failed:
         exit(1)
     
-    PATH_EXE = f"{config.bin_dir}/basin"
-    PATH_LIB = f"{config.bin_dir}/libbasin.a"
+    if platform.system() == "Linux":
+        PATH_EXE = f"{config.bin_dir}/basin"
+        PATH_LIB = f"{config.lib_dir}/libbasin.a"
+        PATH_DLL = f"{config.lib_dir}/libbasin.so"
+    else:
+        PATH_EXE = f"{config.bin_dir}/basin.exe"
+        PATH_LIB = f"{config.lib_dir}/basin.lib"
+        PATH_DLL = f"{config.lib_dir}/basin.dll"
     
-    LDFLAGS = f""
+    LDFLAGS = f"-g"
     
     run(f"gcc {LDFLAGS} {' '.join(object_files)} -o {PATH_EXE}")
-
+    run(f"gcc -shared {LDFLAGS} {' '.join(object_files)} -o {PATH_DLL}")
     run(f"ar rcs {PATH_LIB} {' '.join(object_files)}")
 
 

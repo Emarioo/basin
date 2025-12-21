@@ -1,0 +1,90 @@
+/*
+    Semantics of enums
+
+    The main purpose of enum is to represent flags and error codes.
+    
+    The switch expression lets you branch on the error codes
+    and if a switch isn't handling one the compiler will
+    print an error.
+
+    When using enum for flags you often perform bitwise operations
+    and the compiler will print an error if you do so with an
+    enum and normal integers.
+
+    These errors gives the user railings to walk against which
+    prevents some mistakes. You can always cast integer to
+    enum and vice versa if your situation requires something special.
+    (serializing data for example where read/write functions work on general integers instead of enums)
+
+    There is also a third use case which is using enum as handles.
+    With a file descriptor type or other opaque handle to some resource
+    you don't want to use void* because it is implicitly casted.
+    You can use MyStruct* which is type safe but your handle represents
+    an ID and not a pointer to some object so MyStruct* doesn't quite make sense.
+    That's where enum come in.
+
+    There is also 'const Handle = u64' but this is just an alias and doesn't
+    have the type safety that enums have.
+*/
+
+enum ErrorCode {
+    SUCCESS,
+    FILE_NOT_FOUND,
+    FILE_CORRUPT,
+}
+
+err := ErrorCode.SUCCESS
+switch err {
+    case .FILE_NOT_FOUND
+        print("File not found\n")
+    case .FILE_CORRUPT
+        print("File corrupt\n")
+    case .SUCCESS /* success do nothing*/
+
+    // If SUCCESS was missing compiler would complain
+    // about it not being covered.
+}
+
+switch err {
+    case SUCCESS
+        write_file(path, ...)
+    default
+        print("@TODO Handle error")
+        crash()
+}
+
+
+
+enum FileFlags {
+    READ   = 0x1,
+    WRITE  = 0x2,
+    CREATE = 0x4,
+    TRUNC  = 0x8,
+}
+r_flag    := FileFlags.READ
+rw_flags  := FileFlags.READ | FileFlags.WRITE
+rwct_flags: FileFlags = .READ | .WRITE | .CREATE | .TRUNC
+rwct_flags = 0 : FileFlags
+
+
+
+@share // let's you access enum members without 'FileFlags.'
+enum FileFlags {
+    FILE_READ   = 0x1,
+    FILE_WRITE  = 0x2,
+    FILE_CREATE = 0x4,
+    FILE_TRUNC  = 0x8,
+}
+flags := FILE_READ // is now possible, FileFlags. isn't necessary
+
+
+
+enum AssetHandle { INVALID }
+
+handle: AssetHandle
+
+// Assign to handle by casting integer value.
+// You would do this in the implementation of the 
+// software module that controls asset handles.
+handle = 23 : AssetHandle
+

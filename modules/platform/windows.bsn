@@ -1,0 +1,1141 @@
+// TODO: Rename file to Windows.btb instead of Win32.btb? I guess
+//   we have bindings for the Win 32 API so it's fine as is?
+
+#if OS_WINDOWS
+
+#load "Kernel32.lib" as Kernel
+#load "Winmm.lib" as Winmm
+
+typedef HANDLE    u64
+typedef HINSTANCE u64
+typedef HMODULE   u64
+// NOTE: This is the definition for FARPROC in C: typedef long long (__stdcall *FARPROC)();
+typedef FARPROC   @conv(win64) fn () -> i64
+
+const INVALID_HANDLE_VALUE: HANDLE = -1 : HANDLE
+
+// Initialize once for each new process.
+// Return FALSE to fail DLL load.
+const DLL_PROCESS_ATTACH = 1
+// Do thread-specific initialization.
+const DLL_THREAD_ATTACH := 2
+// Do thread-specific cleanup.
+#macro DLL_THREAD_DETACH    3
+#macro DLL_PROCESS_DETACH   0
+
+#macro STD_INPUT_HANDLE (-10)	// The standard input device. Initially, this is the console input buffer, CONIN$.
+#macro STD_OUTPUT_HANDLE (-11)	// The standard output device. Initially, this is the active console screen buffer, CONOUT$.
+#macro STD_ERROR_HANDLE (-12)
+
+
+struct SYSTEM_INFO {
+  // union { // The language doesn't support unions yet
+  //   u32 dwOemId;
+    // struct {
+      wProcessorArchitecture: u16;
+      wReserved: u16;
+  //   } DUMMYSTRUCTNAME;
+  // } DUMMYUNIONNAME;
+  dwPageSize:                  u32;
+  lpMinimumApplicationAddress: void*;
+  lpMaximumApplicationAddress: void*;
+  dwActiveProcessorMask:       u64;
+  dwNumberOfProcessors:        u32;
+  dwProcessorType:             u32;
+  dwAllocationGranularity:     u32;
+  wProcessorLevel:             u16;
+  wProcessorRevision:          u16;
+}
+struct SYSTEMTIME {
+  wYear: u16;
+  wMonth: u16;
+  wDayOfWeek: u16;
+  wDay: u16;
+  wHour: u16;
+  wMinute: u16;
+  wSecond: u16;
+  wMilliseconds: u16;
+}
+
+struct SECURITY_ATTRIBUTES {
+  nLength:              i32;
+  lpSecurityDescriptor: void*;
+  bInheritHandle:       bool;
+}
+
+struct STARTUPINFOA {
+  cb:               i32;
+  lpReserved:       char*;
+  lpDesktop:        char*;
+  lpTitle:          char*;
+  dwX:              i32;
+  dwY:              i32;
+  dwXSize:          i32;
+  dwYSize:          i32;
+  dwXCountChars:    i32;
+  dwYCountChars:    i32;
+  dwFillAttribute:  i32;
+  dwFlags:          i32;
+  wShowWindow:      i16;
+  cbReserved2:      i16;
+  lpReserved2:      u8*;
+  hStdInput:        HANDLE;
+  hStdOutput:       HANDLE;
+  hStdError:        HANDLE;
+}
+struct PROCESS_INFORMATION {
+  hProcess:     HANDLE;
+  hThread:      HANDLE;
+  dwProcessId:  i32;
+  dwThreadId:   i32;
+}
+
+
+struct FILE_NOTIFY_INFORMATION {
+    NextEntryOffset: i32;
+    Action: i32;
+    FileNameLength: i32;
+    FileName: u16[1]; // WCHAR
+}
+
+
+struct TIMECAPS {
+  wPeriodMin: u32;
+  wPeriodMax: u32;
+}
+
+
+struct FILETIME {
+    dwLowDateTime:  u32;
+    dwHighDateTime: u32;
+}
+struct WIN32_FIND_DATAA {
+    dwFileAttributes: u32;
+    ftCreationTime:   FILETIME; // NOTE: FILETIME could be replaced with i64 but you would need to disable padding in the struct
+    ftLastAccessTime: FILETIME;
+    ftLastWriteTime:  FILETIME;
+    nFileSizeHigh:    u32;
+    nFileSizeLow:     u32;
+    dwReserved0:      u32;
+    dwReserved1:      u32;
+    cFileName: char[MAX_PATH];
+    cAlternateFileName: char[14];
+//   dwFileType: i32; // Obsolete. Do not use.
+//   dwCreatorType: i32; // Obsolete. Do not use
+//   wFinderFlags: i16; // Obsolete. Do not use
+}
+
+@import(Kernel) {
+
+    fn CloseHandle(
+        hObject: HANDLE
+    ) -> bool;
+
+    fn CreateProcessA(
+        /* [in, optional]      LPCSTR                */ lpApplicationName: char*,
+        /* [in, out, optional] LPSTR                 */ lpCommandLine: char*,
+        /* [in, optional]      LPSECURITY_ATTRIBUTES */ lpProcessAttributes: SECURITY_ATTRIBUTES*,
+        /* [in, optional]      LPSECURITY_ATTRIBUTES */ lpThreadAttributes: SECURITY_ATTRIBUTES*,
+        /* [in]                BOOL                  */ bInheritHandles: bool,
+        /* [in]                DWORD                 */ dwCreationFlags: i32,
+        /* [in, optional]      LPVOID                */ lpEnvironment: void*,
+        /* [in, optional]      LPCSTR                */ lpCurrentDirectory: char*,
+        /* [in]                LPSTARTUPINFOA        */ lpStartupInfo: STARTUPINFOA*,
+        /* [out]               LPPROCESS_INFORMATION */ lpProcessInformation: PROCESS_INFORMATION*
+    ) -> u32;
+
+    fn CreatePipe(
+        /* [out]          PHANDLE               */ hReadPipe: HANDLE*,
+        /* [out]          PHANDLE               */ hWritePipe: HANDLE*,
+        /* [in, optional] LPSECURITY_ATTRIBUTES */ lpPipeAttributes: SECURITY_ATTRIBUTES*,
+        /* [in]           DWORD                 */ nSize: i32
+    ) -> bool;
+
+    fn GetProductInfo(
+        /*[in]  DWORD  */ dwOSMajorVersion: u32,
+        /*[in]  DWORD  */ dwOSMinorVersion: u32,
+        /*[in]  DWORD  */ dwSpMajorVersion: u32,
+        /*[in]  DWORD  */ dwSpMinorVersion: u32,
+        /*[out] PDWORD */ pdwReturnedProductType: u32*
+    ) -> bool;
+
+    fn GetExitCodeProcess(
+        hProcess: HANDLE,
+        lpExitCode: i32*
+    ) -> u32;
+
+    fn ExitProcess(
+        uExitCode: u32
+    );
+
+    fn GetSystemInfo(
+        lpSystemInfo: SYSTEM_INFO*
+    );
+
+    fn GetSystemTimePreciseAsFileTime(lpSystemTimeAsFileTime: FILETIME*);
+
+    fn GetLocalTime(lpSystemTime: SYSTEMTIME*);
+
+    // Values for STARTUPINFOA.dwFlags
+    #macro STARTF_USESHOWWINDOW       0x00000001
+    #macro STARTF_USESIZE             0x00000002
+    #macro STARTF_USEPOSITION         0x00000004
+    #macro STARTF_USECOUNTCHARS       0x00000008
+    #macro STARTF_USEFILLATTRIBUTE    0x00000010
+    #macro STARTF_RUNFULLSCREEN       0x00000020  // ignored for non-x86 platforms
+    #macro STARTF_FORCEONFEEDBACK     0x00000040
+    #macro STARTF_FORCEOFFFEEDBACK    0x00000080
+    #macro STARTF_USESTDHANDLES       0x00000100
+
+
+#macro ERROR_BAD_EXE_FORMAT             193
+#macro ERROR_ALREADY_EXISTS             183
+
+
+/*########################
+    MEMORY, ALLOCATIONS
+#########################*/
+
+#macro STATUS_PENDING 0x00000103
+#macro STATUS_NO_MEMORY cast<void*>cast<i64>0xC0000017
+#macro STATUS_ACCESS_VIOLATION cast<void*>cast<i64>0xC0000005
+#macro STILL_ACTIVE    STATUS_PENDING
+
+    fn GetProcessHeap() -> HANDLE;
+
+    fn HeapAlloc(
+        hHeap: HANDLE,
+        dwFlags: i32,
+        dwBytes: i64
+    ) -> void*;
+
+    fn HeapReAlloc(
+        hHeap: HANDLE,
+        dwFlags: i32,
+        lpMem: void*,
+        dwBytes: i64
+    ) -> void*;
+    
+    fn HeapFree(
+        hHeap: HANDLE,
+        dwFlags: i32,
+        lpMem: void*
+    ) -> bool;
+
+/*########################
+    FILE SYSTEM
+#########################*/
+
+#macro CREATE_NEW                      1
+#macro CREATE_ALWAYS                   2
+#macro OPEN_EXISTING                   3
+#macro OPEN_ALWAYS                     4
+#macro TRUNCATE_EXISTING               5
+#macro GENERIC_READ                    0x80000000
+#macro GENERIC_WRITE                   0x40000000
+#macro GENERIC_EXECUTE                 0x20000000
+#macro GENERIC_ALL                     0x10000000
+#macro FILE_SHARE_READ                 0x00000001  
+#macro FILE_SHARE_WRITE                0x00000002  
+#macro FILE_SHARE_DELETE               0x00000004  
+
+
+#macro INVALID_FILE_ATTRIBUTES             (cast<i32>-1)
+#macro FILE_ATTRIBUTE_READONLY             0x00000001  
+#macro FILE_ATTRIBUTE_HIDDEN               0x00000002  
+#macro FILE_ATTRIBUTE_SYSTEM               0x00000004  
+#macro FILE_ATTRIBUTE_DIRECTORY            0x00000010  
+#macro FILE_ATTRIBUTE_ARCHIVE              0x00000020  
+#macro FILE_ATTRIBUTE_DEVICE               0x00000040  
+#macro FILE_ATTRIBUTE_NORMAL               0x00000080  
+#macro FILE_ATTRIBUTE_TEMPORARY            0x00000100  
+#macro FILE_ATTRIBUTE_SPARSE_FILE          0x00000200  
+#macro FILE_ATTRIBUTE_REPARSE_POINT        0x00000400  
+#macro FILE_ATTRIBUTE_COMPRESSED           0x00000800  
+#macro FILE_ATTRIBUTE_OFFLINE              0x00001000  
+#macro FILE_ATTRIBUTE_NOT_CONTENT_INDEXED  0x00002000  
+#macro FILE_ATTRIBUTE_ENCRYPTED            0x00004000  
+#macro FILE_ATTRIBUTE_INTEGRITY_STREAM     0x00008000  
+#macro FILE_ATTRIBUTE_VIRTUAL              0x00010000  
+#macro FILE_ATTRIBUTE_NO_SCRUB_DATA        0x00020000  
+#macro FILE_ATTRIBUTE_EA                   0x00040000  
+#macro FILE_ATTRIBUTE_PINNED               0x00080000  
+#macro FILE_ATTRIBUTE_UNPINNED             0x00100000  
+#macro FILE_ATTRIBUTE_RECALL_ON_OPEN       0x00040000  
+#macro FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000 
+
+#macro MAX_PATH          260
+
+#macro ERROR_FILE_NOT_FOUND             2
+
+#macro WIN32_FILE_BEGIN 0
+#macro WIN32_FILE_CURRENT 1
+#macro WIN32_FILE_END 2
+
+    fn CreateFileA(
+    lpFileName: char*,
+    dwDesiredAccess: i32,
+    dwShareMode: i32,
+    lpSecurityAttributes: void*, // optional, TODO: Type should be LPSECURITY_ATTRIBUTES instead of void*
+    dwCreationDisposition: i32,
+    dwFlagsAndAttributes: i32,
+    hTemplateFile: HANDLE // optional
+    ) -> HANDLE;
+
+    fn CreateDirectoryA(
+    /* [in]           LPCSTR                */ lpPathName: char*,
+    /* [in, optional] LPSECURITY_ATTRIBUTES */ lpSecurityAttributes: void*
+    ) -> bool;
+
+    fn RemoveDirectoryA(
+    lpPathName: char*
+    ) -> bool;
+
+    fn MoveFileA(
+    /* [in] LPCTSTR */ lpExistingFileName: char*,
+    /* [in] LPCTSTR */ lpNewFileName: char*
+    ) -> bool;
+
+    fn CopyFileA(
+    /* [in] LPCTSTR */ lpExistingFileName: char*,
+    /* [in] LPCTSTR */ lpNewFileName: char*,
+    /* [in] BOOL    */ bFailIfExists: bool
+    ) -> bool;
+
+    fn DeleteFileA(
+    /* [in] LPCTSTR*/ lpFileName: char*
+    ) -> bool;
+
+    fn CopyFileExA(
+    /* [in]           LPCSTR             */ lpExistingFileName: char*,
+    /* [in]           LPCSTR             */ lpNewFileName: char*,
+    /* [in, optional] LPPROGRESS_ROUTINE */ lpProgressRoutine: void*,
+    /* [in, optional] LPVOID             */ lpData: void*,
+    /* [in, optional] LPBOOL             */ pbCancel: bool*,
+    /* [in]           DWORD              */ dwCopyFlags: i32
+    ) -> bool;
+
+    fn GetFileSizeEx(
+    hFile: HANDLE,
+    lpFileSizeHigh: i64*
+    ) -> bool;
+
+    fn SetFilePointerEx(
+        hFile: HANDLE,
+        liDistanceToMove: i64,
+        lpNewFilePointer: i64*, // can be null
+        method: i32,
+    ) -> i32;
+
+    fn GetFileTime(
+    hFile: HANDLE,
+    lpCreationTime: i64*, // arguments actually use FILETIME but they are basically i64
+    lpLastAccessTime: i64*,
+    lpLastWriteTime: i64*
+    ) -> bool;
+        
+    // Returns a field of bits, see FILE_ATTRIBUTE_...
+    fn GetFileAttributesA(
+    lpFileName: char*
+    ) -> u32;
+
+    fn ReadFile(
+    hFile: HANDLE,
+    lpBuffer: void*,
+    nNumberOfBytesToRead: i32,
+    lpNumberOfBytesRead: i32*,
+    lpOverlapped: void* // optional, TODO: Don't do void?
+    ) -> bool;
+
+    fn WriteFile(
+    hFile: HANDLE,
+    lpBuffer: void*,
+    nNumberOfBytesToWrite: i32,
+    lpNumberOfBytesWritten: i32*,
+    lpOverlapped: void* // optional, TODO: Don't be void?
+    ) -> bool;
+
+    fn GetStdHandle(nStdHandle: u32) -> HANDLE;
+
+    fn SetConsoleTextAttribute(
+    hConsoleOutput: HANDLE,
+    wAttributes: i16,
+    ) -> u32;
+
+    fn FlushFileBuffers(
+    hFile: HANDLE
+    ) -> bool;
+
+    fn FindFirstFileA(
+    lpFileName: char*,
+    lpFindFileData: WIN32_FIND_DATAA*
+    ) -> HANDLE;
+
+    fn FindNextFileA(
+    hFindFile: HANDLE,
+    lpFindFileData: WIN32_FIND_DATAA*
+    ) -> bool;
+
+    fn FindClose(
+    hFindFile: HANDLE
+    ) -> bool;
+
+    fn FindFirstChangeNotificationA(
+    lpPathName: char*,
+    bWatchSubtree: bool,
+    dwNotifyFilter: u32
+    ) -> HANDLE;
+    fn FindNextChangeNotification(
+        hChangeHandle: HANDLE
+    ) -> bool;
+    fn FindCloseChangeNotification(
+    hChangeHandle: HANDLE
+    ) -> bool;
+    fn CancelSynchronousIo(
+    hThread: HANDLE
+    ) -> bool;
+    fn ReadDirectoryChangesW(
+        hDirectory: HANDLE,
+        lpBuffer: void*,
+        nBufferLength: i32,
+        bWatchSubtree: bool,
+        dwNotifyFilter: i32,
+        lpBytesReturned: i32*, // optional
+        lpOverlapped: void*, // optional, LPOVERLAPPED
+        lpCompletionRoutine: void* // optional, LPOVERLAPPED_COMPLETION_ROUTINE 
+        ) -> i32;
+
+#macro STATUS_WAIT_0       (cast<u32>0x00000000)
+#macro WAIT_OBJECT_0       ((STATUS_WAIT_0 ) + 0 )
+
+
+#macro FILE_NOTIFY_CHANGE_FILE_NAME    0x00000001   
+#macro FILE_NOTIFY_CHANGE_DIR_NAME     0x00000002   
+#macro FILE_NOTIFY_CHANGE_ATTRIBUTES   0x00000004   
+#macro FILE_NOTIFY_CHANGE_SIZE         0x00000008   
+#macro FILE_NOTIFY_CHANGE_LAST_WRITE   0x00000010   
+#macro FILE_NOTIFY_CHANGE_LAST_ACCESS  0x00000020   
+#macro FILE_NOTIFY_CHANGE_CREATION     0x00000040   
+#macro FILE_NOTIFY_CHANGE_SECURITY     0x00000100   
+#macro FILE_ACTION_ADDED                   0x00000001   
+#macro FILE_ACTION_REMOVED                 0x00000002   
+#macro FILE_ACTION_MODIFIED                0x00000003   
+#macro FILE_ACTION_RENAMED_OLD_NAME        0x00000004   
+#macro FILE_ACTION_RENAMED_NEW_NAME        0x00000005   
+
+
+#macro FILE_FLAG_WRITE_THROUGH         0x80000000
+#macro FILE_FLAG_OVERLAPPED            0x40000000
+#macro FILE_FLAG_NO_BUFFERING          0x20000000
+#macro FILE_FLAG_RANDOM_ACCESS         0x10000000
+#macro FILE_FLAG_SEQUENTIAL_SCAN       0x08000000
+#macro FILE_FLAG_DELETE_ON_CLOSE       0x04000000
+#macro FILE_FLAG_BACKUP_SEMANTICS      0x02000000
+#macro FILE_FLAG_POSIX_SEMANTICS       0x01000000
+#macro FILE_FLAG_SESSION_AWARE         0x00800000
+#macro FILE_FLAG_OPEN_REPARSE_POINT    0x00200000
+#macro FILE_FLAG_OPEN_NO_RECALL        0x00100000
+#macro FILE_FLAG_FIRST_PIPE_INSTANCE   0x00080000
+
+#macro FILE_LIST_DIRECTORY       ( 0x0001 )    // directory
+
+#macro ERROR_OPERATION_ABORTED          995
+#macro ERROR_NOTIFY_ENUM_DIR            1022
+#macro ERROR_NOT_FOUND                  1168
+
+    fn LoadLibraryA(
+    lpLibFileName: char*
+    ) -> HMODULE;
+    fn FreeLibrary(
+    hLibModule: HMODULE
+    ) -> bool;
+    fn GetProcAddress(
+    hModule: HMODULE,
+    lpProcName: char*
+    ) -> FARPROC;
+
+    fn Sleep(
+    dwMilliseconds: u32
+    );
+
+
+    fn QueryPerformanceCounter(
+    lpPerformanceCount: i64*
+    ) -> bool;
+    fn QueryPerformanceFrequency(
+    lpFrequency: i64*
+    ) -> bool;
+
+    fn CreateThread(
+    /* [in, optional]  LPSECURITY_ATTRIBUTES   */ lpThreadAttributes: void*,
+    /* [in]            SIZE_T                  */ dwStackSize: u64,
+    /* [in]            LPTHREAD_START_ROUTINE  */ lpStartAddress: fn @stdcall (void*)->i32,
+    /* [in, optional]  __drv_aliasesMem LPVOID */ lpParameter: void*,
+    /* [in]            DWORD                   */ dwCreationFlags: void*,
+    /* [out, optional] LPDWORD                 */ lpThreadId: u32*
+    ) -> HANDLE;
+    fn WaitForSingleObject(handle: HANDLE, ms: u32) -> u32;
+    fn GetCurrentThreadId() -> u32;
+    fn GetLastError() -> u32;
+
+    fn CreateMutexA(
+    /* [in, optional] LPSECURITY_ATTRIBUTES*/ lpMutexAttributes: void*,
+    /* [in]           BOOL                 */ bInitialOwner: bool,
+    /* [in, optional] LPCSTR               */ lpName: char*
+    ) -> HANDLE;
+    fn ReleaseMutex(
+    /* [in] HANDLE */ hMutex : HANDLE
+    ) -> bool;
+    fn CreateSemaphoreA(
+    /* [in, optional] LPSECURITY_ATTRIBUTES */ lpSemaphoreAttributes: void*,
+    /* [in]           LONG                  */ lInitialCount: i32,
+    /* [in]           LONG                  */ lMaximumCount: i32,
+    /* [in, optional] LPCSTR                */ lpName: char*
+    ) -> HANDLE;
+    fn ReleaseSemaphore(
+    /* [in]            HANDLE */ hSemaphore: HANDLE,
+    /* [in]            LONG   */ lReleaseCount: i32,
+    /* [out, optional] LPLONG */ lpPreviousCount: i32*
+    ) -> bool;
+
+    #macro INFINITE            0xFFFF_FFFFu  // Infinite timeout
+    #macro WAIT_FAILED         0xFFFF_FFFFu
+
+    fn GetErrorMode() -> i32;
+    fn SetErrorMode(n: i32) -> i32;
+
+    struct M128A {
+    low: u32; // not signed
+    high: i32; // signed
+    }
+    struct CONTEXT {
+    P1Home: u64;
+    P2Home: u64;
+    P3Home: u64;
+    P4Home: u64;
+    P5Home: u64;
+    P6Home: u64;
+    
+    ContextFlags: u32;
+    MxCsr: u32;
+
+    SegCs: u16;
+    SegDs: u16;
+    SegEs: u16;
+    SegFs: u16;
+    SegGs: u16;
+    SegSs: u16;
+    EFlags: u32;
+
+    Dr0: u64;
+    Dr1: u64;
+    Dr2: u64;
+    Dr3: u64;
+    Dr6: u64;
+    Dr7: u64;
+
+    Rax: u64;
+    Rcx: u64;
+    Rdx: u64;
+    Rbx: u64;
+    Rsp: u64;
+    Rbp: u64;
+    Rsi: u64;
+    Rdi: u64;
+    R8: u64;
+    R9: u64;
+    R10: u64;
+    R11: u64;
+    R12: u64;
+    R13: u64;
+    R14: u64;
+    R15: u64;
+
+    Rip: u64;
+
+    Header: M128A[2]; 
+    Legacy: M128A[8];
+    Xmm0: M128A;
+    Xmm1: M128A;
+    Xmm2: M128A;
+    Xmm3: M128A;
+    Xmm4: M128A;
+    Xmm5: M128A;
+    Xmm6: M128A;
+    Xmm7: M128A;
+    Xmm8: M128A;
+    Xmm9: M128A;
+    Xmm10: M128A;
+    Xmm11: M128A;
+    Xmm12: M128A;
+    Xmm13: M128A;
+    Xmm14: M128A;
+    Xmm15: M128A;
+    // union { // the language doesn't support unions, the xmm registers are probably the most useful
+    //   XMM_SAVE_AREA32 FltSave;
+    //   struct {
+    //     M128A Header[2];
+    //     M128A Legacy[8];
+    //     M128A Xmm0;
+    //     M128A Xmm1;
+    //     M128A Xmm2;
+    //     M128A Xmm3;
+    //     M128A Xmm4;
+    //     M128A Xmm5;
+    //     M128A Xmm6;
+    //     M128A Xmm7;
+    //     M128A Xmm8;
+    //     M128A Xmm9;
+    //     M128A Xmm10;
+    //     M128A Xmm11;
+    //     M128A Xmm12;
+    //     M128A Xmm13;
+    //     M128A Xmm14;
+    //     M128A Xmm15;
+    //   } DUMMYSTRUCTNAME;
+    // } DUMMYUNIONNAME;
+
+    VectorRegister: M128A[26];
+    VectorControl: u64;
+
+    DebugControl: u64;
+    LastBranchToRip: u64;
+    LastBranchFromRip: u64;
+    LastExceptionToRip: u64;
+    LastExceptionFromRip: u64;
+    }
+
+    #macro EXCEPTION_MAXIMUM_PARAMETERS 15
+    struct EXCEPTION_RECORD {
+        ExceptionCode: u32;
+        ExceptionFlags: u32;
+        ExceptionRecord: EXCEPTION_RECORD*;
+        ExceptionAddress: void*;
+        NumberParameters: u32;
+        ExceptionInformation: u64[EXCEPTION_MAXIMUM_PARAMETERS];
+    }
+    struct EXCEPTION_POINTERS {
+    ExceptionRecord: EXCEPTION_RECORD*;
+    ContextRecord: CONTEXT*;
+    }
+    enum EXCEPTION_DISPOSITION {
+        ExceptionContinueExecution,
+        ExceptionContinueSearch,
+        ExceptionNestedException,
+        ExceptionCollidedUnwind
+    }
+    struct RUNTIME_FUNCTION {
+        StartAddress: u32;
+        EndAddress: u32;
+        UnwindInfoAddress: u32;
+    };
+    struct UNWIND_INFO {
+    Version_Flags: u8; // 3 bits version, 5 bits flags
+    SizeOfProlog: u8;
+    CountOfUnwindCodes: u8;
+    FrameRegister_Offset: u8; // 4 bits frame register, 4 bits scaled frame offset
+    // u16 UnwindCodesArray[CountOfUnwindCodes];
+
+    // variable	Can either be of form (1):
+            // u32 AddressOfExceptionHandler;
+            // variable	Language-specific handler data (optional)
+        // or (2):
+            // RUNTIME_FUNCTION ChainedUnwindInfo;
+    };
+    #macro EXCEPTION_ROUTINE
+    fn(
+        ExceptionRecord: EXCEPTION_RECORD*, // in
+        EstablisherFrame: u64, // in
+        ContextRecord: CONTEXT*, // in/out
+        DispatcherContext: DISPATCHER_CONTEXT*, // in/out
+    ) -> EXCEPTION_DISPOSITION;
+    #endmacro
+    struct DISPATCHER_CONTEXT {
+        ControlPc: u64;
+        ImageBase: u64;
+        FunctionEntry: RUNTIME_FUNCTION*;
+        EstablisherFrame: u64;
+        TargetIp: u64;
+        ContextRecord: CONTEXT*;
+        LanguageHandler: EXCEPTION_ROUTINE;
+        HandlerData: void*;
+    }
+    fn RtlLookupFunctionEntry(
+    ControlPc: u64,
+    ImageBase: u64*,
+    HistoryTable: void* // PUNWIND_HISTORY_TABLE
+    ) -> RUNTIME_FUNCTION*;
+
+    fn RaiseException(
+    dwExceptionCode: u32,
+    dwExceptionFlags: u32,
+    nNumberOfArguments: u32, // ignored if pointer is null
+    lpArguments: u64* // can be null
+    );
+
+    // TODO: RtlRestoreContext is described to use cdecl convention but in practise, that's not the case beacuse it crashes. stdcall is actually the right convention. Perhaps it depends on the version of Windows.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlrestorecontext
+    fn RtlRestoreContext(
+    ContextRecord: CONTEXT*,
+    ExceptionRecord: EXCEPTION_RECORD*
+    );
+
+    // Prefix with WIN since user may use these names. Exception.btb uses some of them.
+    #macro WIN_EXCEPTION_ACCESS_VIOLATION         0xC0000005 // The thread tried to read from or write to a virtual address for which it does not have the appropriate access.
+    #macro WIN_EXCEPTION_ARRAY_BOUNDS_EXCEEDED    0xC000008C // The thread tried to access an array element that is out of bounds and the underlying hardware supports bounds checking.
+    #macro WIN_EXCEPTION_BREAKPOINT               0x80000003 // A breakpoint was encountered.
+    #macro WIN_EXCEPTION_DATATYPE_MISALIGNMENT    0x80000002 // The thread tried to read or write data that is misaligned on hardware that does not provide alignment. For example, 16-bit values must be aligned on 2-byte boundaries; 32-bit values on 4-byte boundaries, and so on.
+    #macro WIN_EXCEPTION_FLT_DENORMAL_OPERAND     0xC000008D // One of the operands in a floating-point operation is denormal. A denormal value is one that is too small to represent as a standard floating-point value.
+    #macro WIN_EXCEPTION_FLT_DIVIDE_BY_ZERO       0xC000008E // The thread tried to divide a floating-point value by a floating-point divisor of zero.
+    #macro WIN_EXCEPTION_FLT_INEXACT_RESULT       0xC000008F // The result of a floating-point operation cannot be represented exactly as a decimal fraction.
+    #macro WIN_EXCEPTION_FLT_INVALID_OPERATION    0xC0000090 // This exception represents any floating-point exception not included in this list.
+    #macro WIN_EXCEPTION_FLT_OVERFLOW             0xC0000091 // The exponent of a floating-point operation is greater than the magnitude allowed by the corresponding type.
+    #macro WIN_EXCEPTION_FLT_STACK_CHECK          0xC0000092 // The stack overflowed or underflowed as the result of a floating-point operation.
+    #macro WIN_EXCEPTION_FLT_UNDERFLOW            0xC0000093 // The exponent of a floating-point operation is less than the magnitude allowed by the corresponding type.
+    #macro WIN_EXCEPTION_ILLEGAL_INSTRUCTION      0xC000001D // The thread tried to execute an invalid instruction.
+    #macro WIN_EXCEPTION_IN_PAGE_ERROR            0xC0000006 // The thread tried to access a page that was not present, and the system was unable to load the page. For example, this exception might occur if a network connection is lost while running a program over the network.
+    #macro WIN_EXCEPTION_INT_DIVIDE_BY_ZERO       0xC0000094 // The thread tried to divide an integer value by an integer divisor of zero.
+    #macro WIN_EXCEPTION_INT_OVERFLOW             0xC0000095 // The result of an integer operation caused a carry out of the most significant bit of the result.
+    #macro WIN_EXCEPTION_INVALID_DISPOSITION      0xC0000026 // An exception handler returned an invalid disposition to the exception dispatcher. Programmers using a high-level language such as C should never encounter this exception.
+    #macro WIN_EXCEPTION_NONCONTINUABLE_EXCEPTION 0xC0000025 // The thread tried to continue execution after a noncontinuable exception occurred.
+    #macro WIN_EXCEPTION_PRIV_INSTRUCTION         0xC0000096 // The thread tried to execute an instruction whose operation is not allowed in the current machine mode.
+    #macro WIN_EXCEPTION_SINGLE_STEP              0x80000004 // A trace trap or other single-instruction mechanism signaled that one instruction has been executed.
+    #macro WIN_EXCEPTION_STACK_OVERFLOW           0xC00000FD // The thread used up its stack.
+
+    #macro WIN_EXCEPTION_NONCONTINUABLE           0x1        // Noncontinuable exception
+    #macro WIN_EXCEPTION_UNWINDING                0x2        // Unwind is in progress
+    #macro WIN_EXCEPTION_EXIT_UNWIND              0x4        // Exit unwind is in progress
+    #macro WIN_EXCEPTION_STACK_INVALID            0x8        // Stack out of limits or unaligned
+    #macro WIN_EXCEPTION_NESTED_CALL              0x10       // Nested exception handler call
+    #macro WIN_EXCEPTION_TARGET_UNWIND            0x20       // Target unwind in progress
+    #macro WIN_EXCEPTION_COLLIDED_UNWIND          0x40       // Collided exception handler call
+    #macro WIN_EXCEPTION_SOFTWARE_ORIGINATE       0x80       // Exception originated in software
+}
+
+@import(Winmm) {
+    fn timeGetDevCaps(
+    ptc: TIMECAPS*,
+    cbtc: u32
+    ) -> u32;
+    fn timeBeginPeriod(
+    uPeriod: u32
+    ) -> u32;
+    fn timeEndPeriod(
+    uPeriod: u32
+    ) -> u32;
+
+    fn PlaySoundA(
+    pszSound: char*,
+    hmod: HMODULE,
+    fdwSound: u32,
+    ) -> u32;
+}
+
+/*#############
+    SOCKETS
+###############*/
+
+library "Ws2_32.lib" as Winsock
+
+#macro SOCKET u64
+
+@import(Winsock) {
+    fn WSAStartup(
+    wVersionRequired: u32,
+    lpWSAData: WSADATA*
+    ) -> i32;
+
+    fn WSACleanup() -> i32;
+    fn WSAGetLastError() -> i32;
+
+    fn socket(
+    af: i32,
+    type: i32,
+    protocol: i32
+    ) -> SOCKET;
+
+fn closesocket(
+  s: SOCKET
+) -> i32;
+fn bind(
+  s: SOCKET,
+  addr: sockaddr*,
+  namelen: i32
+) -> i32;
+fn listen(
+  s: SOCKET,
+  backlog: i32 // use SOMAXCONN for a reasonably sized backlog
+) -> i32;
+#macro SOMAXCONN 0x7fffffff
+
+fn accept(
+  s: SOCKET,
+  addr: sockaddr*,
+  addrlen: i32*
+) -> SOCKET;
+fn connect(
+  s: SOCKET,
+  name: sockaddr*,
+  namelen: i32
+) -> i32;
+// TODO: select, WSAPoll
+
+fn recv(
+  s: SOCKET,
+  buf: char*,
+  len: i32,
+  flags: i32 // MSG_OOB, MSG_PEEK, MSG_WAITALL
+) -> i32;
+// We use an alias for send because user may name a function or method "send".
+// If we had namespaces then we wouldn't need to but they are incomplete.
+fn send(
+  s: SOCKET,
+  buf: char*,
+  len: i32,
+  flags: i32 //  MSG_OOB, MSG_DONTROUTE
+) -> i32;
+#macro MSG_OOB         0x1      /* process out-of-band data */
+#macro MSG_PEEK        0x2      /* peek at incoming message */
+#macro MSG_DONTROUTE   0x4      /* send without using routing tables */
+#macro MSG_WAITALL     0x8      /* do not complete until packet is completely filled */
+
+fn setsockopt(
+  s: SOCKET,
+  level: i32,
+  optname: i32,
+  optval: char*,
+  optlen: i32
+) -> i32
+fn getsockopt(
+  s: SOCKET,
+  level: i32,
+  optname: i32,
+  optval: char*,
+  optlen: i32
+) -> i32
+
+fn getaddrinfo(
+  pNodeName: char*,
+  pServiceName: char*,
+  pHints: addrinfo*,
+  ppResult: addrinfo**
+) -> i32;
+fn freeaddrinfo(
+  pAddrInfo: addrinfo*
+);
+
+ fn select(
+  nfds: i32,          // in
+  readfds: fd_set*,   // inout
+  writefds: fd_set*,  // inout
+  exceptfds: fd_set*, // inout
+  timeout: timeval*,  // in
+);
+#macro FD_SETSIZE 64
+struct fd_set {
+  fd_count: i32;
+  fd_array: SOCKET[FD_SETSIZE];
+}
+struct timeval {
+    tv_sec: u32;    /* seconds */
+    tv_usec: u32;   /* and microseconds */
+}
+
+#macro WSADESCRIPTION_LEN      257
+#macro WSASYS_STATUS_LEN       129
+
+struct WSADATA {
+        wVersion: u16;
+        wHighVersion: u16;
+// #ifdef _WIN64
+        iMaxSockets: u16;
+        iMaxUdpDg: u16;
+        lpVendorInfo: char*;
+        szDescription: char[WSADESCRIPTION_LEN]; // Windows docs use '_LEN+1' but the language does not support operations when deciding length of array so _LEN has +1 built in
+        szSystemStatus: char[WSASYS_STATUS_LEN];
+// #else
+// #endif
+}
+
+struct addrinfo {
+    ai_flags: i32;
+    ai_family: i32;
+    ai_socktype: i32;
+    ai_protocol: i32;
+    ai_addrlen: i64;
+    ai_canonname: char*;
+    ai_addr: sockaddr*;
+    ai_next: addrinfo*;
+}
+
+struct sockaddr {
+    sa_family: u16;
+    sa_data: char[14];
+}
+
+struct sockaddr_in {
+    sin_family: u16;
+    sin_port: u16;
+    sin_addr: u32;
+    sin_zero: char[8];
+}
+
+#macro AF_UNSPEC 0
+#macro AF_INET 2
+#macro AF_IPX 6
+#macro AF_APPLETALK 16
+#macro AF_NETBIOS 17
+#macro AF_INET6 23
+#macro AF_IRDA 26
+#macro AF_BTH 32
+
+#macro SOCK_STREAM 1
+#macro SOCK_DGRAM 2
+#macro SOCK_RAW 3
+#macro SOCK_RDM 4
+#macro SOCK_SEQPACKET 5
+
+#macro IPPROTO_ICMP 1
+#macro IPPROTO_IGMP 2
+#macro BTHPROTO_RFCOMM 3
+#macro IPPROTO_TCP 6
+#macro IPPROTO_UDP 17
+#macro IPPROTO_ICMPV6 58
+#macro IPPROTO_RM 113
+
+#macro INVALID_SOCKET 0xFFFF_FFFF_FFFF_FFFF
+#macro SOCKET_ERROR 0xFFFF_FFFF_FFFF_FFFF
+
+#macro INADDR_ANY 0
+
+/*###########
+    EXTRA
+############*/
+
+// NOTE: These are also defined in Linux.btb
+// htonq, ntohq (64-bit swap?)
+fn htonl(hostlong: u32) -> u32 {
+    // TODO: We assume the program is compiled for x86 (little endian)
+    //   If we support ARM, we need to change this.
+    return asm<u32>(hostlong) {
+        pop rax
+        bswap eax
+        push rax
+    }
+    // return (hostlong << 24) | ((hostlong << 8) & 0xFF0000) | (hostlong >> 24) | ((hostlong >> 8) & 0xFF00) 
+}
+fn htons(hostshort: u16) -> u16 {
+    return asm<u32>(hostshort) {
+        pop rax
+        xchg al, ah
+        push rax
+    }
+    // return (hostshort << 8) | (hostshort >> 8)
+}
+fn ntohl(netlong: u32) -> u32 {
+    return htonl(netlong)
+    // return (netlong << 24) | ((netlong << 8) & 0xFF0000) | (netlong >> 24) | ((netlong >> 8) & 0xFF00) 
+}
+fn ntohs(netshort: u16) -> u16 {
+    return htons(netlong)
+    // return (netshort << 8) | (netshort >> 8)
+}
+
+
+
+/*###########################################
+    WSA Errors (copied from winerror.h)
+    https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
+############################################*/
+
+// A blocking operation was interrupted by a call to WSACancelBlockingCall.
+#macro WSAEINTR                         10004
+// The file handle supplied is not valid.
+#macro WSAEBADF                         10009
+// An attempt was made to access a socket in a way forbidden by its access permissions.
+#macro WSAEACCES                        10013
+// The system detected an invalid pointer address in attempting to use a pointer argument in a call.
+#macro WSAEFAULT                        10014
+// An invalid argument was supplied.
+#macro WSAEINVAL                        10022
+// Too many open sockets.
+#macro WSAEMFILE                        10024
+// A non-blocking socket operation could not be completed immediately.
+#macro WSAEWOULDBLOCK                   10035
+// A blocking operation is currently executing.
+#macro WSAEINPROGRESS                   10036
+// An operation was attempted on a non-blocking socket that already had an operation in progress.
+#macro WSAEALREADY                      10037
+// An operation was attempted on something that is not a socket.
+#macro WSAENOTSOCK                      10038
+// A required address was omitted from an operation on a socket.
+#macro WSAEDESTADDRREQ                  10039
+// A message sent on a datagram socket was larger than the internal message buffer or some other network limit, or the buffer used to receive a datagram into was smaller than the datagram itself.
+#macro WSAEMSGSIZE                      10040
+// A protocol was specified in the socket function call that does not support the semantics of the socket type requested.
+#macro WSAEPROTOTYPE                    10041
+// An unknown, invalid, or unsupported option or level was specified in a getsockopt or setsockopt call.
+#macro WSAENOPROTOOPT                   10042
+// The requested protocol has not been configured into the system, or no implementation for it exists.
+#macro WSAEPROTONOSUPPORT               10043
+// The support for the specified socket type does not exist in this address family.
+#macro WSAESOCKTNOSUPPORT               10044
+// The attempted operation is not supported for the type of object referenced.
+#macro WSAEOPNOTSUPP                    10045
+// The protocol family has not been configured into the system or no implementation for it exists.
+#macro WSAEPFNOSUPPORT                  10046
+// An address incompatible with the requested protocol was used.
+#macro WSAEAFNOSUPPORT                  10047
+// Only one usage of each socket address (protocol/network address/port) is normally permitted.
+#macro WSAEADDRINUSE                    10048
+// The requested address is not valid in its context.
+#macro WSAEADDRNOTAVAIL                 10049
+// A socket operation encountered a dead network.
+#macro WSAENETDOWN                      10050
+// A socket operation was attempted to an unreachable network.
+#macro WSAENETUNREACH                   10051
+// The connection has been broken due to keep-alive activity detecting a failure while the operation was in progress.
+#macro WSAENETRESET                     10052
+// An established connection was aborted by the software in your host machine.
+#macro WSAECONNABORTED                  10053
+// An existing connection was forcibly closed by the remote host.
+#macro WSAECONNRESET                    10054
+// An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full.
+#macro WSAENOBUFS                       10055
+// A connect request was made on an already connected socket.
+#macro WSAEISCONN                       10056
+// A request to send or receive data was disallowed because the socket is not connected and (when sending on a datagram socket using a sendto call) no address was supplied.
+#macro WSAENOTCONN                      10057
+// A request to send or receive data was disallowed because the socket had already been shut down in that direction with a previous shutdown call.
+#macro WSAESHUTDOWN                     10058
+// Too many references to some kernel object.
+#macro WSAETOOMANYREFS                  10059
+// A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+#macro WSAETIMEDOUT                     10060
+// No connection could be made because the target machine actively refused it.
+#macro WSAECONNREFUSED                  10061
+// Cannot translate name.
+#macro WSAELOOP                         10062
+// Name component or name was too long.
+#macro WSAENAMETOOLONG                  10063
+// A socket operation failed because the destination host was down.
+#macro WSAEHOSTDOWN                     10064
+// A socket operation was attempted to an unreachable host.
+#macro WSAEHOSTUNREACH                  10065
+// Cannot remove a directory that is not empty.
+#macro WSAENOTEMPTY                     10066
+// A Windows Sockets implementation may have a limit on the number of applications that may use it simultaneously.
+#macro WSAEPROCLIM                      10067
+// Ran out of quota.
+#macro WSAEUSERS                        10068
+// Ran out of disk quota.
+#macro WSAEDQUOT                        10069
+// File handle reference is no longer available.
+#macro WSAESTALE                        10070
+// Item is not available locally.
+#macro WSAEREMOTE                       10071
+// WSAStartup cannot function at this time because the underlying system it uses to provide network services is currently unavailable.
+#macro WSASYSNOTREADY                   10091
+// The Windows Sockets version requested is not supported.
+#macro WSAVERNOTSUPPORTED               10092
+// Either the application has not called WSAStartup, or WSAStartup failed.
+#macro WSANOTINITIALISED                10093
+// Returned by WSARecv or WSARecvFrom to indicate the remote party has initiated a graceful shutdown sequence.
+#macro WSAEDISCON                       10101
+// No more results can be returned by WSALookupServiceNext.
+#macro WSAENOMORE                       10102
+// A call to WSALookupServiceEnd was made while this call was still processing. The call has been canceled.
+#macro WSAECANCELLED                    10103
+// The procedure call table is invalid.
+#macro WSAEINVALIDPROCTABLE             10104
+// The requested service provider is invalid.
+#macro WSAEINVALIDPROVIDER              10105
+// The requested service provider could not be loaded or initialized.
+#macro WSAEPROVIDERFAILEDINIT           10106
+// A system call has failed.
+#macro WSASYSCALLFAILURE                10107
+// No such service is known. The service cannot be found in the specified name space.
+#macro WSASERVICE_NOT_FOUND             10108
+// The specified class was not found.
+#macro WSATYPE_NOT_FOUND                10109
+// No more results can be returned by WSALookupServiceNext.
+#macro WSA_E_NO_MORE                    10110
+// A call to WSALookupServiceEnd was made while this call was still processing. The call has been canceled.
+#macro WSA_E_CANCELLED                  10111
+// A database query failed because it was actively refused.
+#macro WSAEREFUSED                      10112
+// No such host is known.
+#macro WSAHOST_NOT_FOUND                11001
+// This is usually a temporary error during hostname resolution and means that the local server did not receive a response from an authoritative server.
+#macro WSATRY_AGAIN                     11002
+// A non-recoverable error occurred during a database lookup.
+#macro WSANO_RECOVERY                   11003
+// The requested name is valid, but no data of the requested type was found.
+#macro WSANO_DATA                       11004
+
+#macro ERROR_PROC_NOT_FOUND 127
+
+// These are said to be deprecated but it's the easiest way to get information
+
+// major = RET & 0xFF, minor = (RET >> 8) & 0xFF, build = RET >> 16
+fn GetVersion() -> u32;
+
+fn GetVersionExA(
+  /* [in, out] LPOSVERSIONINFOA */ lpVersionInformation: OSVERSIONINFOA*
+) -> bool;
+struct OSVERSIONINFOA {
+  dwOSVersionInfoSize: u32 = sizeof OSVERSIONINFOA;
+  dwMajorVersion: u32;
+  dwMinorVersion: u32;
+  dwBuildNumber: u32;
+  dwPlatformId: u32;
+  szCSDVersion: char[128];
+}
+
+// Custom function
+fn DecodeWindowsVersion(major: u32*, minor: u32*, build: u32*) {
+    version := GetVersion()
+    
+    if major {
+        *major = version & 0xFF
+    }
+    if minor {
+        *minor = (version >> 8) & 0xFF
+    }
+    if build {
+        if version < 0x8000_0000u {
+            *build = (version >> 16)
+        } else {
+            *build = 0
+        }
+    }
+}
+
+// ######################
+//     SOUND BINDINGS
+// ######################
+
+#macro SND_SYNC       0x0000     /* play synchronously (default) */
+#macro SND_ASYNC      0x0001     /* play asynchronously */
+#macro SND_NODEFAULT  0x0002     /* silence (!default) if sound not found */
+#macro SND_MEMORY     0x0004     /* pszSound points to a memory file */
+#macro SND_LOOP       0x0008     /* loop the sound until next sndPlaySound */
+#macro SND_NOSTOP     0x0010     /* don't stop any currently playing sound */
+
+#macro SND_NOWAIT     0x00002000 /* don't wait if the driver is busy */
+#macro SND_ALIAS      0x00010000 /* name is a registry alias */
+#macro SND_ALIAS_ID   0x00110000 /* alias is a predefined ID */
+#macro SND_FILENAME   0x00020000 /* name is file name */
+#macro SND_RESOURCE   0x00040004 /* name is resource name or atom */
+// #if(WINVER >= 0x0400)
+// #define SND_PURGE           0x0040  /* purge non-static events for task */
+// #define SND_APPLICATION     0x0080  /* look for application specific association */
+// #endif /* WINVER >= 0x0400 */
+// #macro SND_SENTRY      0x00080000L /* Generate a SoundSentry event with this sound */
+// #macro SND_RING        0x00100000L /* Treat this as a "ring" from a communications app - don't duck me */
+// #macro SND_SYSTEM      0x00200000L /* Treat this as a system sound */
+
+// #macro SND_ALIAS_START 0           /* alias base */
+
+
+#endif // OS_WINDOWS

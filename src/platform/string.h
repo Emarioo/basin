@@ -4,8 +4,8 @@ typedef struct string {
     // YOU CANNOT REARRANGE THESE FIELDS.
     // CODE DEPENDS ON IT BEING THIS BECAUSE OF INITIALIZER
     char* ptr;
-    u64 len;
-    u64 max;
+    u32 len;
+    u32 max;
 } string;
 
 typedef struct cstring {

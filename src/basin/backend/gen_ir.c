@@ -24,7 +24,7 @@ typedef struct {
 void walk(GenIRContext* context, ASTExpression* _expr);
 void generate_function(GenIRContext* context, ASTFunction* func);
 
-Result generate_ir(Driver* driver, AST* ast, IRCollection** out_collection) {
+Result generate_ir(Driver* driver, AST* ast, IRCollection* collection) {
 
     // Find functions and generate them
     // We implement this recursively because it's easier to debug issues
@@ -34,10 +34,17 @@ Result generate_ir(Driver* driver, AST* ast, IRCollection** out_collection) {
     result.message.max = 0;
     result.message.len = 0;
 
+    IRFunction func;
+    // int ok;
+
+    atomic_array_push(&driver->collection->functions, &func);
+    // atomic_array_push(&driver->collection->functions, &ok);
+
+
     GenIRContext context = {0};
     context.driver = driver;
     context.ast = ast;
-    context.builder.collection = *out_collection;
+    context.builder.collection = driver->collection;
 
     int res = setjmp(context.jump_state);
 

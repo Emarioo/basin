@@ -233,7 +233,7 @@ typedef struct {
 
 
 typedef struct {
-    ASTExpression* condition; // NULL for default case
+    Array_ASTExpressionP conditions; // empty for default case
     ASTExpression* body;
 } ASTExpression_Switch_Case;
 
@@ -327,7 +327,7 @@ typedef struct {
     SourceLocation location;
     string name;
     ASTType type_name; // base type, i8,u32...
-    Array_ASTEnum_Field members;
+    Array_ASTEnum_Field fields;
 } ASTEnum;
 
 typedef struct ASTExpression_Block ASTExpression_Block;

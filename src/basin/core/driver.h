@@ -19,6 +19,7 @@
 #include "basin/types.h"
 #include "basin/frontend/lexer.h"
 #include "basin/basin.h"
+#include "basin/backend/ir.h"
 
 #include "platform/array.h"
 #include "platform/bucket_array.h"
@@ -74,6 +75,8 @@ typedef struct Driver {
     volatile u32 idle_threads;
 
     ImportID next_import_id;
+
+    IRCollection* collection;
 
     DriverThread* threads;
     int threads_len;

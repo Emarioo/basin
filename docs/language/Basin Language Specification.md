@@ -104,8 +104,7 @@ The Goal of Basin is:
 - Fast and simple to compile. 1 million lines per second (with multithreading).
 - A straight forward type system.
 - More similar to C than Rust.
-- Meant for software where safety and security is not critical.
-- Execute basin programs
+- Execute basin programs (duh)
 - Compile basin programs (to libraries and object files)
 - Compile and distribute basin programs (executables)
 
@@ -115,7 +114,7 @@ The Goal of Basin is:
 ## Requirements compiler
 A little strange to specify compiler specifics in "Basin Language Specification" but here they are.
 
-- Small codebase, 20K - 40K lines (if you can call that small)
+- Small codebase, 30K - 50K lines (if you can call that small)
 
 
 <!-- 
@@ -125,11 +124,11 @@ A little strange to specify compiler specifics in "Basin Language Specification"
 
 # 2. Programs and Source Code
 
-A Basin program begins from one initial source file. From there files can be imported, libraries to link with can be specified, and compiler options can be set inside the Basin language. This means that codebases using Basin alone will usually not use a separate build system such as Make, CMake, or Premake.
+A Basin program begins from one initial source file. From there files can be imported, libraries to link with can be specified, and compiler options can be set inside the Basin language. This means that codebases using Basin alone will usually not use a separate build system such as Make, CMake, Premake, bash or python scripts.
 
 The conventional file extension for basin source files is `.bsn`.
 
-A basin program can be executed directly but can also produce executables to run and distribute. The entry point for programs will be the top-level expression in the initial source file. If a function is marked with `@entrypoint` then that function (such as `main`) will be the entry point. This allows you to have the entry point in a different file than the initial source file. It also means you have access to `argc` and `argv` you would get from `main` in a C program.
+A basin program can be executed directly but can also produce executables to run and distribute. A program with code at the top level will be executed at compile time The entry point for programs will be the top-level expression in the initial source file. If a function is marked with `@entrypoint` then that function will be the entry point. This allows you to have the entry point in a different file than the initial source file. It also means you have access to `argc` and `argv` you would get from `main` in a C program.
 
 A program can also be compiled as an object file or library in which case global variables and functions can be exported and visible to programs using the library. Functions not exported will not have symbols. Exported and external functions will automatically use the operating system's calling convention rather than Basin's.
 

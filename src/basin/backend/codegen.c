@@ -104,7 +104,7 @@ LABEL_invalid:
 
 const char* platform_string(const PlatformOptions* options) {
     static char buffer[128];
-    snprintf(buffer, sizeof(buffer), "cpu: %s, host: %&s", cpu_kind_string(options->cpu_kind), host_kind_string(options->host_kind));
+    snprintf(buffer, sizeof(buffer), "cpu: %s, host: %s", cpu_kind_string(options->cpu_kind), host_kind_string(options->host_kind));
 }
 
 const char* cpu_kind_string(CPUKind kind) {

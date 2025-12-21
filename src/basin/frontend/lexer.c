@@ -6,8 +6,6 @@
 #include "platform/file.h"
 #include "platform/array.h"
 
-DEF_ARRAY(int)
-
 Result tokenize(const Import* import, TokenStream** out_stream) {
     ASSERT(out_stream);
 
@@ -31,6 +29,8 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
     stream->data_len = 0;
     stream->data_max = text.len / 2 + 100;
     stream->data = heap_alloc(stream->data_max);
+
+    array_init(&stream->line_positions, import->text.len / 40);
 
     // TODO: Optimize by reusing the int array per thread
     Array_int curly_depth;
@@ -77,11 +77,14 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
     bool had_newline = false;
     bool had_space   = false;
     bool added_normal_token = false;
+    int line = 1;
+    int head = 0;
+
+    array_push(&stream->line_positions, &head);
 
     #define UPDATE_POST_NEWLINE() (stream->tokens_len ? stream->tokens[stream->tokens_len-(added_normal_token ? 1 : TOKEN_PER_EXT_TOKEN)].flags |= TF_POST_NEWLINE : 0 )
     #define UPDATE_POST_SPACE() (stream->tokens_len ? stream->tokens[stream->tokens_len-(added_normal_token ? 1 : TOKEN_PER_EXT_TOKEN)].flags |= TF_POST_SPACE : 0 )
 
-    int head = 0;
     while(head < import->text.len) {
         int cur_head = head;
         char c = text.ptr[head];
@@ -128,6 +131,10 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
                     fstring_level--;
                     break;
                 }
+                if(chr == '\n') {
+                    array_push(&stream->line_positions, &head);
+                    line++;
+                }
             }
             int word_end = head - 1;
             int word_count = word_end - word_start;
@@ -164,6 +171,8 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
         if (c == '\n') {
             had_newline = true;
             UPDATE_POST_NEWLINE();
+            array_push(&stream->line_positions, &head);
+            line++;
             continue;
         } else if (c == ' ' || c == '\t' || c == '\r' || c == '\f') {
             had_space = true;
@@ -180,6 +189,8 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
                 if(chr == '\n') {
                     had_newline = true;
                     UPDATE_POST_NEWLINE();
+                    array_push(&stream->line_positions, &head);
+                    line++;
                     break;
                 }
             }
@@ -197,6 +208,8 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
                 if(chr == '\n') {
                     had_newline = true;
                     UPDATE_POST_NEWLINE();
+                    array_push(&stream->line_positions, &head);
+                    line++;
                 }
                 if(chr == '/' && chr2 == '*') {
                     head++;
@@ -311,6 +324,10 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
                 head++;
                 if(chr == '"') {
                     break;
+                }
+                if (chr == '\n') {
+                    array_push(&stream->line_positions, &head);
+                    line++;
                 }
             }
             int word_end = head - 1;
@@ -454,6 +471,31 @@ void print_token_stream(TokenStream* stream) {
     }
 }
 
+static int pos_to_line_index(TokenStream* stream, int position) {
+    int* data = stream->line_positions.ptr;
+    int  len  = stream->line_positions.len;
+    int  high = len-1;
+    int  low  = 0;
+
+    while (true) {
+        int mid = (high+low)/2;
+        int val = data[mid];
+        if (position < val) {
+            high = mid-1;
+            if (val >= data[mid-1]) {
+                return mid-1;
+            }
+        } else if(position > val) {
+            low = mid+1;
+            if (val < data[mid+1]) {
+                return mid;
+            }
+        } else if (high == low || position == val) {
+            return mid;
+        }
+    }
+}
+
 bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_line, int* out_column, string* out_code) {
     if(out_line) {
         *out_line = 0;
@@ -478,25 +520,20 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
         return false;
     }
 
-    int head_at_line_start = 0;
-    int line = 1;
-    int column = 1;
     int nr_tabs = 0;
-    int head = 0;
+    int line_index = pos_to_line_index(stream, location.position);
+    int line = line_index + 1;
+    int column = 1;
+    int head_at_line_start = stream->line_positions.ptr[line_index];
+    int head = head_at_line_start;
+
     while(head < text.len) {
         char chr = text.ptr[head];
         head++;
 
         if(chr == '\n') {
-            if(head > location.position) {
-                head--;
-                break;
-            }
-            head_at_line_start = head;
-            line++;
-            column=1;
-            nr_tabs=0;
-            continue;
+            head--;
+            break;
         }
         if(head <= location.position) {
             column+=1;
@@ -540,7 +577,6 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
         arrow_code[arrow_head+1] = '\n';
     }
 
-    heap_free(text.ptr);
     return true;
 }
 
@@ -580,6 +616,9 @@ char* token_name_table[NORMAL_TOKEN_END] = {
     "enum",
     "global",
     "import",
+    "library",
+    "as",
+    "from",
     "const",
     "var",
     "for",
@@ -589,7 +628,6 @@ char* token_name_table[NORMAL_TOKEN_END] = {
     "switch",
     "case",
     "default",
-    "as",
     "in",
     "return",
     "yield",

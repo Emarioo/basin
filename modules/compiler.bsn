@@ -1,157 +1,72 @@
 /*
     Functions to interact with the compiler.
+
+    Read examples/prototype/libs.bsn for info?
+
+    NOTE: <basin_root> refers to the basin root directory.
+       Either the clone repo or an installation from releases.
 */
 
-/* 
-    Some context about how we deal with libraries, includes, c header, directories.
-    
-    The compiler is distributed with these folders (their parent is called <basin_root>)
-        bin      - basin executable
-        lib      - basin static and dynamic library
-        include  - basin C API headers
-        modules  - basin Standard Library
-        libs     - vendor libraries
+// library can be found in <basin_root>/lib/basin.lib
+library "basin" as basinlib
 
-    When compiling we have these defaults:
-        import_directories = [ "<basin_root>/modules", "<basin_root>/include" ]
-        library_directories = [ "<basin_root>/lib" ]
-        import_files = [ "<basin_root>/modules/preload.bsn" ]
+// header can be found in <basin_root>/include/basin/basin.h
+@share import "basin/basin.h"
 
-        Note that the compiler searches the list in reverse meaning paths added last have the highest priority. (this way we don't have to insert element at index 0 and shift all elements)
+// # {
+//     ws  := current_workspace()
+//     ast := get_ast(ws, __FILE__)
 
-    @TODO Decide what to do with import_files. With preload.bsn we can add some comp time expressions (add import/library directories, define environment variable BASIN_ROOT).
-        Should the initial source file implicitly import the import_files or no?
+//     basin_enum := get_enum(ast, "BasinTargetOS")
+//     new_enum   := clone_enum(basin_enum)
 
-    In the language: import "array"  will look for files in import_directories (extension can be skipped, .bsn is assumed).
-       with: import "./array" it will look in the current file's directory. (.. and ./libs/../../array.bsn is allowed), file extension can be skipped .bsn is assumed.
-       We never look at current working directory (except for the initial source file you pass to the compiler)
+//     memmove(new_enum.name.ptr, new_enum.name.ptr+5, new_enum.name.len+1)
+//     new_enum.name.len -= 5
 
-    For libraries: library "basin" as basinlib will look for libraries in library_directories.
-    It will look for .lib or .dll (on linux libX.a libX.so or X.a X.so) and pick static or dynamic based on
-    type of compilation. If executable then static lib is chosen. At compile time dynamic library is chosen (to load and get function pointers from, then when you compile to executable static library is chosen).
-    You can specify .dll if you want to link executable with dynamic library.
+//     shrink_count := "BASIN_TARGET_OS_".len
+//     for 0..new_enum.fields.len {
+//         name := &new_enum.fields[nr].name
+//         memmove(name.ptr, name.ptr+shrink_count, name.len+1)
+//         name.len -= shrink_count
+//     }
 
-    Another thing we have to handle is versions in the .so name on Linux. We'll see what we can do about that.
+//     append_enum(ast.global_block, new_enum)
 
-    Then same as import you can: library "./basin" it will look for libray in current directory. Same file extension logic as above applies here.
+//     /*
+//     enum BasinTargetOS {
+//         none,
+//         host,
+//         windows,
+//         linux,
+//         COUNT,
+//     }
+//     */
+// }
 
-    The file extension for libraries is versatile and the compiler is somewhat smart. You can specify .so in the code but the compiler will look for .dll files instead on Windows.
-
-    When importing C headers the file extension cannot be skipped. When importing C you need:
-        library "basin" as basinlib
-        import "basin.h" from basinlib
-
-        compiler won't know where the functions come from otherwise. If you manually link with library when making executable then it's fine but
-        at compile we need to know where to find the dynamic library so we can ask it for function pointers.
-    
-    I thought about generated C headers by basin will have the comment // library_name: "basin"
-    This means "from" isn't needed after import. However this is an edge case and not obvious to the reader
-    where library comes from so "from" is way better since it also solves the library missing issue from third-party libraries.
-
-    Some thoughts before i go to bed and forget. There is one concern which is library paths:
-    
-    We can do library "../../libs/glfw/lib/glfw.lib"          but we don't want to hardcode the path, especially not if this is for GLFW.bsn bindings in the standard library (i am doing this with BetterThanBatch and it's awful)
-    
-    We can do library "<basin_root>/libs/glfw/lib/glfw.lib"   but <basin_root> is special syntax which i'd like to avoid.
-    
-    We can do library "$BASIN_ROOT/libs/glfw/lib/glfw.lib"    a little better since you can pick and choose but we rely on environment variables being set which might not be the case. ENV.VARs can be very annoying.
-    
-              library "glfw.lib"                              We rely on library_directories to find this which is generally fine for users that add their own libraries. For our basin standard library with vendor libraries this
-                                                              won't work out of the box because our libraries are located in <basin_root>/libs/glfw/lib/glfw3.lib (header in <basin_root>/libs/glfw/include/glfw3.h).
-                                                              Do we want the compiler to add "<basin_root>/libs/glfw/lib", "<basin_root>/libs/glew/lib", "<basin_root>/libs/stb_image/lib" because i'm not sure?
-
-    I guess we can do
-        // <basin_root>/modules/preload.bsn
-        # {
-            #import "basin"
-            #import "file"
-
-            basin_root := parent_dir(parent_dir(__FILE__))
-            ws := current_workspace()
-            ws.add_library_dir(f"{basin_root}/libs/glfw/lib")
-            ws.add_library_dir(f"{basin_root}/libs/glew/lib")
-            ws.add_library_dir(f"{basin_root}/libs/stb_image/lib")
-        }
-
-    @TODO We want a log feature that prints out all the import directories, library directories, and libraries and .bsn and .h files we resolve and compile.
-       Quite interesting to know what the path resolver finds and uses. For example you might be confused as to why library "glfw" just works since you didn't specify a path.
-
-    With: library "basin.lib" as basinlib
-
-    Note that in import and library "libs/basin/lib/basin" is not allowed. The string must begin with a . for relative path or contain no slashes for a filename that can be found in import/library directories.
-
-    Note that import and library directories must be absolute.
-
-    Foundational thought:
-        If we want metaprogramming compile time functionality then use the BASIN C API LIBRARY and call their functions
-        to interract and access AST and what not.
-        We don't provide a special compile time function suite to interract with compiler.
-
-        Our compile time stuff is for calculating data and put into global variables
-        or pre compute expressions and other data. comp time is not for creating macros or modifying AST.
-        That's where metaprogramming through C API comes in. You must create a workspace and attach callbacks and intercept on wanted tasks to modify them.
-        This requires extensive knowledge of the compiler and behaviuour, you could very much shoot yourself in the foot.
-
-        Altough maybe we allow adding library paths at compile time?
-            // main.bsn
-            # {
-                import "basin"
-                import "file"
-
-                ws := current_workspace()
-                ws.add_library_dir("../libs/json/lib") // let's say main.bsn exists in root/src/main.bsn, our libraries are in root/libs
-                // all functions from basin are thread safe.
-            }
-
-        The problem above is that the comp time may call json_parse from library "json.lib".
-        So what if we call json_parse before adding the library dir? It won't be found. We can provide a nice error for this of course. "ERROR: Could not call 'json_parse' from 'json.lib' since library couldn't be found."
-        That mistake is unlikely but what if we have two comp time expressions where the one calling json_parse executes before we added the library?
-        Also the same error but now with multiple threads running this may be inconsistent.
-        First of all we should run comp time expressions in deterministcally.
-        In one file the comp time expressions run in the order they appear.
-        In multiple files we sort files alphabetically. Otherwise we could look at import order but multiple tasks may add imports undeterministcally.
-        We can implement it so the imports are listed in the imported order but tokenized, parsed, type checked in any order.
-        HOWEVER, this doesn't solve the problem. So we add priorities to the comp time expressions then?
-
-        Something like this where default prio is 0. higher number will run before lower numbers. expressions with same numbers can be assumed to run in any order.
-            @prio(1) # { }
-
-        Prio could be a bad idea (too tired to come up with any at the moment). but it's not supposed to be used often. It's there for cases
-        where you really need to ensure order on your comp time expressions.
-
-        Global variables are comp time expressions with prio 1. They run before comp time expressions.
-        The reasoning behind this is: global variables should not depend on compile time expressions.
-        Compile time expressions is meant for extra auxilary computation near the end of the compilation.
-
-            If you need prio on global variables do: global hello: i32 = @prio(0) # { ... }
-
-        Slightly annoying that we can't provide identifiers or numbers to annotations and so @prio must take an integer.
-        Somehow developers need to synchronize when using numbers but it should be okay since comp time isn't something everyone will use.
-        Also rare that you need to use the @prio feature.
-*/
-
-// what about linux, it uses libbasin.a...
-library "basin.lib" as basinlib
-
-struct Workspace { }
-
-// General meaning, the annotation applies to all items in the body including functions and variables. structs don't allow @import so they won't work.
-@import(basinlib, link_name="basin_*") {
-    fn create_workspace() -> Workspace^
-    fn basin_compile_workspace(Workspace^)
+fn arch() -> BasinTargetArch {
+    return # {
+        ws := current_workspace()
+        yield ws.options.target_arch
+    }
 }
 
-// applies to single function
-@import(basinlib, link_name="basin_*")
-fn create_workspace() -> Workspace^
+fn arch_string() -> string {
+    return # {
+        ws := current_workspace()
+        yield basin_target_arch_string(ws.options.target_arch)
+    }
+}
 
-// You can also include C header but we can't specify which library the functions
-// come from. Compiler won't know which dynamic library to find the functions in at compile time.
+fn os() -> BasinTargetOS {
+    return # {
+        ws := current_workspace()
+        yield ws.options.target_os
+    }
+}
 
-import "basin.h" from basinlib as basin
-
-
-ws := create_workspace()
-ws.source_file = "main.bsn"
-ws.output_file = "main.exe"
-basin.compile_workspace(ws)
+fn os_string() -> string {
+    return # {
+        ws := current_workspace()
+        yield basin_target_os_string(ws.options.target_os)
+    }
+}
