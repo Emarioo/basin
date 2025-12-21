@@ -12,8 +12,8 @@
 
 Driver* driver_create() {
     Driver* driver = HEAP_ALLOC_OBJECT(Driver);
-    barray_init_Task(&driver->tasks, 100, 50);
-    barray_init_Import(&driver->imports, 100, 50);
+    barray_init(&driver->tasks, 100, 50);
+    barray_init(&driver->imports, 100, 50);
 
     create_mutex(&driver->import_mutex);
     create_mutex(&driver->task_mutex);
@@ -25,7 +25,7 @@ Driver* driver_create() {
 void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number) {
     lock_mutex(&driver->task_mutex);
     
-    barray_push_Task(&driver->tasks, task);
+    barray_push(&driver->tasks, task);
 
     // we try to signal in case threads are waiting
     // if there already is a thread getting semaphore then that's fine.
@@ -103,7 +103,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         lock_mutex(&driver->task_mutex);
         int prev_idling_threads = atomic_add(&driver->idle_threads, -1);
 
-        if(barray_count_Task(&driver->tasks) == 0) {
+        if(barray_count(&driver->tasks) == 0) {
             // TODO: If we read idle_threads here,
             if (prev_idling_threads == driver->threads_len) {
                 atomic_add(&driver->idle_threads, 1);
@@ -123,8 +123,8 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         //   compile time exec after function declaration checking
 
         Task task;
-        barray_pop_Task(&driver->tasks, &task);
-        int tasks_left = barray_count_Task(&driver->tasks);
+        barray_pop(&driver->tasks, &task);
+        int tasks_left = barray_count(&driver->tasks);
 
         unlock_mutex(&driver->task_mutex);
 
@@ -212,7 +212,7 @@ Import* driver_create_import_id(Driver* driver, cstring path) {
 
     lock_mutex(&driver->import_mutex);
 
-    Import* ptr = barray_push_Import(&driver->imports, &import);
+    Import* ptr = barray_push(&driver->imports, &import);
 
     unlock_mutex(&driver->import_mutex);
 

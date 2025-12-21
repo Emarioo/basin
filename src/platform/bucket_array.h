@@ -12,55 +12,51 @@
 #include "platform/memory.h"
 
 
-#define DEF_BUCKET_ARRAY(T)                                                                                 \
-typedef struct {                                                                                            \
-    BucketArray _internal;                                                                                  \
-} BucketArray_##T;                                                                                          \
-static inline void barray_init_##T(BucketArray_##T* array, int items_per_bucket, int initial_max_buckets)   \
-    { barray_init((BucketArray*)array, sizeof(T), items_per_bucket, initial_max_buckets); }                 \
-static inline void barray_cleanup_##T(BucketArray_##T* array)                                               \
-    { barray_cleanup((BucketArray*)array, sizeof(T)); }                                                     \
-static inline T* barray_push_##T(BucketArray_##T* array, void* element)                                     \
-    { return barray_push((BucketArray*)array, sizeof(T), element); }                                        \
-static inline void barray_pop_##T(BucketArray_##T* array, void* out_element)                                \
-    { barray_pop((BucketArray*)array, sizeof(T), out_element); }                                            \
-static inline T* barray_get_##T(BucketArray_##T* array, int index)                                          \
-    { return barray_get((BucketArray*)array, sizeof(T), index); }                                           \
-static inline int barray_count_##T(BucketArray_##T* array)                                                  \
-    { barray_count((BucketArray*)array, sizeof(T)); }
+#define DEF_BUCKET_ARRAY(T)    \
+typedef struct {               \
+    T* elements;               \
+} Bucket_##T;                  \
+typedef struct {               \
+    Bucket_##T* buckets;       \
+    int buckets_cap;           \
+    int element_count;         \
+    int items_per_bucket;      \
+} BucketArray_##T;
 
 typedef struct {
     void* elements;
-    // bucket array knows the capacity of the buckets
 } Bucket;
-
 typedef struct {
     Bucket* buckets;
-    int buckets_len;
-    int buckets_max;
-
+    int buckets_cap;
     int element_count;
     int items_per_bucket;
 } BucketArray;
 
-void barray_init(BucketArray* array, int element_size, int items_per_bucket, int initial_max_buckets);
-void barray_cleanup(BucketArray* array, int element_size);
+#define barray_init(ARR, INITIAL_CAP, ITEMS_PER_BUCKET) _barray_init((BucketArray*)(ARR), sizeof((ARR)->buckets[0].elements[0]), (INITIAL_CAP), (ITEMS_PER_BUCKET))
+#define barray_cleanup(ARR) _barray_cleanup((BucketArray*)(ARR), sizeof((ARR)->buckets[0].elements[0]))
+#define barray_push(ARR, ELEMENTP) _barray_push((BucketArray*)(ARR), sizeof((ARR)->buckets[0].elements[0]), (false && ((ARR)->buckets[0].elements[0] = *(ELEMENTP), false), (ELEMENTP)))
+#define barray_pop(ARR, ELEMENTP) _barray_pop((BucketArray*)(ARR), sizeof((ARR)->buckets[0].elements[0]), (false && ((ARR)->buckets[0].elements[0] = *(ELEMENTP), false), (ELEMENTP)))
+#define barray_get(ARR, INDEX) _barray_get((BucketArray*)(ARR), sizeof((ARR)->buckets[0].elements[0]), (INDEX))
+#define barray_count(ARR) ((ARR)->element_count)
 
-void* barray_push(BucketArray* array, int element_size, void* element);
-void barray_pop(BucketArray* array, int element_size, void* out_element);
-void* barray_get(BucketArray* array, int element_size, int index);
-int barray_count(BucketArray* array, int element_size);
+void _barray_init(BucketArray* array, int element_size, int initial_cap, int items_per_bucket);
+void _barray_cleanup(BucketArray* array, int element_size);
+
+void* _barray_push(BucketArray* array, int element_size, void* element);
+void _barray_pop(BucketArray* array, int element_size, void* out_element);
+void* _barray_get(BucketArray* array, int element_size, int index);
 
 #ifdef IMPL_PLATFORM
 
-void barray_init(BucketArray* array, int element_size, int items_per_bucket, int initial_max_buckets) {
-    array->buckets = (Bucket*)heap_alloc(initial_max_buckets * sizeof(Bucket));
-    array->buckets_len = 0;
-    array->buckets_max = initial_max_buckets;
+void _barray_init(BucketArray* array, int element_size, int initial_cap, int items_per_bucket) {
+    array->buckets = (Bucket*)heap_alloc(initial_cap * sizeof(Bucket));
+    // array->buckets_len = 0;
+    array->buckets_cap = (initial_cap + items_per_bucket-1) / items_per_bucket;
 
     // memset(array->buckets, 0, initial_max_buckets * sizeof(Bucket));
     
-    for (int i=0; i < array->buckets_max; i++) {
+    for (int i=0; i < array->buckets_cap; i++) {
         Bucket* bucket = &array->buckets[i];
         bucket->elements = heap_alloc(items_per_bucket * element_size);
         memset(bucket->elements, 0, items_per_bucket * element_size);
@@ -69,37 +65,37 @@ void barray_init(BucketArray* array, int element_size, int items_per_bucket, int
     array->element_count = 0;
     array->items_per_bucket = items_per_bucket;
 }
-void barray_cleanup(BucketArray* array, int element_size) {
-    for(int i=0;i<array->buckets_len;i++) {
+void _barray_cleanup(BucketArray* array, int element_size) {
+    for(int i=0;i<array->buckets_cap;i++) {
         Bucket* bucket = &array->buckets[i];
         heap_free(bucket->elements);
     }
     heap_free(array->buckets);
 
     array->buckets = NULL;
-    array->buckets_len = 0;
-    array->buckets_max = 0;
+    // array->buckets_len = 0;
+    array->buckets_cap = 0;
     array->element_count = 0;
     // keep items_per_bucket
 }
 
-void* barray_push(BucketArray* array, int element_size, void* element) {
-    int element_max = array->items_per_bucket * array->buckets_max;
+void* _barray_push(BucketArray* array, int element_size, void* element) {
+    int element_cap = array->items_per_bucket * array->buckets_cap;
 
-    if(array->element_count >= element_max) {
-        int new_max = array->buckets_max * 2 + 2;
-        Bucket* new_buckets = (Bucket*)heap_realloc(array->buckets, new_max * sizeof(Bucket));
+    if(array->element_count >= element_cap) {
+        int new_bucket_cap = array->buckets_cap * 2 + 2;
+        Bucket* new_buckets = (Bucket*)heap_realloc(array->buckets, new_bucket_cap * sizeof(Bucket));
        
         // memset(new_buckets + array->buckets_max, 0, (new_max - array->buckets_max) * sizeof(Bucket));
 
-        for (int i = array->buckets_max; i < new_max; i++) {
+        for (int i = array->buckets_cap; i < new_bucket_cap; i++) {
             Bucket* bucket = &array->buckets[i];
             bucket->elements = heap_alloc(array->items_per_bucket * element_size);
             memset(bucket->elements, 0, array->items_per_bucket * element_size);
         }
 
         array->buckets = new_buckets;
-        array->buckets_max = new_max;
+        array->buckets_cap = new_bucket_cap;
     }
     
     int bucket_index = array->element_count / array->items_per_bucket;
@@ -113,7 +109,7 @@ void* barray_push(BucketArray* array, int element_size, void* element) {
     return ptr;
 }
 
-void barray_pop(BucketArray* array, int element_size, void* out_element) {
+void _barray_pop(BucketArray* array, int element_size, void* out_element) {
     array->element_count--;
     if(out_element) {
         int index = array->element_count;
@@ -124,7 +120,7 @@ void barray_pop(BucketArray* array, int element_size, void* out_element) {
     }
 }
 
-void* barray_get(BucketArray* array, int element_size, int index) {
+void* _barray_get(BucketArray* array, int element_size, int index) {
     ASSERT(index < array->element_count);
 
     int bucket_index = index / array->items_per_bucket;
@@ -133,9 +129,6 @@ void* barray_get(BucketArray* array, int element_size, int index) {
     return (char*)array->buckets[bucket_index].elements + element_index * element_size;
 }
 
-int barray_count(BucketArray* array, int element_size) {
-    return array->element_count;
-}
 
 
 #endif // IMPL_PLATFORM

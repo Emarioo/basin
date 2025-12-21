@@ -723,7 +723,7 @@ ASTExpression* parse_expression(ParserContext* context) {
 
                         SourceLocation loc = location_from_token(tok0);
                         int column = 0;
-                        bool res = compute_source_info(context->stream, loc, &column, NULL, NULL);
+                        bool res = compute_source_info(context->stream, loc, NULL, &column, NULL);
                         ASSERT(res);
 
                         char buffer[13];

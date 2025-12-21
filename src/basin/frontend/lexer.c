@@ -482,12 +482,12 @@ static int pos_to_line_index(TokenStream* stream, int position) {
         int val = data[mid];
         if (position < val) {
             high = mid-1;
-            if (val >= data[mid-1]) {
+            if (position >= data[mid-1]) {
                 return mid-1;
             }
         } else if(position > val) {
             low = mid+1;
-            if (val < data[mid+1]) {
+            if (position < data[mid+1]) {
                 return mid;
             }
         } else if (high == low || position == val) {

@@ -12,8 +12,9 @@
 
 // platform_ws := create_workspace()
 // platform_ws.compile()
-
-print(__LINE__, __FUNC__, __FILE__)
+fn fun() {
+    print(__LINE__,  __COLUMN__, __FUNC__, __FILE__)
+}
 
 // switch x.y + 23 {
 //     case 23 + 5
