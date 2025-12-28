@@ -67,6 +67,50 @@ BasinResult basin_compile_text(const char* text, u64 size, const char* path, con
     Driver* driver = driver_create();
     driver->options = options;
 
+    // @TODO Move this code to basin_workspace_init(options) or something?
+    for (int i=0;i<options->import_dirs_len;i++) {
+        string s = string_clone_cptr(options->import_dirs[i]);
+        array_push(&driver->import_dirs, &s);
+    }
+
+    string exe_path = get_exe_path();
+    if (!options->skip_default_import_dirs) {
+        int closest_slash_pos = string_rfind(exe_path.ptr, exe_path.len-1, "/");
+        ASSERT(closest_slash_pos != -1); // @NOCHECKIN Give good error message
+        // basin_root/bin/basin
+        //               ^
+        // basin_root/basin
+        //           ^
+        int root_slash_pos = string_rfind(exe_path.ptr, closest_slash_pos-1, "/");
+        ASSERT(root_slash_pos != -1); // @NOCHECKIN Give good error message
+
+        cstring view = {};
+        view.ptr = exe_path.ptr + root_slash_pos;
+        view.len = 1 + closest_slash_pos - root_slash_pos;
+        bool has_bin = string_equal_cstr(view, "/bin/");
+        const char* import_folder = "import";
+        int import_len = strlen(import_folder);
+        if (has_bin) {
+            string s = string_create(root_slash_pos+1 + import_len);
+            memcpy(s.ptr, exe_path.ptr, root_slash_pos+1);
+            memcpy(s.ptr + root_slash_pos+1, import_folder, import_len);
+            s.len = root_slash_pos+1 + import_len;
+            s.ptr[s.len] = '\0';
+            array_push(&driver->import_dirs, &s);
+        } else {
+            string s = string_create(closest_slash_pos+1 + import_len);
+            memcpy(s.ptr, exe_path.ptr, closest_slash_pos+1);
+            memcpy(s.ptr + closest_slash_pos+1, import_folder, import_len);
+            s.len = closest_slash_pos+1 + import_len;
+            s.ptr[s.len] = '\0';
+            array_push(&driver->import_dirs, &s);
+        }
+    }
+    if (!options->skip_default_import_dirs) {
+        
+    }
+    string_cleanup(&exe_path);
+
     cstring c_path;
     if (path)
         c_path = cstr_cptr(path);
@@ -74,9 +118,9 @@ BasinResult basin_compile_text(const char* text, u64 size, const char* path, con
         c_path = cstr_cptr("<unknown>");
 
     Task task = {};
-    task.kind = TASK_TOKENIZE;
-    task.tokenize.import = driver_create_import_id(driver, c_path);
-    task.tokenize.import->text = string_clone(text, size);
+    task.kind = TASK_LEX_AND_PARSE;
+    task.lex_and_parse.import = driver_create_import_id(driver, c_path);
+    task.lex_and_parse.import->text = string_clone(text, size);
 
     driver_add_task(driver, &task);
 
@@ -283,6 +327,21 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
             argi++;
         } else if(!strncmp(arg, "-O", 2)) {
             options->optimize_flags = BASIN_OPTIMIZE_FLAG_all;
+        } else if(!strcmp(arg, "-I")) {
+            if (argi >= argc) {
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing import directory after '%s'\n", arg);
+                return result;
+            }
+            // realloc();
+            // options->import_directories = ;
+            // options->import_directories_len++;
+            argi++;
+        } else if(!strcmp(arg, "-L")) {
+              if (argi >= argc) {
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing library directory '%s'\n", arg);
+                return result;
+            }
+            argi++;
         } else if(!strcmp(arg, "-g")) {
             options->disable_debug = false;
         // } else if(!strncmp(arg, "-I", 2)) {

@@ -1,0 +1,57 @@
+/*
+    Work in progress.
+
+    Do we support adding library directories at compile time? maybe?
+
+    Do we support prio on compile time expressions? maybe? Could also be a bad idea.
+
+    Do we implement annotations (export,external,prio) here?
+    It's faster to implement in compiler right?
+    I guess this lets you overload them though...
+
+    Is preload.bsn imported by all files by default?
+    (because of BasinCompileOptions.import_files = ["<basin_root>/import/preload.bsn"])
+*/
+
+#import "basin"
+
+
+@prio(999999) # {
+    basin_root := parent_dir(parent_dir(__FILE__))
+    ws := current_workspace()
+    ws.add_library_dir(f"{basin_root}/libs/glfw/lib")
+    ws.add_library_dir(f"{basin_root}/libs/glew/lib")
+    ws.add_library_dir(f"{basin_root}/libs/stb_image/lib")
+}
+
+// ######################
+//      ANNOTATIONS
+// ######################
+
+fn prio(ast: AST*, content: string, node: ASTExpression*) {
+    ASSERT(node.flags & basin.IS_COMPTIME)
+    // @TODO Implement custom parse int function here
+    //   We want to import as few files as possible since
+    //   preload.bsn always imports them.
+    // @TODO How is comptime and prio implemented. Is
+    //   it available in the AST even?
+    node.comptime_prio = parse_int(content)
+}
+
+fn export(ast: AST*, content: string, node: ASTExpression_Block*) {
+    for 0..node.functions.len {
+        export(ast, content, node.functions.ptr[nr])
+    }
+}
+fn export(ast: AST*, content: string, node: ASTFunction*) {
+    // @TODO mark function as export in compiler.
+}
+
+fn external(ast: AST*, content: string, node: ASTExpression_Block*) {
+    for 0..node.functions.len {
+        external(ast, content, node.functions.ptr[nr])
+    }
+}
+fn external(ast: AST*, content: string, node: ASTFunction*) {
+    // @TODO mark function external in compiler
+}

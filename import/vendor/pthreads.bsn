@@ -1,0 +1,41 @@
+
+
+library "libpthread.so.0" as pthreads
+
+struct pthread_t {
+    data: u64
+}
+
+@import(pthreads) {
+    fn pthread_create(thread: pthread_t*,
+        attr: pthread_attr_t*,
+        start_routine: fn @oscall (void*)->void*,
+        arg: void*) -> i32;
+    fn pthread_join(thread: pthread_t, retval: void**) -> i32;
+    fn pthread_exit(retval: void*);
+    fn pthread_self() -> pthread_t;
+
+    fn pthread_mutex_destroy(mutex: pthread_mutex_t*) -> i32;
+    fn pthread_mutex_init(mutex: pthread_mutex_t*, attr: pthread_mutexattr_t*) -> i32;
+    fn pthread_mutex_trylock(mutex: pthread_mutex_t*) -> i32
+    fn pthread_mutex_lock(mutex: pthread_mutex_t*) -> i32
+    fn pthread_mutex_unlock(mutex: pthread_mutex_t*) -> i32
+}
+/*###############
+    STRUCTS
+##############*/
+
+// changes based on arch, arch is x86_64
+const __SIZEOF_PTHREAD_ATTR_T       = 56
+const __SIZEOF_PTHREAD_MUTEX_T      = 40
+const __SIZEOF_PTHREAD_MUTEXATTR_T  = 4
+
+struct pthread_attr_t {
+    _raw: u8[__SIZEOF_PTHREAD_ATTR_T]
+}
+struct pthread_mutex_t {
+    _raw: u8[__SIZEOF_PTHREAD_MUTEX_T]
+}
+struct pthread_mutexattr_t {
+    _raw: u8[__SIZEOF_PTHREAD_MUTEXATTR_T]
+}

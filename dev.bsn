@@ -1,19 +1,14 @@
 
-// x~ && 1 + 2 * 4
+library "libc.so" as libc
 
-// my.field& & mask && active | oh~
+@external(libc) fn write(fd: i32, buf: void*, count: uword) -> uword
 
-// import "./util.bsn"
+const STDOUT_FILENO = 1
 
-// import "compiler"
-
-// game_ws := create_workspace()
-// game_ws.compile()
-
-// platform_ws := create_workspace()
-// platform_ws.compile()
-fn fun() {
-    print(__LINE__,  __COLUMN__, __FUNC__, __FILE__)
+fn main() -> i32 {
+    text : char[] = "hello\n"
+    write(STDOUT_FILENO, text.ptr, text.len)
+    return res
 }
 
 // switch x.y + 23 {

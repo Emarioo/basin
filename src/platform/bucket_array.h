@@ -50,6 +50,7 @@ void* _barray_get(BucketArray* array, int element_size, int index);
 #ifdef IMPL_PLATFORM
 
 void _barray_init(BucketArray* array, int element_size, int initial_cap, int items_per_bucket) {
+    memset(array, 0, sizeof(*array));
     array->buckets = (Bucket*)heap_alloc(initial_cap * sizeof(Bucket));
     // array->buckets_len = 0;
     array->buckets_cap = (initial_cap + items_per_bucket-1) / items_per_bucket;

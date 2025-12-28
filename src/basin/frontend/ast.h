@@ -188,7 +188,10 @@ typedef struct AST {
     ASTExpression* global_block;
 } AST;
 
-
+typedef struct ASTAnnotation {
+    string name;
+    string content;
+} ASTAnnotation;
 
 
 typedef ASTExpression* ASTExpressionP;
@@ -319,15 +322,15 @@ typedef struct {
     SourceLocation location;
     string name;
     ASTExpression* default_value;
-} ASTEnum_Field;
+} ASTEnum_Member;
 
-DEF_ARRAY(ASTEnum_Field);
+DEF_ARRAY(ASTEnum_Member);
 
 typedef struct {
     SourceLocation location;
     string name;
     ASTType type_name; // base type, i8,u32...
-    Array_ASTEnum_Field fields;
+    Array_ASTEnum_Member members;
 } ASTEnum;
 
 typedef struct ASTExpression_Block ASTExpression_Block;
@@ -341,13 +344,21 @@ typedef struct {
     ASTExpression_Block* block;
 } ASTImport;
 
+
+typedef struct {
+    SourceLocation location;
+    string name;         // as name
+    string library_name;
+} ASTLibrary;
+
 typedef ASTFunction* ASTFunctionP;
 typedef ASTStruct*   ASTStructP;
 typedef ASTEnum*     ASTEnumP;
 typedef ASTVariable* ASTVariableP;
 typedef ASTConstant* ASTConstantP;
 typedef ASTGlobal*   ASTGlobalP;
-typedef ASTImport*   ASTImportP;
+// typedef ASTImport*   ASTImportP;
+// typedef ASTLibrary*  ASTLibraryP;
 
 DEF_ARRAY(ASTFunctionP)
 DEF_ARRAY(ASTStructP)
@@ -356,6 +367,7 @@ DEF_ARRAY(ASTVariableP)
 DEF_ARRAY(ASTConstantP)
 DEF_ARRAY(ASTGlobalP)
 DEF_ARRAY(ASTImport)
+DEF_ARRAY(ASTLibrary)
 
 
 typedef struct ASTExpression_Block {
@@ -363,6 +375,7 @@ typedef struct ASTExpression_Block {
 
     ASTExpression_Block* parent; // NULL means file level block
     Array_ASTImport      imports;
+    Array_ASTLibrary     libraries;
 
     // Unordered list of functions, structs, enums, globals, constants
     // Consider not making these pointers?

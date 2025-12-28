@@ -114,7 +114,7 @@ def compile_tool(config: BuildConfig):
     for src, obj in zip(source_files, object_files):
         # IMPORTANT: DO NOT ADD -Wincompatible-pointer-types. It catches sizeof type mismatch when allocating objects. Explicitly cast to void* to ignore this error.
         CWARNS = ""
-        CFLAGS = f"-c -g -O0 -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
+        CFLAGS = f"-c -g -O0 -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
         runtime.commands.append(f"gcc {CFLAGS} {CWARNS} -o {obj} {src}")
 
     def compile_objects(runtime: BuildRuntime):
@@ -151,7 +151,7 @@ def compile_tool(config: BuildConfig):
     LDFLAGS = f"-g"
     
     run(f"gcc {LDFLAGS} {' '.join(object_files)} -o {PATH_EXE}")
-    run(f"gcc -shared {LDFLAGS} {' '.join(object_files)} -o {PATH_DLL}")
+    run(f"gcc -shared -fPIC {LDFLAGS} {' '.join(object_files)} -o {PATH_DLL}")
     run(f"ar rcs {PATH_LIB} {' '.join(object_files)}")
 
 

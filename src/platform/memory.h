@@ -36,6 +36,9 @@ void* heap_alloc(int size) {
     return ptr;
 }
 void* heap_realloc(void* ptr, const int size) {
+    if (!ptr)
+        return heap_alloc(size);
+
     void* new_ptr = realloc(ptr, size);
     ASSERT(new_ptr);
     return new_ptr;

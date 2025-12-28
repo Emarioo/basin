@@ -31,7 +31,8 @@ typedef BasinFS_FileInfo (*BasinFn_file_info)(const char* path, void* user_data)
 
 typedef struct basin_string {
     void* ptr;
-    u64 len;
+    u32 len;
+    u32 cap;
     const BasinAllocator* allocator;
 } basin_string;
 
@@ -107,10 +108,15 @@ typedef struct BasinCompileOptions {
     BasinBinaryType    binary_output_type;
     BasinOptimizeFlags optimize_flags;
     bool               disable_debug;
+    bool               skip_default_import_dirs;
+    bool               skip_default_library_dirs;
     int                threads;
     
-    const char* const* include_dirs;
-    int                include_dirs_len;
+    const char* const* import_dirs;
+    int                import_dirs_len;
+
+    const char* const* library_dirs;
+    int                library_dirs_len;
 
     const char*        input_file;
     const char*        output_file;

@@ -29,8 +29,7 @@ typedef struct AST AST;
 
 typedef enum {
     TASK_INVALID,
-    TASK_TOKENIZE,
-    TASK_PARSE,
+    TASK_LEX_AND_PARSE,
     TASK_GEN_IR,
     TASK_COUNT,
 } TaskKind;
@@ -41,11 +40,8 @@ typedef struct Task {
     union {
         struct {
             Import* import;
-        } tokenize;
-        struct {
-            Import* import;
             TokenStream* stream;
-        } parse;
+        } lex_and_parse;
         struct {
             Import* import;
             AST* ast;
@@ -54,6 +50,7 @@ typedef struct Task {
 } Task;
 
 
+DEF_ARRAY(string)
 DEF_BUCKET_ARRAY(Task)
 DEF_BUCKET_ARRAY(Import)
 
@@ -81,6 +78,9 @@ typedef struct Driver {
     DriverThread* threads;
     int threads_len;
 
+    Array_string import_dirs;
+    Array_string library_dirs;
+
     const BasinCompileOptions* options;
 } Driver;
 
@@ -100,4 +100,9 @@ void driver_run(Driver* driver);
 //      INTERNAL FUNCTIONS (can be used publicly too, for adding specialized tasks)
 // ############################
 
+// THREAD SAFE
 Import* driver_create_import_id(Driver* driver, cstring path);
+// THREAD SAFE
+string driver_resolve_import_path(Driver* driver, const Import* origin, cstring path);
+// THREAD SAFE
+string driver_resolve_library_path(Driver* driver, const Import* origin, cstring path);

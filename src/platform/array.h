@@ -13,8 +13,8 @@
 #define array_init(ARR, MAX) _array_init((Array*)(ARR), sizeof(*(ARR)->ptr), MAX);
 #define array_cleanup(ARR) _array_cleanup((Array*)(ARR), sizeof(*(ARR)->ptr))
 
-#define array_push(ARR, ELEMENTP) ( _array_push((Array*)(ARR), sizeof(*(ARR)->ptr), NULL), (ARR)->ptr[(ARR)->len-1] = *(ELEMENTP) )
-#define array_pushv(ARR, ELEMENT) ( _array_push((Array*)(ARR), sizeof(*(ARR)->ptr), NULL), (ARR)->ptr[(ARR)->len-1] = (ELEMENT) )
+#define array_push(ARR, ELEMENTP) ( _array_push((Array*)(ARR), sizeof(*(ARR)->ptr), (false && (((ARR)->ptr[0] = *(ELEMENTP)), false), ELEMENTP)))
+#define array_pushv(ARR, ELEMENT) ( _array_push((Array*)(ARR), sizeof(*(ARR)->ptr), NULL), (ARR)->ptr[(ARR)->len-1] = (ELEMENT))
 #define array_pop(ARR) (ASSERT_INDEX((ARR)->len > 0), (ARR)->len--)
 #define array_last(ARR) (ASSERT_INDEX((ARR)->len > 0), (ARR)->ptr[(ARR)->len-1])
 #define array_get(ARR, INDEX) (ASSERT_INDEX((INDEX) < (ARR)->len), (ARR)->ptr[INDEX])
@@ -39,6 +39,7 @@ DEF_ARRAY(int)
 #ifdef IMPL_PLATFORM
 
 void _array_init(Array* array, int element_size, int cap) {
+    memset(array, 0, sizeof(*array));
     array->ptr = heap_alloc(cap * element_size);
     array->len = 0;
     array->cap = cap;

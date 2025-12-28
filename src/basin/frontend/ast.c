@@ -264,11 +264,7 @@ void print_expression(ASTExpression* _expr, int depth) {
     }
 }
 void print_function(ASTFunction* func, int depth) {
-    print_indent(depth);
     printf("FUNCTION %s\n", func->name.ptr);
-
-    print_indent(depth);
-    print_expression(func->body, depth + 1);
 
     // for (int i=0;i<func->parameters.len;i++) {
     //     print_indent(depth);
@@ -278,6 +274,12 @@ void print_function(ASTFunction* func, int depth) {
     //     print_indent(depth);
     //     print_struct(expr->structs.ptr[i], depth + 1);
     // }
+
+    if (func->body) {
+        // no body means external function
+        print_indent(depth);
+        print_expression(func->body, depth + 1);
+    }
 }
 void print_struct(ASTStruct* struc, int depth) {
     printf("STRUCT %s\n", struc->name.ptr);
@@ -287,9 +289,12 @@ void print_enum(ASTEnum* enu, int depth) {
 }
 void print_global(ASTGlobal* object, int depth) {
     printf("GLOBAL %s : %s\n", object->name.ptr, object->type_name.ptr);
+    if (object->value)
+        print_expression(object->value, depth + 1);
 }
 void print_constant(ASTConstant* object, int depth) {
-    printf("GLOBAL %s : %s\n", object->name.ptr, object->type_name.ptr);
+    printf("CONST %s : %s\n", object->name.ptr, object->type_name.ptr);
+    print_expression(object->value, depth + 1);
 }
 void print_variable(ASTVariable* object, int depth) {
     printf("VARIABLE %s : %s\n", object->name.ptr, object->type_name.ptr);

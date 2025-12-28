@@ -235,17 +235,17 @@ One instance is to resolve operator kind:
 
 # 4. Syntax
 
-The primitive component of a Basin program is the expression. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions. An expression is a value or a thing that can be executed.
+The primitive component of a Basin program is the expression. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions.
 
-Files themselves are a big block expression that contains more expressions. In a block expression there may also be global variables, constants, functions, structs, and enums. These are declarations and definitions and not expressions because they aren't executed. The initial value of a variable, constant or the code inside a function is an expression but not the entire function itself.
+Files themselves are a block expression that contains more expressions. In a block expression there may also be global variables, constants, functions, structs, and enums. These are declarations and definitions and not expressions because they aren't executed. The initial value of a variable, constant or the code inside a function is an expression but not the entire function itself.
 
 Below are some pseudo grammar rules:
 - `thing` a normal name specifies a non-terminal, it expands to other non-terminals and terminals
 - `thing | other_thing` allows one or another thing
-- `("import" | "include") file_path` parenthesis declares precedence
+- `("import" | "include") file_path` parenthesis describes precedence between terminals.
 - `"import"` a terminal, specifies a specific string of text (keyword)
-- ` number ( "," number ) * ` asterisk specifies zero or more of the thing before
-- ` number ( "+" number ) + ` plus specifies one or more of the thing before
+- ` number ( "," number )* ` asterisk specifies zero or more of the thing before
+- ` number ( "+" number )+ ` plus specifies one or more of the thing before
 - White space is ignored
 
 ```bash
@@ -270,10 +270,10 @@ loop_expression := "while" "{" ( expression | block_expression )  "}"
 
 # 5. Types
 
-Types defined by the language are lowercase including `string`.
+Types defined by the language are lower case.
 
 ## Primitive types
-```
+```rust
 // integers
 u8, u16, u32, u64 // 1,2,4,8 bytes
 s8, s16, s32, s64 // 1,2,4,8 bytes
@@ -285,9 +285,9 @@ f32, f64 // 4,8 bytes
 bool, char // 1,1 bytes
 
 // pointers
-void^
-i32^
-char^
+void*
+i32*
+char*
 
 // function pointers
 fn()
@@ -301,37 +301,27 @@ char[255]
 char[]
 
 // types with platform dependent size
-uword, sword     // same size as the CPU's register size
+uword, sword     // 8 bytes on 64-bit Architecture
 ```
 
 ## Enum types
 
-```
+```rust
 enum Ore {
-   iron,
-   coal,
-   gold,
+   iron
+   coal
+   gold
 }
 ```
 
 ## Struct types
 
-```
+```rust
 struct Block  {
    valid: bool
    len: u32
    max: u32
-   data: u8^
-}
-```
-
-### Bit fields
-
-```rust
-struct Register {
-   enable : u8
-   _reserved: u8[3]
-   data: u32
+   data: u8*
 }
 ```
 
@@ -341,7 +331,7 @@ struct Register {
 struct Array<T> {
     len: i32
     cap: i32
-    data: T^
+    data: T*
 }
 
 struct FixedArray<T,N> {
@@ -372,10 +362,10 @@ struct string {
 
 This string type is convenient in many use cases. For cases where it isn't optimal you can always make your own string type. Most string operations use character slices (`char[]`) which means that your string implementation can integrate with those operations.
 
-## Operations
+### Operations (string)
 Operations can be divided into mutable and immutable. Immutable operations do not allocate memory or change the content of the string. Mutable operations do.
 
-### Comparison (immutable)
+#### Comparison (immutable)
 ```c
 a, b : string
 
@@ -383,7 +373,7 @@ a == b
 a != b
 ```
 
-### Slicing (immutable)
+#### Slicing (immutable)
 ```c
 a : string
 
@@ -391,7 +381,7 @@ a[5]     // yields char
 a[1..4]  // yields char[]
 ```
 
-### Concatenation (mutable)
+#### Concatenation (mutable)
 ```c
 res, a, b : string
 
@@ -434,7 +424,7 @@ operator cast<char[]>(arg: string) -> char[] {
 
 }
 
-### Content modification (mutable)
+#### Content modification (mutable)
 ```c
 a : string = "hello"
 
@@ -465,7 +455,66 @@ okay := ( hello := 123;
 
 ```
 
+# Control Flow
 
+## If
+
+
+```c
+if <condition>
+   <expression>
+else
+   <expression>
+```
+
+## Switch
+
+```c
+switch <condition> {
+   case <condition>
+      <expression>
+   case <condition>
+      <expression>
+   default
+      <expression>
+}
+```
+
+## For
+
+
+```c
+for <expression>
+   <expression>
+for item in <expression>
+   <expression>
+for item, index in <expression>
+   <expression>
+```
+
+## While
+
+```c
+while <expression>
+   <expression>
+```
+
+## continue, break
+
+```c
+while <expression> {
+   
+   continue // continue loop
+   
+   break // break out of loop
+}
+```
+
+## defer
+
+```c
+defer <expression>
+```
 
 # 15. Intermediate Representation
 

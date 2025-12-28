@@ -59,7 +59,7 @@ typedef enum {
     IN_CASE_SCOPE = 0x2,
 } ParseBlockFlags;
 
-ASTType parse_type(ParserContext* context);
+bool parse_type(ParserContext* context, ASTType* typename);
 ASTExpression* parse_expression(ParserContext* context);
 ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags);
 ASTFunction* parse_function(ParserContext* context);
@@ -74,7 +74,7 @@ ASTStruct* parse_struct(ParserContext* context);
 
 Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
     // We implement this recursively because it's easier to debug issues
-    Result result;
+    Result result = {};
     result.kind = SUCCESS;
     result.message.ptr = NULL;
     result.message.max = 0;
@@ -94,8 +94,6 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
 
         ast->global_block = parse_block_expression(&context, true);
 
-        print_ast(ast);
-
         *out_ast = ast;
     } else {
         int line, column;
@@ -104,8 +102,8 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
 
         char buffer[1024];
         int len = 0;
-        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[37m%s:%d\033[0m\n", context.c_location.path, context.c_location.line);
-        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[31m%s:%d:%d:\033[0m %s\n%s", stream->import->path.ptr, line, column, context.error_message, code.ptr);
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;30m%s:%d\033[0m\n", context.c_location.path, context.c_location.line);
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;31m%s:%d:%d:\033[0m %s\n%s", stream->import->path.ptr, line, column, context.error_message, code.ptr);
         result.kind = FAILURE;
         result.message = string_clone_cptr(buffer);
     }
@@ -202,35 +200,103 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
             break;
         }
 
-        // TODO: Parse annotations
-        if(tok->kind == T_IMPORT) {
+        if (tok->kind == '@') {
             advance();
+            ASTAnnotation anot = {};
+            
+            const TokenExt* tok_ident = match(T_IDENTIFIER);
+            cstring anot_name = DATA_FROM_IDENTIFIER(tok_ident);
+            anot.name = string_clone_cstr(anot_name);
 
-            if(IS_COMPTIME()) {
-                parse_error(tok, "Import is not allowed in compile time expression. Use 'compiler_import(\"windows\")' from 'import \"compiler\"' instead.");
+            const TokenExt* tok_start = peek(0);
+            const TokenExt* tok_end = &EOF_TOKEN_EXT;
+            if (tok_start->kind == '(') {
+                advance();
+                while (true) {
+                    tok_end = peek(0);
+                    if (tok_end->kind == T_END_OF_FILE)
+                        break;
+                    if (tok_end->kind == ')') {
+                        break;
+                    }
+                    advance();
+                }
+                match(')');
+
+                int start_pos = tok_start->position+1;
+
+                if (tok_end->position - start_pos > 0) {
+                    anot.content = string_clone(context->stream->import->text.ptr + start_pos, tok_end->position - start_pos);
+                }
             }
 
-            const TokenExt* tok = match(T_LITERAL_STRING);
+            printf("ANOT %s '%.*s'\n", anot.name.ptr, anot.content.len, anot.content.ptr);
 
+            // TODO: Add annotations to the AST
+            continue;
+        }
+
+        if(tok->kind == T_IMPORT) {
+            advance();
+            
+            const TokenExt* tok = match(T_LITERAL_STRING);
+            
             cstring path = DATA_FROM_STRING(tok);
+            
+            string resolved_path = driver_resolve_import_path(context->driver, context->stream->import, path);
+            if (resolved_path.len == 0) {
+                parse_error(tok, "Could not resolve path '%s'. Use 'import \"linux\"' to resolve from import directories, use 'import \"./hello.bsn\"' to resolve from relative directory relative to current source file.", path.ptr);
+            }
         
             // @TODO Check if import already exists.
             Task task = {};
-            task.kind = TASK_TOKENIZE;
-            task.tokenize.import = driver_create_import_id(context->driver, path);
+            task.kind = TASK_LEX_AND_PARSE;
+            task.lex_and_parse.import = driver_create_import_id(context->driver, cstr(resolved_path));
+
+            string_cleanup(&resolved_path);
 
             driver_add_task(context->driver, &task);
 
             // @TODO Submit ASTImport to tokenize task so it can be updated?
             ASTImport new_import = {};
             new_import.location = location_from_token(tok);
-            new_import.name = string_clone_cstr(path);
             new_import.shared = false; // set from annontation @shared
+            
+            tok = peek(0);
+            if (tok->kind == T_FROM) {
+                advance();
+                // @TODO Implement '@external(libc) import "unistd.h"' instead.
+                parse_error(tok, "@TODO implement 'import \"main\" from lib'");
+            }
+
+            tok = peek(0);
+            if (tok->kind == T_AS) {
+                advance();
+                tok = match(T_IDENTIFIER);
+                cstring name = DATA_FROM_STRING(tok);
+                new_import.name = string_clone_cstr(name);
+            }
+
             array_push(&block_expr->imports, &new_import);
+        } else if(tok->kind == T_LIBRARY) {
+            advance();
+            
+            const TokenExt* tok_str = match(T_LITERAL_STRING);
+            cstring path = DATA_FROM_STRING(tok_str);
 
-            // TODO: Parse as
+            ASTLibrary new_library = {};
+            new_library.location = location_from_token(tok);
+            new_library.library_name = string_clone_cstr(path);
 
-            // @TODO Add import to scope tree
+            const TokenExt* tok_as = peek(0);
+            if (tok_as->kind == T_AS) {
+                advance();
+                tok_as = match(T_IDENTIFIER);
+                cstring name = DATA_FROM_IDENTIFIER(tok_as);
+                new_library.name = string_clone_cstr(name);
+            }
+            
+            array_push(&block_expr->libraries, &new_library);
 
         } else if (tok->kind == T_GLOBAL) {
             advance();
@@ -244,11 +310,14 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
             cstring name = DATA_FROM_TOKEN(ident_tok);
             data_object->name = string_clone_cstr(name);
             
-            
-            data_object->type_name = parse_type(context);
-            
             const TokenExt* equal_tok = peek(0);
+
+            bool res = parse_type(context, &data_object->type_name);
+            ASSERT(res);
+            
+            equal_tok = peek(0);
             if (equal_tok->kind == '=') {
+                advance();
                 data_object->value = parse_expression(context);
             }
 
@@ -257,22 +326,24 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
             advance();
             
             const TokenExt* ident_tok = match(T_IDENTIFIER);
-            match(':');
             
             ASTConstant* data_object = HEAP_ALLOC_OBJECT(ASTConstant);
             data_object->location = location_from_token(ident_tok);
-            
             cstring name = DATA_FROM_TOKEN(ident_tok);
             data_object->name = string_clone_cstr(name);
-            
-            data_object->type_name = parse_type(context);
-            
-            const TokenExt* equal_tok = peek(0);
-            if (equal_tok->kind == '=') {
-                data_object->value = parse_expression(context);
+
+            const TokenExt* colon_tok = peek(0);
+            if (colon_tok->kind == ':') {
+                advance();
+                bool res = parse_type(context, &data_object->type_name);
+                ASSERT(res);
             }
+            
+            match('=');
+            data_object->value = parse_expression(context);
+            
             array_push(&block_expr->constants, &data_object);
-        } else if (tok->kind == T_IDENTIFIER && tok->kind == ':') {
+        } else if (tok->kind == T_IDENTIFIER && tok1->kind == ':') {
             advance();
             advance();
             
@@ -282,10 +353,15 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
             cstring name = DATA_FROM_TOKEN(tok);
             data_object->name = string_clone_cstr(name);
 
-            data_object->type_name = parse_type(context);
-            
             const TokenExt* equal_tok = peek(0);
+            if (equal_tok->kind != '=') {
+                bool res = parse_type(context, &data_object->type_name);
+                ASSERT(res);
+            }
+            
+            equal_tok = peek(0);
             if (equal_tok->kind == '=') {
+                advance();
 
                 ASTExpression* rvalue = parse_expression(context);
 
@@ -331,6 +407,7 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
 
             const TokenExt* equal_tok = peek(0);
             if (equal_tok->kind == '=') {
+                advance();
                 ASTExpression* rvalue = parse_expression(context);
 
                 CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok);
@@ -572,8 +649,8 @@ ASTExpression* parse_expression(ParserContext* context) {
         // for IT in ITEMS BODY
         // for ITEMS BODY
 
-        string index_name;
-        string item_name;
+        string index_name = {};
+        string item_name = {};
 
         if (tok0->kind == T_IDENTIFIER && tok1->kind == ',' && tok2->kind == T_IDENTIFIER && tok3->kind == T_IN) {
             advance();
@@ -799,12 +876,20 @@ ASTExpression* parse_expression(ParserContext* context) {
                     expr->literal_kind = EXPR_LITERAL_INTEGER;
 
                     cstring text = DATA_FROM_TOKEN(tok0);
-
-                    // @TODO Parse 64-bit integer
-                    // @TODO Hexidecimal
-                    // Maybe integer token stores integer data instead of text form.
-                    // if so it can be embedded in token.
-                    expr->int_value = atoi(text.ptr);
+                    
+                    char c = text.ptr[0], c2 = text.len >= 1 ? text.ptr[1] : 0;
+                    char* endptr;
+                    if (c == '0' && c2 == 'x') {
+                        expr->int_value = strtoul(text.ptr+2, &endptr, 16);
+                    } else if (c == '0' && c2 == 'o') {
+                        expr->int_value = strtoul(text.ptr+2, &endptr, 8);
+                    } else if (c == '0' && c2 == 'b') {
+                        expr->int_value = strtoul(text.ptr+2, &endptr, 2);
+                    } else {
+                        expr->int_value = strtoul(text.ptr, &endptr, 10);
+                    }
+                    // We should have parsed text.len characters
+                    ASSERT((int)(endptr - text.ptr) == text.len);
 
                     array_push(&exprs, (ASTExpression**)&expr);
                 } else if (tok0->kind == T_LITERAL_FLOAT) {
@@ -813,7 +898,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                 } else if (tok0->kind == T_LITERAL_STRING) {
                     advance();
                     CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
-                    expr->literal_kind = EXPR_LITERAL_FLOAT;
+                    expr->literal_kind = EXPR_LITERAL_STRING;
 
                     cstring text = DATA_FROM_STRING(tok0);
                     expr->string_value = string_clone_cstr(text);
@@ -934,7 +1019,11 @@ ASTExpression* parse_expression(ParserContext* context) {
                     advance();
                     CREATE_EXPR(expr, ASTExpression_Cast, EXPR_CAST, tok0);
                     
-                    expr->type_name = parse_type(context);
+                    // @TODO Provide good error message.
+                    //   "ERROR: Expected type" is terrible.
+                    //   "ERROR: Expected type (detected syntax was <expr> : <type> which is a type cast)" would be better.
+                    bool res = parse_type(context, &expr->type_name);
+                    ASSERT(res);
 
                     ASTExpression* last_expr = array_last(&exprs);
                     expr->expr = last_expr;
@@ -1107,25 +1196,27 @@ ASTFunction* parse_function(ParserContext* context) {
     // Parse arguments
     while (true) {
 
-        const TokenExt* tok = peek(0);
-        if (tok->kind == ')') {
+        const TokenExt* tok_ident = peek(0);
+        if (tok_ident->kind == ')') {
             advance();
             break;
         }
 
-        if (tok->kind == T_IDENTIFIER) {
+        if (tok_ident->kind == T_IDENTIFIER) {
             advance();
 
             match(':');
 
-            ASTType type_name = parse_type(context);
+            ASTType type_name = {};
+            bool res = parse_type(context, &type_name);
+            ASSERT(res);
 
             const TokenExt* tok = peek(0);
             if (tok->kind == ';') {
                 advance();
             }
             ASTFunction_Parameter parameter;
-            cstring field_name      = DATA_FROM_IDENTIFIER(tok);
+            cstring field_name      = DATA_FROM_IDENTIFIER(tok_ident);
             parameter.name          = string_clone_cstr(field_name);
             parameter.location      = location_from_token(tok);
             parameter.default_value = NULL;
@@ -1133,8 +1224,9 @@ ASTFunction* parse_function(ParserContext* context) {
 
             array_push(&out_function->parameters, &parameter);
         } else {
-            parse_error(tok, "Expected a parameter, 'item : i32;'");
+            parse_error(tok_ident, "Expected a parameter, 'item : i32;'");
         }
+        const TokenExt* tok = peek(0);
         if (tok->kind == ',') {
             advance();
             continue;
@@ -1156,36 +1248,59 @@ ASTFunction* parse_function(ParserContext* context) {
             const TokenExt* tok0 = peek(0);
             const TokenExt* tok1 = peek(1);
 
-            ASTFunction_Parameter parameter;
-            parameter.location = location_from_token(tok);
+            ASTFunction_Parameter parameter = {};
+            parameter.location = location_from_token(tok0);
 
             if (tok0->kind == T_IDENTIFIER && tok1->kind == ':') {
                 advance();
                 advance();
 
-                const TokenExt* tok = peek(0);
-                if (tok->kind == ';') {
-                    advance();
-                }
                 cstring field_name     = DATA_FROM_IDENTIFIER(tok0);
                 parameter.name         = string_clone_cstr(field_name);
-                parameter.default_value = NULL;
-
-                array_push(&out_function->return_values, &parameter);
-                match(':');
             }
-
-            ASTType type_name = parse_type(context);
-            parameter.type_name = type_name;
             
-            if (tok->kind == ')') {
+            bool res = parse_type(context, &parameter.type_name);
+            ASSERT(res);
+
+            array_push(&out_function->return_values, &parameter);
+            
+            if (tok->kind == ';') {
                 advance();
+                break;
+            } else if (tok->kind == '{') {
                 break;
             } else if (tok->kind == ',') {
                 advance();
                 continue;
             } else {
-                parse_error(tok, "Expected a return value, '-> i32, i32'");
+                /* @TODO It is questionable whether we allow an "implicit" semicolon
+                     to end an external function declaration.
+
+                    This syntax error:
+
+                        @external(glfw) context(fd: i32) -> i32,
+                        
+                        error(23)
+
+                    May be confused with this where we return i32 and error type
+                    and on the next line we have (23) which is valid expression but
+                    it does nothing, this is where user expects the function error(23) to
+                    be called but isn't because they accidently put a comma on the declaration.
+
+                        @external(glfw) context(fd: i32) -> i32, error
+                        
+                        (23) // does nothing, not an allowed expression
+
+                    In this case it's likely fine, we may not allow expression that does nothing
+                    to detect such syntax mistakes.
+                    The error identifier is either a type or a function, it can't be both and therefore we will get an error either "ERROR: 'error' is not a valid type (return values)" or "ERROR: 'error' in 'error(23)' is not a function."
+
+                    I want to experiment with a clean language with few semi-colons, commas.
+                    Perhaps it's a bad idea but that's exactly what i want to find out for myself.
+
+                */
+                // parse_error(tok, "Expected a return value, '-> i32, i32'");
+                break;
             }
         }
     }
@@ -1218,7 +1333,8 @@ ASTEnum* parse_enum(ParserContext* context) {
     tok = peek(0);
     if (tok->kind == ':') {
         advance();
-        out_enum->type_name = parse_type(context);
+        bool res = parse_type(context, &out_enum->type_name);
+        ASSERT(res);
     }
 
     match('{');
@@ -1230,16 +1346,16 @@ ASTEnum* parse_enum(ParserContext* context) {
         if (tok->kind == T_IDENTIFIER) {
             advance();
 
-            ASTEnum_Field field = {};
+            ASTEnum_Member member = {};
 
-            cstring field_name  = DATA_FROM_IDENTIFIER(tok);
-            field.name          = string_clone_cstr(field_name);
-            field.location      = location_from_token(tok);
+            cstring member_name  = DATA_FROM_IDENTIFIER(tok);
+            member.name          = string_clone_cstr(member_name);
+            member.location      = location_from_token(tok);
             
             const TokenExt* tok = peek(0);
             if (tok->kind == '=') {
                 advance();
-                field.default_value = parse_expression(context);
+                member.default_value = parse_expression(context);
             }
 
             tok = peek(0);
@@ -1247,7 +1363,7 @@ ASTEnum* parse_enum(ParserContext* context) {
                 advance();
             }
 
-            array_push(&out_enum->fields, &field);
+            array_push(&out_enum->members, &member);
         } else if (tok->kind == '}') {
             advance();
             break;
@@ -1289,7 +1405,8 @@ ASTStruct* parse_struct(ParserContext* context) {
             cstring field_name = DATA_FROM_IDENTIFIER(tok);
             field.name         = string_clone_cstr(field_name);
             field.location     = location_from_token(tok);
-            field.type_name = parse_type(context);
+            bool res = parse_type(context, &field.type_name);
+            ASSERT(res);
 
             array_push(&out_struct->fields, &field);
 
@@ -1311,16 +1428,24 @@ ASTStruct* parse_struct(ParserContext* context) {
 }
 
 
-ASTType parse_type(ParserContext* context) {
-    const TokenExt* tok = peek(0);
-
-    ASTType type_name;
-
-    if (tok->kind == T_IDENTIFIER) {
-        cstring str = DATA_FROM_IDENTIFIER(tok);
-        type_name = string_clone_cstr(str);
-    } else {
-        parse_error(tok, "Invalid type.");
+bool parse_type(ParserContext* context, ASTType* typename) {
+    string acc = {};
+    // @TODO Disallow 'text: char*int'
+    while (true) {
+        const TokenExt* tok = peek(0);
+        if (tok->kind == T_IDENTIFIER) {
+            advance();
+            cstring str = DATA_FROM_IDENTIFIER(tok);
+            string_append_cstr(&acc, str);
+        } else if (tok->kind == '*') {
+            advance();
+            string_append_char(&acc, tok->kind);
+        } else {
+            if (acc.len == 0)
+                parse_error(tok, "Invalid type.");
+            break;
+        }
     }
-    return type_name;
+    *typename = acc;
+    return true;
 }

@@ -122,7 +122,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         //   dependencies would be parsing after tokenizing.
         //   compile time exec after function declaration checking
 
-        Task task;
+        Task task = {};
         barray_pop(&driver->tasks, &task);
         int tasks_left = barray_count(&driver->tasks);
 
@@ -135,41 +135,43 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
         // Perform task
         switch(task.kind) {
-            case TASK_TOKENIZE: {
-                if (!task.tokenize.import->text.ptr) {
+            case TASK_LEX_AND_PARSE: {
+                if (!task.lex_and_parse.import->text.ptr) {
                     BasinResult result = {};
-                    basin_string text = basin_read_whole_file(task.tokenize.import->path.ptr, driver->options);
+                    basin_string text = basin_read_whole_file(task.lex_and_parse.import->path.ptr, driver->options);
                     if(!text.ptr) {
-                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task.tokenize.import->path.ptr);
+                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task.lex_and_parse.import->path.ptr);
+                        printf("%s", result.error_message);
                         break;
                     }
+                    // @TODO When should we add text to import?
+                    //   In driver? What if another thread is accessig this?
+                    task.lex_and_parse.import->text.ptr = text.ptr;
+                    task.lex_and_parse.import->text.len = text.len;
+                    task.lex_and_parse.import->text.max = text.cap;
                 }
-                TokenStream* stream;
-                Result result = tokenize(task.tokenize.import, &stream);
+                TokenStream* stream = NULL;
+                Result result = tokenize(task.lex_and_parse.import, &stream);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
-                } else {
-                    task.kind = TASK_PARSE;
-                    task.parse.stream = stream;
-                    driver_add_task_with_thread_id(driver, &task, id);
+                    break;
                 }
-            } break;
-            case TASK_PARSE: {
-                AST* ast;
-                Result result = parse_stream(driver, task.parse.stream, &ast);
-                if(result.kind != SUCCESS) {
-                    print_ast(ast);
 
+                AST* ast = NULL;
+                result = parse_stream(driver, stream, &ast);
+                if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
-                } else {
-                    fprintf(stderr, "Parse success\n");
-                    
-                    task.kind = TASK_GEN_IR;
-                    task.gen_ir.ast = ast;
-                    driver_add_task_with_thread_id(driver, &task, id);
+                    break;
                 }
+
+                print_ast(ast);
+                fprintf(stderr, "Parse success\n");
+                
+                task.kind = TASK_GEN_IR;
+                task.gen_ir.ast = ast;
+                driver_add_task_with_thread_id(driver, &task, id);
             } break;
             case TASK_GEN_IR: {
                 Result result = generate_ir(driver, task.gen_ir.ast, driver->collection);
@@ -206,7 +208,7 @@ Import* driver_create_import_id(Driver* driver, cstring path) {
     // if it was we create new import otherwise
     // we reuse the import?
 
-    Import import;
+    Import import = {};
     import.path = string_clone_cstr(path);
     import.import_id = atomic_add(&driver->next_import_id, 1);
 
@@ -218,6 +220,64 @@ Import* driver_create_import_id(Driver* driver, cstring path) {
 
     return ptr;
 }
+
+string driver_resolve_import_path(Driver* driver, const Import* origin, cstring path) {
+    // 1. if path has . then relative to origin
+    // 2. otherwise search import directories
+    string str = {};
+    if (path.len == 0 || path.ptr[0] == '/')
+        return str;
+
+    if (path.ptr[0] == '.' && path.ptr[1] == '/') {
+        str.max = origin->path.len + path.len - 1;
+        str.ptr = heap_alloc(str.max + 1);
+        str.len = str.max;
+        memcpy(str.ptr, origin->path.ptr, origin->path.len);
+        memcpy(str.ptr + origin->path.len, path.ptr+1, path.len-1);
+        str.ptr[str.len] = '\0';
+        return str;
+    }
+    str.max = 300;
+    str.ptr = heap_alloc(str.max + 1);
+    for (int i=driver->import_dirs.len-1;i>=0;i--) {
+        string dir = driver->import_dirs.ptr[i];
+        
+        // @TODO Buffer overflow if directory is longer than str.max
+        //   DO NOT ASSUME IT FITS
+        memcpy(str.ptr, dir.ptr, dir.len);
+        str.ptr[dir.len] = '/';
+        memcpy(str.ptr + dir.len + 1, path.ptr, path.len);
+        str.len = dir.len + 1 + path.len;
+        str.ptr[str.len] = '\0';
+        
+        int slash_pos = string_rfind(str.ptr, str.len-1, "/");
+        int dot_pos = string_rfind(str.ptr, str.len-1, ".");
+        
+        if (slash_pos > dot_pos || dot_pos == -1) {
+            // no file extension, add implicit .bsn
+            memcpy(str.ptr + str.len, ".bsn", 4);
+            str.len += 4;
+            str.ptr[str.len] = '\0';
+        }
+        
+        ASSERT(str.len < str.max);
+        
+        BasinFS_FileInfo info = basin_file_info(str.ptr, driver->options);
+        if (info.exists) {
+            return str;
+        }
+    }
+    // Most of the time the path will be resolved.
+    // If it wasn't then we might not want to heap allocate
+    // just to free it later.
+    // @TODO We want to use an optimized linear string allocator.
+    heap_free(str.ptr);
+    string empty = {};
+    return empty;
+}
+// string driver_resolve_library_path(Driver* driver, const Import* origin, cstring path) {
+
+// }
 
 const char* const task_kind_names[TASK_COUNT] = {
     "TASK_INVALID",

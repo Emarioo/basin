@@ -1,0 +1,182 @@
+/*
+    Other ways to implement Linux syscall bindings.
+    Code here is garbage and can be removed.
+*/
+
+const x86_64 = compiler.BASIN_TARGET_ARCH_x86_64
+const arm_64 = compiler.BASIN_TARGET_ARCH_arm_64
+
+// NOTE: The compiler guarantees that the 
+//   stack pointer is 16-byte aligned
+//   when entering the inline assembly body.
+//   Arguments you pass to asm are passed
+//   the same way as the ABI for function calls.
+
+fn _call4(arg0, arg1, arg2, arg3 : sword, sys: i32) -> sword {
+    switch compiler.platform() {
+        case x86_64
+            return asm(arg0, arg1, arg2, arg3, sys) -> i32 {
+                mov r10, rcx // 4th argument is passed in r10 to syscalls
+                mov eax, r8
+                syscall
+            }
+
+        case arm_64
+            return asm(arg0, arg1, arg2, arg3, sys) -> i32 {
+                mov x8, x4
+                svc #0
+            }
+    }
+}
+
+import "compiler" as compiler
+
+// const _base_syscall = # {
+//     ws   : BasinWorkspace* = compiler.current_workspace()
+//     ast  : AST*            = compiler.get_ast(ws, __FILE__)
+//     func : ASTFunction*    = compiler.get_function(ast, __FUNCTION__)
+//     syscall_enum: ASTEnum*
+//     switch compiler.target_platform() {
+//         case x86_64
+//             syscall_enum = compiler.get_enum(ast, "Syscall_x86")
+//         default crash()
+//     }
+
+//     compiler.alloc_expr(ASTFunction)
+//     compiler.create_ast()
+
+//     func.body 
+// }
+
+// const Syscalls = switch compiler.platform() {
+//         case x86_64
+//             yield Syscall_x86
+//         case arm_64
+//             yield Syscall_arm
+//     }
+
+// fn _syscall(sys: u32) -> sword {
+//     switch compiler.platform() {
+//         case x86_64
+//             return asm(sys) -> sword {
+//                 mov eax, rsi
+//                 syscall
+//             }
+
+//         case arm_64
+//             return asm(sys) -> sword {
+//                 mov x8, x0
+//                 svc #0
+//             }
+//     }
+// }
+// fn _syscall(arg0: sword, sys: u32) -> sword {
+//     switch compiler.platform() {
+//         case x86_64
+//             return asm(arg0, sys) -> sword {
+//                 mov eax, rdi
+//                 syscall
+//             }
+
+//         case arm_64
+//             return asm(arg0, sys) -> sword {
+//                 mov x8, x1
+//                 svc #0
+//             }
+//     }
+// }
+// fn _syscall(arg0: sword, arg1: sword, sys: u32) -> sword {
+//     switch compiler.platform() {
+//         case x86_64
+//             return asm(arg0, arg1, sys) -> sword {
+//                 mov eax, rdx
+//                 syscall
+//             }
+
+//         case arm_64
+//             return asm(arg0, arg1, sys) -> sword {
+//                 mov x8, x2
+//                 svc #0
+//             }
+//     }
+// }
+// fn _syscall(arg0: sword, arg1: sword, arg2: sword, sys: u32) -> sword {
+//     switch compiler.platform() {
+//         case x86_64
+//             return asm(arg0, arg1, arg2, sys) -> sword {
+//                 mov eax, rcx
+//                 syscall
+//             }
+
+//         case arm_64
+//             return asm(arg0, arg1, arg2, sys) -> sword {
+//                 mov x8, x3
+//                 svc #0
+//             }
+//     }
+// }
+// fn _syscall(arg0: sword, arg1: sword, arg2: sword, arg3: sword, sys: u32) -> sword {
+//     switch compiler.platform() {
+//         case x86_64
+//             return asm(arg0, arg1, arg2, arg3, sys) -> sword {
+//                 mov r10, rcx
+//                 mov eax, r8
+//                 syscall
+//             }
+
+//         case arm_64
+//             return asm(arg0, arg1, arg2, arg3, sys) -> sword {
+//                 mov x8, x4
+//                 svc #0
+//             }
+//     }
+// }
+// fn _syscall(arg0: sword, arg1: sword, arg2: sword, arg3: sword, arg4: sword, sys: u32) -> sword {
+//     switch compiler.platform() {
+//         case x86_64
+//             return asm(arg0, arg1, arg2, arg3, arg4, sys) -> sword {
+//                 mov r10, rcx
+//                 mov eax, r9
+//                 syscall
+//             }
+
+//         case arm_64
+//             return asm(arg0, arg1, arg2, arg3, arg4, sys) -> sword {
+//                 mov x8, x5
+//                 svc #0
+//             }
+//     }
+// }
+
+
+fn open(pathname: char*, flags: i32, mode: i32) -> i32 {
+    const AT_FDCWD = -100
+    return _syscall(AT_FDCWD, pathname:sword, flags:sword, mode:sword, Syscalls.openat)
+}
+
+fn openat(pathname: char*, flags: i32, mode: i32) -> i32 {
+    return _syscall(pathname:sword, flags:sword, mode:sword, Syscalls.openat)
+}
+
+fn read(fd: i32, buf: void*, count: u32) {
+    return _syscall(fd:sword, buf:sword, count:sword, Syscalls.read)
+}
+const Token = compiler.Token
+@ fn SYSCALL(tokens: Array<Token>) -> string {
+    pos0 := find_scoped_token(tokens, 0, ',')
+    pos1 := find_scoped_token(tokens, pos0, ',')
+    s: string
+    ids: Array<Token>
+    prev_pos: i32 = pos1
+    for pos1+1..tokens.len {
+        pos := find_scoped_token(tokens, prev_pos, ':')
+        ids.add(tokens[pos-1])
+        prev_pos = pos+1
+        tok : Token = 
+        ids.add(tokens[pos-1])
+    }
+    string_append(s, f"fn {tokens[0..pos0]}({tokens[pos1+1..tokens.len]}) -> {tokens[pos0+1..pos1]} {
+        return _syscall({ids}, Syscalls.{tokens[0..pos0]})
+    }")
+    return s
+}

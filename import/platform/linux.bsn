@@ -1,6 +1,7 @@
 /*
     This file contains Unix specific features.
     - Wrapper for syscalls
+    - No libc
     
     Note that this module is just for convenience.
     The headers for Linux are complex with many #ifdefs (struct_stat.h for example)
@@ -10,438 +11,423 @@
 
     TODO: getaddrinfo is not a syscall and exists in libc so we must link with it if the user uses it.
 */
-    #import "Logger"
 
-#if OS_LINUX // wraps everything in this file
 
-#load "libc.so.6" as LibC
-#load "libdl.so" as LibDL
-
-#macro STDIN_FILENO  0
-#macro STDOUT_FILENO 1
-#macro STDERR_FILENO 2
+const STDIN_FILENO  = 0
+const STDOUT_FILENO = 1
+const STDERR_FILENO = 2
 
 /* open/fcntl.  */
-#macro O_RDONLY     0o0
-#macro O_WRONLY     0o1
-#macro O_RDWR       0o2
-#macro O_CREAT    0o100 /* Not fcntl.  */
-#macro O_EXCL     0o200 /* Not fcntl.  */
-#macro O_NOCTTY    0o400 /* Not fcntl.  */
-#macro O_TRUNC   0o1000 /* Not fcntl.  */
-#macro O_APPEND   0o2000
-#macro O_NONBLOCK   0o4000
-#macro O_SYNC        0o4010000
-#macro O_ASYNC  0o20000
-#macro O_LARGEFILE 0o100000
-#macro O_DIRECTORY 0o200000
-#macro O_NOFOLLOW 0o400000
-#macro O_CLOEXEC   0o2000000
-#macro O_DIRECT  0o40000
-#macro O_NOATIME   0o1000000
-#macro O_PATH     0o10000000
-#macro O_DSYNC  0o10000
-#macro O_TMPFILE   (0o20000000 | O_DIRECTORY)
+const O_RDONLY    = 0o0
+const O_WRONLY    = 0o1
+const O_RDWR      = 0o2
+const O_CREAT     = 0o100 /* Not fcntl.  */
+const O_EXCL      = 0o200 /* Not fcntl.  */
+const O_NOCTTY    = 0o400 /* Not fcntl.  */
+const O_TRUNC     = 0o1000 /* Not fcntl.  */
+const O_APPEND    = 0o2000
+const O_NONBLOCK  = 0o4000
+const O_SYNC      = 0o4010000
+const O_ASYNC     = 0o20000
+const O_LARGEFILE = 0o100000
+const O_DIRECTORY = 0o200000
+const O_NOFOLLOW  = 0o400000
+const O_CLOEXEC   = 0o2000000
+const O_DIRECT    = 0o40000
+const O_NOATIME   = 0o1000000
+const O_PATH      = 0o10000000
+const O_DSYNC     = 0o10000
+const O_TMPFILE   = (0o20000000 | O_DIRECTORY)
 
-#macro SEEK_SET 0 // seeks from start
-#macro SEEK_CUR 1 // seeks from current
-#macro SEEK_END 2 // seels from end
+const SEEK_SET    = 0 // seeks from start
+const SEEK_CUR    = 1 // seeks from current
+const SEEK_END    = 2 // seels from end
 
-#macro PROT_READ 0x1  /* Page can be read.  */
-#macro PROT_WRITE 0x2  /* Page can be written.  */
-#macro PROT_EXEC 0x4  /* Page can be executed.  */
-#macro PROT_NONE 0x0  /* Page can not be accessed.  */
+const PROT_READ   = 0x1  /* Page can be read.  */
+const PROT_WRITE  = 0x2  /* Page can be written.  */
+const PROT_EXEC   = 0x4  /* Page can be executed.  */
+const PROT_NONE   = 0x0  /* Page can not be accessed.  */
 
 /* Sharing types (must choose one and only one of these).  */
-#macro MAP_SHARED 0x01  /* Share changes.  */
-#macro MAP_PRIVATE 0x02  /* Changes are private.  */
-#macro MAP_SHARED_VALIDATE 0x03 /* Share changes and validate
-        extension flags.  */
-#macro MAP_TYPE 0x0f  /* Mask for type of mapping.  */
+const MAP_SHARED          = 0x01  /* Share changes.  */
+const MAP_PRIVATE         = 0x02  /* Changes are private.  */
+const MAP_SHARED_VALIDATE = 0x03 /* Share changes and validate extension flags.  */
+const MAP_TYPE            = 0x0f  /* Mask for type of mapping.  */
 
 /* Other flags.  */
-#macro MAP_FIXED 0x10  /* Interpret addr exactly.  */
-#macro MAP_ANONYMOUS 0x20  /* Don't use a file.  */
-#macro MAP_32BIT 0x40  /* Only give out 32-bit addresses.  */
+const MAP_FIXED       = 0x10  /* Interpret addr exactly.  */
+const MAP_ANONYMOUS   = 0x20  /* Don't use a file.  */
+const MAP_32BIT       = 0x40  /* Only give out 32-bit addresses.  */
 
-#macro MAP_GROWSDOWN 0x00100  /* Stack-like segment.  */
-#macro MAP_DENYWRITE 0x00800  /* ETXTBSY.  */
-#macro MAP_EXECUTABLE 0x01000  /* Mark it as an executable.  */
-#macro MAP_LOCKED 0x02000  /* Lock the mapping.  */
-#macro MAP_NORESERVE 0x04000  /* Don't check for reservations.  */
-#macro MAP_POPULATE 0x08000  /* Populate (prefault) pagetables.  */
-#macro MAP_NONBLOCK 0x10000  /* Do not block on IO.  */
-#macro MAP_STACK 0x20000  /* Allocation is for a stack.  */
-#macro MAP_HUGETLB 0x40000  /* Create huge page mapping.  */
-#macro MAP_SYNC 0x80000  /* Perform synchronous page
+const MAP_GROWSDOWN   = 0x00100  /* Stack-like segment.  */
+const MAP_DENYWRITE   = 0x00800  /* ETXTBSY.  */
+const MAP_EXECUTABLE  = 0x01000  /* Mark it as an executable.  */
+const MAP_LOCKED      = 0x02000  /* Lock the mapping.  */
+const MAP_NORESERVE   = 0x04000  /* Don't check for reservations.  */
+const MAP_POPULATE    = 0x08000  /* Populate (prefault) pagetables.  */
+const MAP_NONBLOCK    = 0x10000  /* Do not block on IO.  */
+const MAP_STACK       = 0x20000  /* Allocation is for a stack.  */
+const MAP_HUGETLB     = 0x40000  /* Create huge page mapping.  */
+const MAP_SYNC        = 0x80000  /* Perform synchronous page
         faults for the mapping.  */
-#macro MAP_FIXED_NOREPLACE 0x100000 /* MAP_FIXED but do not unmap
+const MAP_FIXED_NOREPLACE = 0x100000 /* MAP_FIXED but do not unmap
         underlying mapping.  */
 
-#macro GRND_NONBLOCK 0x01
-#macro GRND_RANDOM 0x02
+const GRND_NONBLOCK   = 0x01
+const GRND_RANDOM     = 0x02
 
-#macro DT_UNKNOWN 0
-#macro DT_FIFO  1
-#macro DT_CHR   2
-#macro DT_DIR   4
-#macro DT_BLK   6
-#macro DT_REG   8
-#macro DT_LNK   10
-#macro DT_SOCK  12
-#macro DT_WHT   14
+const DT_UNKNOWN  = 0
+const DT_FIFO     = 1
+const DT_CHR      = 2
+const DT_DIR      = 4
+const DT_BLK      = 6
+const DT_REG      = 8
+const DT_LNK      = 10
+const DT_SOCK     = 12
+const DT_WHT      = 14
 
-#macro S_IFMT   0o170000 // bit mask for the file type bit field
-#macro S_IFSOCK 0o140000 // socket
-#macro S_IFLNK  0o120000 // symbolic link
-#macro S_IFREG  0o100000 // regular file
-#macro S_IFBLK  0o060000 // block device
-#macro S_IFDIR  0o040000 // directory
-#macro S_IFCHR  0o020000 // character device
-#macro S_IFIFO  0o010000 // FIFO
+const S_IFMT      = 0o170000 // bit mask for the file type bit field
+const S_IFSOCK    = 0o140000 // socket
+const S_IFLNK     = 0o120000 // symbolic link
+const S_IFREG     = 0o100000 // regular file
+const S_IFBLK     = 0o060000 // block device
+const S_IFDIR     = 0o040000 // directory
+const S_IFCHR     = 0o020000 // character device
+const S_IFIFO     = 0o010000 // FIFO
 
-#macro S_ISUID  0o4000 /* Set user ID on execution.  */
-#macro S_ISGID  0o2000 /* Set group ID on execution.  */
-#macro S_ISVTX  0o1000 /* Save swapped text after use (sticky).  */
-#macro S_IRUSR  0o400 /* Read by owner.  */
-#macro S_IWUSR  0o200 /* Write by owner.  */
-#macro S_IXUSR  0o100 /* Execute by owner.  */
+const S_ISUID = 0o4000 /* Set user ID on execution.  */
+const S_ISGID = 0o2000 /* Set group ID on execution.  */
+const S_ISVTX = 0o1000 /* Save swapped text after use (sticky).  */
+const S_IRUSR = 0o400 /* Read by owner.  */
+const S_IWUSR = 0o200 /* Write by owner.  */
+const S_IXUSR = 0o100 /* Execute by owner.  */
 
 
-#macro P_ALL  0 /* Wait for any child.  */
-#macro P_PID  1 /* Wait for specified process.  */
-#macro P_PGID 2 /* Wait for members of process group.  */
+const P_ALL   = 0 /* Wait for any child.  */
+const P_PID   = 1 /* Wait for specified process.  */
+const P_PGID  = 2 /* Wait for members of process group.  */
 
 
 /* Bits in the third argument to `waitpid'.  */
-#macro	WNOHANG		1	/* Don't block waiting.  */
-#macro	WUNTRACED	2	/* Report status of stopped children.  */
+const	WNOHANG		= 1	/* Don't block waiting.  */
+const	WUNTRACED	= 2	/* Report status of stopped children.  */
 
 /* Bits in the fourth argument to `waitid'.  */
-#macro WSTOPPED	2	/* Report stopped child (same as WUNTRACED). */
-#macro WEXITED	4	/* Report dead child.  */
-#macro WCONTINUED	8	/* Report continued child.  */
-#macro WNOWAIT	0x01000000 /* Don't reap, just poll status.  */
+const WSTOPPED	= 2	/* Report stopped child (same as WUNTRACED). */
+const WEXITED	= 4	/* Report dead child.  */
+const WCONTINUED	= 8	/* Report continued child.  */
+const WNOWAIT	= 0x01000000 /* Don't reap, just poll status.  */
 
 /* If WIFEXITED(STATUS), the low-order 8 bits of the status.  */
-#macro	WEXITSTATUS(status)	(((status) & 0xff00) >> 8)
+// const	WEXITSTATUS(status)	(((status) & 0xff00) >> 8)
 
 /* If WIFSIGNALED(STATUS), the terminating signal.  */
-#macro	WTERMSIG(status)	((status) & 0x7f)
+// const	WTERMSIG(status)	((status) & 0x7f)
 
 /* If WIFSTOPPED(STATUS), the signal that stopped the child.  */
-#macro	WSTOPSIG(status)	WEXITSTATUS(status)
+// const	WSTOPSIG(status)	WEXITSTATUS(status)
 
 /* Nonzero if STATUS indicates normal termination.  */
-#macro	WIFEXITED(status)	(WTERMSIG(status) == 0)
+// const	WIFEXITED(status)	(WTERMSIG(status) == 0)
 
 /* Nonzero if STATUS indicates termination by a signal.  */
-#macro WIFSIGNALED(status) ((cast<char> (((status) & 0x7f) + 1) >> 1) > 0)
+// const WIFSIGNALED(status) ((cast<char> (((status) & 0x7f) + 1) >> 1) > 0)
 
 /* Nonzero if STATUS indicates the child is stopped.  */
-#macro	WIFSTOPPED(status)	(((status) & 0xff) == 0x7f)
+// const	WIFSTOPPED(status)	(((status) & 0xff) == 0x7f)
 
 /* Nonzero if STATUS indicates the child continued after a stop.  We only
    macro this if <bits/waitflags.h> provides the WCONTINUED flag bit.  */
-#macro WIFCONTINUED(status)	((status) == __W_CONTINUED)
+// const WIFCONTINUED(status)	((status) == __W_CONTINUED)
 
 /* Nonzero if STATUS indicates the child dumped core.  */
-#macro	WCOREDUMP(status)	((status) & __WCOREFLAG)
+// const	WCOREDUMP(status)	((status) & __WCOREFLAG)
 
 /* Macros for constructing status values.  */
-// #macro	__W_EXITCODE(ret, sig)	((ret) << 8 | (sig))
-// #macro	__W_STOPCODE(sig)	((sig) << 8 | 0x7f)
-// #macro __W_CONTINUED		0xffff
-// #macro	__WCOREFLAG		0x80
+// const	__W_EXITCODE(ret, sig)	((ret) << 8 | (sig))
+// const	__W_STOPCODE(sig)	((sig) << 8 | 0x7f)
+// const __W_CONTINUED		0xffff
+// const	__WCOREFLAG		0x80
 
-#macro SIGCHLD		17	/* Child terminated or stopped.  */
+const SIGCHLD		= 17	/* Child terminated or stopped.  */
 
-#macro CLD_EXITED 1               /* Child has exited.  */
-#macro  CLD_KILLED 2                   /* Child was killed.  */
-#macro  CLD_DUMPED 3                   /* Child terminated abnormally.  */
-#macro  CLD_TRAPPED 4                  /* Traced child has trapped.  */
-#macro  CLD_STOPPED 5                  /* Child has stopped.  */
-#macro  CLD_CONTINUED 6                 /* Stopped child has continued.  */
+const CLD_EXITED = 1               /* Child has exited.  */
+const  CLD_KILLED = 2                   /* Child was killed.  */
+const  CLD_DUMPED = 3                   /* Child terminated abnormally.  */
+const  CLD_TRAPPED = 4                  /* Traced child has trapped.  */
+const  CLD_STOPPED = 5                  /* Child has stopped.  */
+const  CLD_CONTINUED = 6                 /* Stopped child has continued.  */
 
-#macro	R_OK	4		/* Test for read permission.  */
-#macro	W_OK	2		/* Test for write permission.  */
-#macro	X_OK	1		/* Test for execute permission.  */
-#macro	F_OK	0		/* Test for existence.  */
+const	R_OK	= 4		/* Test for read permission.  */
+const	W_OK	= 2		/* Test for write permission.  */
+const	X_OK	= 1		/* Test for execute permission.  */
+const	F_OK	= 0		/* Test for existence.  */
 
-#macro SOCK_STREAM    1
-#macro SOCK_DGRAM     2
-#macro SOCK_RAW       3
-#macro SOCK_RDM       4
-#macro SOCK_SEQPACKET 5
-#macro SOCK_DCCP      6
-#macro SOCK_PACKET    10  
+const SOCK_STREAM    = 1
+const SOCK_DGRAM     = 2
+const SOCK_RAW       = 3
+const SOCK_RDM       = 4
+const SOCK_SEQPACKET = 5
+const SOCK_DCCP      = 6
+const SOCK_PACKET    = 10  
 
-#macro SOCK_NONBLOCK   O_NONBLOCK
+const SOCK_NONBLOCK  = O_NONBLOCK
 
 // include/linux/socket.h
-#macro AF_INET		2	/* Internet IP Protocol 	*/
-// #macro AF_INET6
+const AF_INET		= 2	/* Internet IP Protocol 	*/
+// const AF_INET6
 // TODO: Add more AF_
 
-#macro SOL_SOCKET 1
-#macro SO_REUSEADDR 2
+const SOL_SOCKET = 1
+const SO_REUSEADDR = 2
 
-#macro SHUT_RD 0
-#macro SHUT_WR 1
-#macro SHUT_RDWR 2
+const SHUT_RD = 0
+const SHUT_WR = 1
+const SHUT_RDWR = 2
 
-#macro INADDR_ANY 0
+const INADDR_ANY = 0
 
 
-#macro clockid_t i32
+const clockid_t = i32
 /* Identifier for system-wide realtime clock.  */
-#macro CLOCK_REALTIME                 0
+const CLOCK_REALTIME                = 0
 /* Monotonic system-wide clock.  */
-#macro CLOCK_MONOTONIC                1
+const CLOCK_MONOTONIC               = 1
 /* High-resolution timer from the CPU.  */
-#macro CLOCK_PROCESS_CPUTIME_ID       2
+const CLOCK_PROCESS_CPUTIME_ID      = 2
 /* Thread-specific CPU-time clock.  */
-#macro CLOCK_THREAD_CPUTIME_ID        3
+const CLOCK_THREAD_CPUTIME_ID       = 3
 /* Monotonic system-wide clock, not adjusted for frequency scaling.  */
-#macro CLOCK_MONOTONIC_RAW            4
+const CLOCK_MONOTONIC_RAW           = 4
 /* Identifier for system-wide realtime clock, updated only on ticks.  */
-#macro CLOCK_REALTIME_COARSE          5
+const CLOCK_REALTIME_COARSE         = 5
 /* Monotonic system-wide clock, updated only on ticks.  */
-#macro CLOCK_MONOTONIC_COARSE         6
+const CLOCK_MONOTONIC_COARSE        = 6
 /* Monotonic system-wide clock that includes time spent in suspension.  */
-#macro CLOCK_BOOTTIME                 7
+const CLOCK_BOOTTIME                = 7
 /* Like CLOCK_REALTIME but also wakes suspended system.  */
-#macro CLOCK_REALTIME_ALARM           8
+const CLOCK_REALTIME_ALARM          = 8
 /* Like CLOCK_BOOTTIME but also wakes suspended system.  */
-#macro CLOCK_BOOTTIME_ALARM           9
+const CLOCK_BOOTTIME_ALARM          = 9
 /* Like CLOCK_REALTIME but in International Atomic Time.  */
-#macro CLOCK_TAI                      11
+const CLOCK_TAI                     = 11
 
 
 
 // /usr/include/x86_64-linux-gnu/asm/signal.h:
 // /usr/include/asm-generic/signal-defs.h:
-#macro SIGHUP           1 /* Hangup.  */
-#macro SIGINT           2 /* Interactive attention signal.  */
-#macro SIGQUIT          3 /* Quit.  */
-#macro SIGILL           4 /* Illegal instruction.  */
-#macro SIGTRAP          5 /* Trace/breakpoint trap.  */
-#macro SIGABRT          6 /* Abnormal termination.  */
-#macro SIGIOT           6
-#macro SIGBUS           7 /* Bus error.  */
-#macro SIGFPE           8 /* Erroneous arithmetic operation.  */
-#macro SIGKILL          9 /* Killed.  */
-#macro SIGUSR1         10 /* User-defined signal 1.  */
-#macro SIGSEGV         11 /* Invalid access to storage.  */
-#macro SIGUSR2         12 /* User-defined signal 2.  */
-#macro SIGPIPE         13 /* Broken pipe.  */
-#macro SIGALRM         14 /* Alarm clock.  */
-#macro SIGTERM         15 /* Termination request.  */
-#macro SIGSTKFLT       16
-#macro SIGCHLD         17
-#macro SIGCONT         18
-#macro SIGSTOP         19
-#macro SIGTSTP         20
-#macro SIGTTIN         21
-#macro SIGTTOU         22
-#macro SIGURG          23
-#macro SIGXCPU         24
-#macro SIGXFSZ         25
-#macro SIGVTALRM       26
-#macro SIGPROF         27
-#macro SIGWINCH        28
-#macro SIGIO           29
-#macro SIGPOLL         SIGIO
+const SIGHUP        =   1 /* Hangup.  */
+const SIGINT        =   2 /* Interactive attention signal.  */
+const SIGQUIT       =   3 /* Quit.  */
+const SIGILL        =   4 /* Illegal instruction.  */
+const SIGTRAP       =   5 /* Trace/breakpoint trap.  */
+const SIGABRT       =   6 /* Abnormal termination.  */
+const SIGIOT        =   6
+const SIGBUS        =   7 /* Bus error.  */
+const SIGFPE        =   8 /* Erroneous arithmetic operation.  */
+const SIGKILL       =   9 /* Killed.  */
+const SIGUSR1       =  10 /* User-defined signal 1.  */
+const SIGSEGV       =  11 /* Invalid access to storage.  */
+const SIGUSR2       =  12 /* User-defined signal 2.  */
+const SIGPIPE       =  13 /* Broken pipe.  */
+const SIGALRM       =  14 /* Alarm clock.  */
+const SIGTERM       =  15 /* Termination request.  */
+const SIGSTKFLT     =  16
+const SIGCHLD       =  17
+const SIGCONT       =  18
+const SIGSTOP       =  19
+const SIGTSTP       =  20
+const SIGTTIN       =  21
+const SIGTTOU       =  22
+const SIGURG        =  23
+const SIGXCPU       =  24
+const SIGXFSZ       =  25
+const SIGVTALRM     =  26
+const SIGPROF       =  27
+const SIGWINCH      =  28
+const SIGIO         =  29
+const SIGPOLL       =  SIGIO
 /*
 #define SIGLOST         29
 */
-#macro SIGPWR          30
-#macro SIGSYS          31
-#macro SIGUNUSED       31
+const SIGPWR         = 30
+const SIGSYS         = 31
+const SIGUNUSED      = 31
 
 /* Bits in `sa_flags'.  */
-#macro SA_NOCLDSTOP  1		 /* Don't send SIGCHLD when children stop.  */
-#macro SA_NOCLDWAIT  2		 /* Don't create zombie on child death.  */
-#macro SA_SIGINFO    4		 /* Invoke signal-catching function with
+const SA_NOCLDSTOP = 1		 /* Don't send SIGCHLD when children stop.  */
+const SA_NOCLDWAIT = 2		 /* Don't create zombie on child death.  */
+const SA_SIGINFO   = 4		 /* Invoke signal-catching function with
 				    three arguments instead of one.  */
 // #if defined __USE_XOPEN_EXTENDED || defined __USE_MISC
-#macro SA_ONSTACK   0x08000000 /* Use signal stack by using `sa_restorer'. */
+const SA_ONSTACK  = 0x08000000 /* Use signal stack by using `sa_restorer'. */
 // #endif
 // #if defined __USE_XOPEN_EXTENDED || defined __USE_XOPEN2K8
-#macro SA_RESTART   0x10000000 /* Restart syscall on signal return.  */
-#macro SA_NODEFER   0x40000000 /* Don't automatically block the signal when
+const SA_RESTART   = 0x10000000 /* Restart syscall on signal return.  */
+const SA_NODEFER   = 0x40000000 /* Don't automatically block the signal when
 				    its handler is being executed.  */
-#macro SA_RESETHAND 0x80000000 /* Reset to SIG_DFL on entry to handler.  */
+const SA_RESETHAND = 0x80000000 /* Reset to SIG_DFL on entry to handler.  */
 // #endif
 // #ifdef __USE_MISC
-#macro SA_INTERRUPT    0x20000000 /* Historical no-op.  */
-#macro SA_RESTORER     0x04000000
+const SA_INTERRUPT  =  0x20000000 /* Historical no-op.  */
+const SA_RESTORER   =  0x04000000
 
 /* Values for the HOW argument to `sigprocmask'.  */
-#macro	SIG_BLOCK     0		 /* Block signals.  */
-#macro	SIG_UNBLOCK   1		 /* Unblock signals.  */
-#macro	SIG_SETMASK   2		 /* Set the set of blocked signals.  */
+const	SIG_BLOCK    = 0		 /* Block signals.  */
+const	SIG_UNBLOCK  = 1		 /* Unblock signals.  */
+const	SIG_SETMASK  = 2		 /* Set the set of blocked signals.  */
 
 enum Syscall_x86 {
-    SYS_read                  = 0
-    SYS_write                 = 1
-    SYS_open                  = 2
-    SYS_close                 = 3
-    SYS_stat                  = 4
-    SYS_fstat                 = 5
-    SYS_lstat                 = 6
-    SYS_poll                  = 7
-    SYS_lseek                 = 8
-    SYS_mmap                  = 9
-    SYS_mprotect              = 10
-    SYS_munmap                = 11
-    SYS_rt_sigaction          = 13
-    SYS_rt_sigprocmask        = 14
-    SYS_rt_sigreturn          = 15
-    SYS_access                = 21
-    SYS_pipe                  = 22
-    SYS_dup                   = 32
-    SYS_dup2                  = 33
-    SYS_nanosleep             = 35
-    SYS_sendfile              = 40
-    SYS_socket                = 41
-    SYS_connect               = 42
-    SYS_accept                = 43
-    SYS_sendto                = 44
-    SYS_recvfrom              = 45
-    SYS_sendmsg               = 46
-    SYS_recvmsg               = 47
-    SYS_shutdown              = 48
-    SYS_bind                  = 49
-    SYS_listen                = 50
-    SYS_getsockname           = 51
-    SYS_setsockopt            = 54
-    SYS_getsockopt            = 55
-    SYS_fork                  = 57
-    SYS_vfork                 = 58
-    SYS_execve                = 59
-    SYS_exit                  = 60
-    SYS_kill                  = 62
-    SYS_getdents              = 78
-    SYS_getcwd                = 79
-    SYS_rename                = 82
-    SYS_mkdir                 = 83
-    SYS_rmdir                 = 84
-    SYS_unlink                = 87
-    SYS_getdents64            = 217
-    SYS_clock_getres          = 227
-    SYS_clock_gettime         = 228
-    SYS_clock_settime         = 229
-    SYS_waitid                = 247
-    SYS_getrandom             = 318
+    read                  = 0
+    write                 = 1
+    open                  = 2
+    close                 = 3
+    stat                  = 4
+    fstat                 = 5
+    lstat                 = 6
+    poll                  = 7
+    lseek                 = 8
+    mmap                  = 9
+    mprotect              = 10
+    munmap                = 11
+    rt_sigaction          = 13
+    rt_sigprocmask        = 14
+    rt_sigreturn          = 15
+    access                = 21
+    pipe                  = 22
+    dup                   = 32
+    dup2                  = 33
+    nanosleep             = 35
+    sendfile              = 40
+    socket                = 41
+    connect               = 42
+    accept                = 43
+    sendto                = 44
+    recvfrom              = 45
+    sendmsg               = 46
+    recvmsg               = 47
+    shutdown              = 48
+    bind                  = 49
+    listen                = 50
+    getsockname           = 51
+    setsockopt            = 54
+    getsockopt            = 55
+    fork                  = 57
+    vfork                 = 58
+    execve                = 59
+    exit                  = 60
+    kill                  = 62
+    getdents              = 78
+    getcwd                = 79
+    rename                = 82
+    mkdir                 = 83
+    rmdir                 = 84
+    unlink                = 87
+    getdents64            = 217
+    clock_getres          = 227
+    clock_gettime         = 228
+    clock_settime         = 229
+    waitid                = 247
+    openat                = 257
+    getrandom             = 318
 }
 
-const x86_64 = compiler.BASIN_TARGET_ARCH_x86_64
-const arm_64 = compiler.BASIN_TARGET_ARCH_arm_64
+enum Syscall_arm {
+    openat                = 56
+}
 
-// NOTE: The compiler guarantees that the 
-//   stack pointer is 16-byte aligned
-//   when entering the inline assembly body.
-//   Arguments you pass to asm are passed
-//   the same way as the ABI for function calls.
+import "compiler" as basin
 
-fn _call4(arg0, arg1, arg2, arg3 : sword, sys: i32) -> sword {
-    switch compiler.platform() {
-        case x86_64
-            return asm(arg0, arg1, arg2, arg3, sys) -> i32 {
-                mov r10, rcx // 4th argument is passed in r10 to syscalls
-                mov eax, 257 // openat
-                syscall
-            }
-
-        case arm_64
-            return asm(arg0, arg1, arg2, arg3) -> i32 {
-                li x8, 56 // openat
-                svc #0
-            }
+fn syscall(ast: AST*, content: string, node: ASTExpression_Block*) {
+    for 0..node.functions.len {
+        syscall(ast, content, node.functions.ptr[nr])
     }
 }
 
-#import "compiler" as compiler
+fn syscall(ast: AST*, content: string, node: ASTFunction*) {
 
-const _base_syscall = # {
-    ws   : BasinWorkspace* = compiler.current_workspace()
-    ast  : AST*            = compiler.get_ast(ws, __FILE__)
-    func : ASTFunction*    = compiler.get_function(ast, __FUNCTION__)
-    syscall_enum: ASTEnum*
-    switch compiler.target_platform() {
-        case x86_64
-            syscall_enum = compiler.get_enum(ast, "Syscall_x86")
-        default crash()
+    // What we expect to generate
+    //   switch compiler.platform() {
+    //       case x86_64
+    //           return asm(arg0, arg1, arg2, arg3) -> sword {
+    //               mov r10, rcx
+    //               mov eax, {Syscall_x86_64.sendfile}
+    //               syscall
+    //           }
+    //       case arm_64
+    //           return asm(arg0, arg1, arg2, arg3) -> sword {
+    //               ldr x8, {Syscall_arm.sendfile}
+    //               svc #0
+    //           }
+    //   }
+    ASSERT(node.body!) // syscall annotation only allowed on functions with 
+
+    text : string = f"{\n"
+    text.append("switch compiler.platform() {\n")
+    text.append("case x86_64\nreturn asm(")
+    for 0..func.parameters.len {
+        if nr != 0
+            text.append(", ")
+        text.append("arg", nr)
+    }
+    text.append(") -> sword {\n")
+
+    fn find_syscall_number(name: string, enum_name: string, ast: AST* = ast) -> i32 {
+        global cached_enum: ASTEnum*
+
+        if cached_enum! {
+            // Slight optimization, cache the enum so we don't search for
+            // it for each syscall.
+            // Assumes enum exists and @syscall appeared in linux.bsn and nowhere
+            // else.
+            cached_enum = basin.find_enum(ast, enum_name)
+        }
+
+        mem: ASTEnum_Member* = basin.find_enum_member(cached_enum, name)
+
+        expr := mem.default_value : ASTExpression_Literal
+        return expr.int_value
     }
 
-    compiler.alloc_expr(ASTFunction)
-    compiler.create_ast()
-
-    func.body 
-}
-
-fn open(pathname: char*, flags: i32, mode: i32) -> i32 {
-    const AT_FDCWD = -100
-    _base_syscall
-
-    switch compiler.platform() {
-        case x86_64
-            return _call4(AT_FDCWD, pathname, flags, mode, Syscall_x86.SYS_openat) : i32
-        case arm_64
-            return _call4(AT_FDCWD, pathname, flags, mode, Syscall_arm.SYS_openat) : i32
+    if func.parameters.len > 3 {
+        text.append("mov r10, rcx\n")
     }
-}
+    syscall_num_x86_64 := find_syscall_number(func.name, "Syscall_x86_64")
+    text.append("mov eax, ", syscall_num_x86_64, "\n")
+    text.append("syscall\n")
 
-fn openat(dirfd: i32, pathname: char*, flags: i32, mode: i32) -> i32 {
-    _base_syscall
-    switch compiler.platform() {
-        case BASIN_TARGET_ARCH_x86_64
-            return _call4(dirfd, pathname, flags, mode, Syscall_x86.SYS_openat) : i32
-        case BASIN_TARGET_ARCH_arm_64
-            return _call4(dirfd, pathname, flags, mode, Syscall_arm.SYS_openat) : i32
+    text.append("}\n") // asm
+    text.append("case arm_64\nreturn asm(")
+    for 0..func.parameters.len {
+        text.append("arg", nr,", ")
     }
-}
-
-// General macro for all syscalls
-#macro SYSCALL(NAME, RETURN_TYPE, ...)
-
-fn @unixcall @asm NAME( SYSCALL_args(...) ) -> RETURN_TYPE {
-    push rbp // 16-byte align, I assume syscalls require that
-
-    // parameters have already been set
-    mov r10, rcx // 4th argument is passed through r10, not rcx
-    mov eax, SYS_ ## NAME
-    syscall
-
-    pop rbp
-    ret
-}
-#endmacro
-#macro SYSCALL_VOID(NAME, ...)
-fn @unixcall @asm NAME( SYSCALL_args(...) ) {
-    push rbp // 16-byte align, I assume syscalls require that
+    text.append("sys) -> sword {\n")
     
-    // parameters have already been set
-    mov r10, rcx // 4th argument is passed through r10, not rcx
-    mov eax, SYS_ ## NAME
-    syscall
-    
-    pop rbp
-    ret
-}
-#endmacro
-#macro SYSCALL_args(X,...) X, SYSCALL_args(...)
-#macro SYSCALL_args(X) X
-#macro SYSCALL_args() #endmacro
-// More than 6 arguments must be passed to the stack
-// which the SYSCALL macro doesn't account for.
-#macro SYSCALL_args(a,b,c,d,e,f,g) CANT_HAVE_7_ARGS_TO_SYSCALL
+    syscall_num_arm_64 := find_syscall_number(func.name, "Syscall_arm")
+    text.append("ldr x8, #", syscall_num_arm_64, "\n")
 
-// Function calls
-// TODO: ALL OF THESE HAVE NOT BEEN TESTED!
+    text.append("}\n") // asm
+
+    text.append("}\n") // switch
+
+    text.append("}\n") // expr block
+    
+    import "string"
+
+    // lex and parse expression using an existing AST's memory allocator.
+    // also provide a "metaprogramming" file name
+    // or we provide __FILE__, __LINE__
+    // which point as parse_expression function call.
+    // perhaps that is default arguments for parse_expression?
+    src_path : string = join(f"<syscall_{func.name}>")
+    expr := basin.parse_expression(text, ast, path = __FILE__, additive_line = __LINE__)
+    func.body = expr
+}
+
+@syscall fn read(fd: i32, buf: void*, count: u32) -> i32
+
 SYSCALL(read,  i32,  fd: i32, buf: void*, count: u32)
-SYSCALL(write, i32,  fd: i32, buf: void*, count: u32)
+SYSCALL(write, uword,  fd: i32, buf: void*, count: uword)
 SYSCALL(open,  i32,  path: char*, flags: i32, mode: i32 = 0)
 SYSCALL(close, i32,  fd: i32)
 SYSCALL(stat,  i32,  pathname: char*, statbuf: stat*)
@@ -455,38 +441,16 @@ SYSCALL(munmap,    i32, addr: void*, length: i32)
 SYSCALL(rt_sigaction, i32, signum: i32, act: sigaction_t*, old_act: sigaction_t*, sigsetsize: i64)
 SYSCALL(rt_sigprocmask, i32, how: i32, set: sigset_t*, oset: sigset_t*, sigsetsize: i64)
 SYSCALL_VOID(rt_sigreturn)
-// fn @oscall sigaction(signum: i32, act: sigaction_t*, old_act: sigaction_t*) -> i32 {
-//     if !act.sa_restorer {
-//         act.sa_flags |= SA_RESTORER
-//         act.sa_restorer = tramp
-//     }
-//     fn @oscall tramp() {
-//         rt_sigreturn()
-//     }
-//     return rt_sigaction(signum, act, old_act, sizeof sigset_t)
-// }
-// fn @oscall sigprocmask(signum: i32, set: sigset_t*, oset: sigset_t*) -> i32 {
-//     return rt_sigprocmask(signum, set, oset, sizeof sigset_t)
-// }
-
-//  NOTE: I don't know how to use rt_sigaction without Glibc so in the meantime we can use these.
-fn @import(LibC) sigaction(signum: i32, act: sigaction_t*, old_act: sigaction_t*) -> i32
-fn @import(LibC) signal(n: i32, f: fn@oscall(i32)) -> i32
 
 // flags to dlopen
-#macro RTLD_LAZY          0x00001
-#macro RTLD_NOW           0x00002
-#macro RTLD_BINDING_MASK  0x3
-#macro RTLD_NOLOAD        0x00004
-#macro RTLD_DEEPBIND      0x00008
-#macro RTLD_GLOBAL        0x00100
-#macro RTLD_LOCAL         0
-#macro RTLD_NODELETE      0x01000
-
-fn @import(LibDL) dlopen(filename: char*, flags: i32) -> void*;
-fn @import(LibDL) dlclose(handle: void*) -> i32;
-fn @import(LibDL) dlsym(handle: void*, symbol: char*) -> void*;
-fn @import(LibDL) dlerror() -> char*;
+const RTLD_LAZY          = 0x00001
+const RTLD_NOW           = 0x00002
+const RTLD_BINDING_MASK  = 0x3
+const RTLD_NOLOAD        = 0x00004
+const RTLD_DEEPBIND      = 0x00008
+const RTLD_GLOBAL        = 0x00100
+const RTLD_LOCAL         = 0
+const RTLD_NODELETE      = 0x01000
 
 SYSCALL(access,  i32, path: char*, mode: i32)
 SYSCALL(pipe,  i32, fildes: i32*)
@@ -568,56 +532,6 @@ fn ntohs(netshort: u16) -> u16 {
     // return (netshort << 8) | (netshort >> 8)
 }
 
-// We rely on libc for these, implementing them myself would be a little rough
-fn @import(LibC) getaddrinfo(node: char*,
-    service: char*,
-    hints: addrinfo*,
-    res: addrinfo**) -> i32;
-fn @import(LibC) freeaddrinfo(res: addrinfo*);
-
-// environ is used by ExecuteCommand when global_environment doesn't exist
-global @import(LibC) environ: char**;
-
-
-#load "libpthread.so.0" as pthreads
-
-// #macro pthread_t u64
-struct pthread_t {
-    data: u64
-}
-
-fn @import(pthreads) pthread_create(thread: pthread_t*,
-    attr: pthread_attr_t*,
-    start_routine: fn @oscall (void*)->void*,
-    arg: void*) -> i32;
-fn @import(pthreads) pthread_join(thread: pthread_t, retval: void**) -> i32;
-fn @import(pthreads) pthread_exit(retval: void*);
-fn @import(pthreads) pthread_self() -> pthread_t;
-
-fn @import(pthreads) pthread_mutex_destroy(mutex: pthread_mutex_t*) -> i32;
-fn @import(pthreads) pthread_mutex_init(mutex: pthread_mutex_t*, attr: pthread_mutexattr_t*) -> i32;
-fn @import(pthreads) pthread_mutex_trylock(mutex: pthread_mutex_t*) -> i32
-fn @import(pthreads) pthread_mutex_lock(mutex: pthread_mutex_t*) -> i32
-fn @import(pthreads) pthread_mutex_unlock(mutex: pthread_mutex_t*) -> i32
-
-/*###############
-    STRUCTS
-##############*/
-
-// changes based on arch, arch is x86_64
-#macro __SIZEOF_PTHREAD_ATTR_T 56
-#macro __SIZEOF_PTHREAD_MUTEX_T 40
-#macro __SIZEOF_PTHREAD_MUTEXATTR_T 4
-
-struct pthread_attr_t {
-    _: u8[__SIZEOF_PTHREAD_ATTR_T]
-}
-struct pthread_mutex_t {
-    _: u8[__SIZEOF_PTHREAD_MUTEX_T]
-}
-struct pthread_mutexattr_t {
-    _: u8[__SIZEOF_PTHREAD_MUTEXATTR_T]
-}
 
 // I could not find the correct stat structure anywhere but
 // this structure seems to be correct.
@@ -671,10 +585,10 @@ struct stat {
     __unused2:      i64;
 };
 
-#macro ino64_t u64
-#macro off64_t i64
-#macro ino_t u32
-#macro off_t i32
+const ino64_t = u64
+const off64_t = i64
+const ino_t   = u32
+const off_t   = i32
 
 struct linux_dirent {
     d_ino: ino_t;    /* 64-bit inode number */
@@ -1031,4 +945,3 @@ fn name_of_error(err: i64) -> char[] {
     return "<unnamed>"
 }
 
-#endif // OS_LINUX

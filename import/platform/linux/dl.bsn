@@ -1,0 +1,10 @@
+
+library "libdl.so" as LibDL
+
+
+@external(LibDL) {
+    fn dlopen(filename: char*, flags: i32) -> void*;
+    fn dlclose(handle: void*) -> i32;
+    fn dlsym(handle: void*, symbol: char*) -> void*;
+    fn dlerror() -> char*;
+}

@@ -1,0 +1,19 @@
+
+library "libc.so.6" as LibC
+
+@import(LibC) {
+
+    fn  sigaction(signum: i32, act: sigaction_t*, old_act: sigaction_t*) -> i32
+    fn  signal(n: i32, f: fn@oscall(i32)) -> i32
+
+    // We rely on libc for these, implementing them myself would be a little rough
+    fn getaddrinfo(node: char*,
+        service: char*,
+        hints: addrinfo*,
+        res: addrinfo**) -> i32;
+    fn freeaddrinfo(res: addrinfo*);
+
+    // environ is used by ExecuteCommand when global_environment doesn't exist
+    global environ: char**;
+}
+

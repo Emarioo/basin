@@ -18,7 +18,7 @@ void x86_generate(CodegenContext* context);
 
 
 CodegenResult codegen_generate_function(const IRFunction* in_function, CodegenFunction** out_function, const PlatformOptions* options, BasinAllocator* allocator) {
-    CodegenResult result;
+    CodegenResult result = {};
     result.error_type = CODEGEN_SUCCESS;
     result.error_message = NULL;
     *out_function = NULL;
@@ -41,7 +41,7 @@ CodegenResult codegen_generate_function(const IRFunction* in_function, CodegenFu
     // nocheckin TODO: DO NOT HEAP ALLOC LIKE THIS, call allocator->heap_alloc
     
     
-    CodegenContext context;
+    CodegenContext context = {};
     context.ir_func = in_function;
     context.machine_func = allocator->allocate(sizeof(CodegenFunction), NULL, allocator->user_data);
 
@@ -76,7 +76,7 @@ void x86_generate(CodegenContext* context) {
 
 
 static CodegenResult validate_platform_options(const PlatformOptions* options) {
-    CodegenResult result;
+    CodegenResult result = {};
     result.error_message = NULL;
     result.error_type = CODEGEN_SUCCESS;
 

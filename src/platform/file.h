@@ -12,6 +12,8 @@ bool read_file(FileHandle handle, char* ptr, u64 size);
 bool write_file(FileHandle handle, char* ptr, u64 size);
 bool get_file_info(const char* path, bool* is_dir, u64* file_size);
 
+string get_exe_path();
+
 // string read_whole_file(const char* path);
 
 
@@ -19,6 +21,8 @@ bool get_file_info(const char* path, bool* is_dir, u64* file_size);
 
 #ifdef OS_WINDOWS
     #include "windows.h"
+#else
+    #include "unistd.h"
 #endif
 
 FileHandle open_file(const char* path, u64* out_file_size) {
@@ -97,6 +101,23 @@ bool get_file_info(const char* path, bool* is_dir, u64* file_size) {
     return true;
 }
 
+
+string get_exe_path() {
+    string out = string_create(0x180);
+    #ifdef OS_WINDOWS
+		out.len = GetModuleFileNameA(NULL, out.ptr, out.max);
+		for(int i=0;i<out.len;i++){
+			if(out.ptr[i] == '\\')
+				out.ptr[i] = '/';
+		}
+    #else
+        int len = readlink("/proc/self/exe", (char*)out.ptr, out.max);
+        if(len < 0 || len > out.max)
+            return out;
+        out.len = len;
+    #endif
+    return out;
+}
 
 // bool read_whole_file(const char* path) {
 //     string str = {0};

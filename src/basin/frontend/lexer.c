@@ -18,7 +18,7 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
     //     snprintf(buffer, sizeof(buffer), "<import_id %u>", (unsigned)import_id);
     //     stream->stream_path = alloc_string(buffer);
     // }
-    string text;
+    string text = {};
     text.ptr = import->text.ptr;
     text.len = import->text.len;
 
@@ -229,18 +229,42 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
         if(c >= '0' && c <= '9') {
             // number
 
-            // TODO: Support hexidecimal
-            // Support binary
-            // Support octal
-            // Support float
-            // Support underscore
             int word_start = cur_head;
-            while(head < text.len) {
-                char chr = text.ptr[head];
-                if(chr < '0' || chr > '9') {
-                    break;
-                }
+            if (c == '0' && c2 == 'x') {
                 head++;
+                while(head < text.len) {
+                    char chr = text.ptr[head];
+                    if((chr < '0' || chr > '9') && ((chr|32) < 'a' || (chr|32) > 'f')) {
+                        break;
+                    }
+                    head++;
+                }
+            } else if (c == '0' && c2 == 'o') {
+                head++;
+                while(head < text.len) {
+                    char chr = text.ptr[head];
+                    if(chr < '0' || chr > '7') {
+                        break;
+                    }
+                    head++;
+                }
+            } else if (c == '0' && c2 == 'b') {
+                head++;
+                while(head < text.len) {
+                    char chr = text.ptr[head];
+                    if(chr < '0' || chr > '1') {
+                        break;
+                    }
+                    head++;
+                }
+            } else {
+                while(head < text.len) {
+                    char chr = text.ptr[head];
+                    if(chr < '0' || chr > '9') {
+                        break;
+                    }
+                    head++;
+                }
             }
             int word_end = head;
 
@@ -401,7 +425,7 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
 
     // print_token_stream(stream);
 
-    Result result;
+    Result result = {};
     result.kind = SUCCESS;
     return result;
 }
@@ -512,7 +536,7 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
         return false;
     }
     
-    string text;
+    string text = {};
     text.ptr = stream->import->text.ptr;
     text.len = stream->import->text.len;
 
@@ -581,7 +605,7 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
 }
 
 SourceLocation location_from_token(const TokenExt* tok) {
-    SourceLocation loc;
+    SourceLocation loc = {};
     loc.position = tok->position;
     loc.import_id = tok->import_id;
     return loc;

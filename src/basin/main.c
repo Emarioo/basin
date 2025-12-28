@@ -5,6 +5,7 @@
 */
 
 #include "basin/basin.h"
+#include "platform/memory.h"
 
 void print_help();
 
@@ -16,8 +17,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    BasinCompileOptions options;
-    memset(&options, 0, sizeof(options));
+    BasinCompileOptions options = {};
 
     BasinResult result;
     result = basin_parse_argv(argc, (const char**)argv, &options);

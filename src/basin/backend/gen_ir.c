@@ -23,18 +23,19 @@ typedef struct {
 
 void walk(GenIRContext* context, ASTExpression* _expr);
 void generate_function(GenIRContext* context, ASTFunction* func);
+void generate_expression(GenIRContext* context, ASTExpression* expr);
 
 Result generate_ir(Driver* driver, AST* ast, IRCollection* collection) {
 
     // Find functions and generate them
     // We implement this recursively because it's easier to debug issues
-    Result result;
+    Result result = {};
     result.kind = SUCCESS;
     result.message.ptr = NULL;
     result.message.max = 0;
     result.message.len = 0;
 
-    IRFunction func;
+    IRFunction func = {};
     // int ok;
 
     atomic_array_push(&driver->collection->functions, &func);
@@ -82,6 +83,24 @@ void walk(GenIRContext* context, ASTExpression* _expr) {
 
 void generate_function(GenIRContext* context, ASTFunction* func) {
     printf("Gen Func %s\n", func->name.ptr);
+    
+    if(func->body) {
+        printf(" skip no body %s\n", func->name.ptr);
+        return;
+    }
 
-    // context->builder.collection->functions
+    // init_builder(func);
+
+    // generate_prologue(func);
+    
+    generate_expression(context, func->body);
+    
+    // generate_epilog(func);
+
+    // fini_builder(func);
+}
+
+
+void generate_expression(GenIRContext* context, ASTExpression* expression) {
+
 }
