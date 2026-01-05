@@ -160,6 +160,7 @@ typedef struct {
 
 
 typedef struct {
+    SourceLocation location; // points at name if exists, otherwise expr
     string name; // named argument
     ASTExpression* expr;
 } ASTExpression_Call_Argument;
@@ -331,17 +332,16 @@ typedef struct {
     string name;
     ASTType type_name; // base type, i8,u32...
     Array_ASTEnum_Member members;
+    bool share;
 } ASTEnum;
 
 typedef struct ASTExpression_Block ASTExpression_Block;
 
 typedef struct {
     SourceLocation location;
-    string name; // may be empty otherwise name comes from 'import "util" as name'
-    bool shared;
-    
-    AST*                 ast;
-    ASTExpression_Block* block;
+    string         name; // may be empty otherwise name comes from 'import "util" as name'
+    bool           shared;
+    Import*        import;
 } ASTImport;
 
 
@@ -393,6 +393,38 @@ typedef struct ASTExpression_Block {
     // list of expressions
     Array_ASTExpressionP expressions;
 } ASTExpression_Block;
+
+typedef enum {
+    FOUND_NONE = 0,
+    FOUND_VARIABLE,
+    FOUND_GLOBAL,
+    FOUND_CONSTANT,
+    FOUND_FUNCTION,
+    FOUND_IMPORT,
+    FOUND_LIBRARY,
+    FOUND_STRUCT,
+    FOUND_ENUM,
+    FOUND_ENUM_MEMBER,
+} FoundKind;
+typedef struct {
+    FoundKind        kind;
+    ASTVariable*     f_variable;
+    ASTGlobal*       f_global;
+    ASTConstant*     f_constant;
+    ASTFunction*     f_function;
+    ASTImport*       f_import;
+    ASTLibrary*      f_library;
+    ASTStruct*       f_struct;
+    ASTEnum*         f_enum;
+    ASTEnum_Member*  f_enum_member;
+
+    ASTExpression_Block* block;
+} FindResult;
+bool find_identifier(cstring name, AST* ast, ASTExpression_Block* block, FindResult* result);
+
+// returns index of parameter
+// -1 if not found
+int find_function_parameter(cstring name, ASTFunction* func);
 
 
 void print_ast(AST* ast);

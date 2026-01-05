@@ -40,11 +40,9 @@ typedef struct Task {
     union {
         struct {
             Import* import;
-            TokenStream* stream;
         } lex_and_parse;
         struct {
             Import* import;
-            AST* ast;
         } gen_ir;
     };
 } Task;

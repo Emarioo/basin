@@ -2,6 +2,100 @@
 
 
 
+bool find_identifier(cstring name, AST* ast, ASTExpression_Block* block, FindResult* result) {
+    memset(result, 0, sizeof(*result));
+    
+    // This is the slowest function you've ever seen.
+    // We need some serious optimizations here.
+
+    // @TODO This functions finds the first identifier.
+    //    This would allow duplicates which is bad.
+    //    We need to search all scopes and if we find two items
+    //    with the same name return an error.
+    //    It might be more efficient to perform this duplicate check
+    //    in an earlier stage instead of each instance of an identifier
+    //    in expression performing this check.
+    
+    #define FIND(B_FIELD, R_FIELD, T, K)                            \
+        for (int i=0;i<block->B_FIELD.len;i++) {                    \
+            T* v = &block->B_FIELD.ptr[i];                          \
+            if (string_equal(name, cstr(v->name))) {                \
+                result->block = block;                              \
+                result->R_FIELD = v;                                \
+                result->kind = K;                                   \
+                return true;                                        \
+            }                                                       \
+        }
+
+    FIND(constants, f_constant, ASTConstant, FOUND_CONSTANT)
+    FIND(globals,   f_global,   ASTGlobal,   FOUND_GLOBAL)
+    FIND(variables, f_variable, ASTVariable, FOUND_VARIABLE)
+    FIND(structs,   f_struct,   ASTStruct,   FOUND_STRUCT)
+    FIND(functions, f_function, ASTFunction, FOUND_FUNCTION)
+    FIND(libraries, f_library,  ASTLibrary,  FOUND_LIBRARY)
+
+    for (int i=0;i<block->enums.len;i++) {
+        ASTEnum* v = &block->enums.ptr[i];
+        if (string_equal(name, cstr(v->name))) {
+            result->block = block;
+            result->f_enum = v;
+            result->kind = FOUND_ENUM;
+            return true;
+        }
+        if (v->share) {
+            for (int j=0;j<block->enums.len;j++) {
+                ASTEnum_Member* m = &block->enums.ptr[i]->members.ptr[j];
+                
+                if (string_equal(name, cstr(m->name))) {
+                    result->block = block;
+                    result->f_enum_member = m;
+                    result->kind = FOUND_ENUM_MEMBER;
+                    return true;
+                }
+            }
+        }
+    }
+
+    #undef FIND
+
+    if (block->parent) {
+        bool res = find_identifier(name, ast, block->parent, result);
+        if (res)
+            return true;
+    }
+
+    for (int i=0;i<block->imports.len;i++) {
+        ASTImport* v = &block->imports.ptr[i];
+
+        if (string_equal(name, cstr(v->name))) {
+            result->block = block;
+            result->f_import = v;
+            result->kind = FOUND_IMPORT;
+            return true;
+        }
+
+        // Driver, task system has a bug if AST isn't available.
+        // lex_and_parse needs to run for all imports that find_identifier
+        // can reach on the provided ast and block.
+        ASSERT(v->import->ast);
+
+        bool res = find_identifier(name, v->import->ast, v->import->ast->global_block, result);
+        if (res)
+            return true;
+    }
+
+    return false;
+}
+
+int find_function_parameter(cstring name, ASTFunction* func) {
+    for(int i=0;i<func->parameters.len;i++) {
+        ASTFunction_Parameter* param = &func->parameters.ptr[i];
+        if (string_equal(cstr(param->name), name)) {
+            return i;
+        }
+    }
+    return -1;
+}
 
 static void print_indent(int depth) {
     for (int i=0;i<depth;i++) {

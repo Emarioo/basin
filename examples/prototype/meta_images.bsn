@@ -1,0 +1,55 @@
+
+
+import "compiler" as basin
+
+@gen_image_enum
+enum Image_Name {
+    // members are auto generated
+}
+
+fn gen_image_enum(ast: AST*, content: string, node: basin.ASTEnum*) {
+    // There are some memory leaks here and AST strings vs Basin strings
+    // that mixed which needs to be fixed.
+    files := find_files("root/images")
+    for file in files {
+        member: basin.ASTEnum_Member
+        name: string = basename(file.path) // trims directory and extension
+        member.name = name
+        member.location = __LOCATION__ // SourceLocation{__IMPORT_ID__, __POS__}
+        array_push(node.members, &member)
+    }
+}
+
+struct Image {
+	width:  i32,
+	height: i32,
+	data:   u8[],
+}
+
+global images : Image[Image_Name.len]
+
+
+# {
+    files := find_files("root/images")
+    for file in files {
+        member: basin.ASTEnum_Member
+        name: string = basename(file.path) // trims directory and extension
+
+        index := index_of_enum(Image_Name, name)
+
+        image := read_image(file.path)
+
+        // Allocates data in section with type u8[N]
+        ptr: u8* = basin.allocate_data(".data", image.data.len)
+        memcpy(ptr, image.data.ptr, image.data.len)
+
+        images[index].width = image.width
+        images[index].height = image.height
+
+        // Compiler will try to throw error if you assign a pointer
+        //   to global variables since the pointer won't be valid
+        //   at runtime 'images[index].data = ptr'.
+        // It will ask you to use 'allocate_data' and 'add_relocation' instead.
+        basin.add_relocation(".data", &images[index].data, ".data", ptr)
+    }
+}

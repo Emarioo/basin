@@ -38,7 +38,7 @@ typedef struct {
     jmp_buf jump_state;
     TokenExt bad_token; // token causing bad syntax
     CLocation c_location; // token causing bad syntax
-    char error_message[256];
+    char error_message[512];
 } ParserContext;
 
 
@@ -257,17 +257,18 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
 
             driver_add_task(context->driver, &task);
 
-            // @TODO Submit ASTImport to tokenize task so it can be updated?
             ASTImport new_import = {};
             new_import.location = location_from_token(tok);
             new_import.shared = false; // set from annontation @shared
+            new_import.import = task.lex_and_parse.import;
             
-            tok = peek(0);
-            if (tok->kind == T_FROM) {
-                advance();
-                // @TODO Implement '@external(libc) import "unistd.h"' instead.
-                parse_error(tok, "@TODO implement 'import \"main\" from lib'");
-            }
+            // @TODO Implement annotation '@external(libc) import "unistd.h"'
+            //   We don't reserve T_FROM anymore
+            // tok = peek(0);
+            // if (tok->kind == T_FROM) {
+            //     advance();
+            //     parse_error(tok, "@TODO implement 'import \"main\" from lib'");
+            // }
 
             tok = peek(0);
             if (tok->kind == T_AS) {
@@ -1073,6 +1074,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                             }
                             
                             ASTExpression_Call_Argument arg = {};
+                            arg.location = location_from_token(tok);
 
                             const TokenExt* tok1 = peek(1);
 
@@ -1081,6 +1083,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                                 advance();
                                 cstring name = DATA_FROM_IDENTIFIER(tok);
                                 arg.name = string_clone_cstr(name);
+                                arg.location = location_from_token(tok);
                             }
 
                             arg.expr = parse_expression(context);

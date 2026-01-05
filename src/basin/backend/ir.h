@@ -269,3 +269,5 @@ void ir_imm8(IRBuilder* builder, int reg, i8 imm, IRType type);
 void ir_imm16(IRBuilder* builder, int reg, i16 imm, IRType type);
 void ir_imm32(IRBuilder* builder, int reg, i32 imm, IRType type);
 void ir_imm64(IRBuilder* builder, int reg, i64 imm, IRType type);
+
+void ir_call(IRBuilder* builder, IRFunction_id func_id, u8 arg_count, u8 ret_count, IROperand* operands);
