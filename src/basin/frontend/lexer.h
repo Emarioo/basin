@@ -2,7 +2,7 @@
 
 #include "basin/types.h"
 
-#include "platform/array.h"
+#include "util/array.h"
 
 #define DEBUG_BUILD
 

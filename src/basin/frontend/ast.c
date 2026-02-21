@@ -18,6 +18,16 @@ bool find_identifier(cstring name, AST* ast, ASTExpression_Block* block, FindRes
     
     #define FIND(B_FIELD, R_FIELD, T, K)                            \
         for (int i=0;i<block->B_FIELD.len;i++) {                    \
+            T* v = block->B_FIELD.ptr[i];                          \
+            if (string_equal(name, cstr(v->name))) {                \
+                result->block = block;                              \
+                result->R_FIELD = v;                                \
+                result->kind = K;                                   \
+                return true;                                        \
+            }                                                       \
+        }
+    #define FINDP(B_FIELD, R_FIELD, T, K)                            \
+        for (int i=0;i<block->B_FIELD.len;i++) {                    \
             T* v = &block->B_FIELD.ptr[i];                          \
             if (string_equal(name, cstr(v->name))) {                \
                 result->block = block;                              \
@@ -32,10 +42,10 @@ bool find_identifier(cstring name, AST* ast, ASTExpression_Block* block, FindRes
     FIND(variables, f_variable, ASTVariable, FOUND_VARIABLE)
     FIND(structs,   f_struct,   ASTStruct,   FOUND_STRUCT)
     FIND(functions, f_function, ASTFunction, FOUND_FUNCTION)
-    FIND(libraries, f_library,  ASTLibrary,  FOUND_LIBRARY)
+    FINDP(libraries, f_library,  ASTLibrary,  FOUND_LIBRARY)
 
     for (int i=0;i<block->enums.len;i++) {
-        ASTEnum* v = &block->enums.ptr[i];
+        ASTEnum* v = block->enums.ptr[i];
         if (string_equal(name, cstr(v->name))) {
             result->block = block;
             result->f_enum = v;
@@ -105,7 +115,7 @@ static void print_indent(int depth) {
 
 void print_ast(AST* ast) {
     printf("root: ");
-    print_expression(ast->global_block, 1);
+    print_expression((ASTExpression*)ast->global_block, 1);
 }
 
 void print_expression(ASTExpression* _expr, int depth) {

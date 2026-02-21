@@ -3,7 +3,7 @@ library "libc.so" as libc
 
 @external(libc) fn write(fd: i32, buf: void*, count: uword) -> uword
 
-const STDOUT_FILENO = 1
+STDOUT_FILENO <- 1
 
 fn main() -> i32 {
     text : char[] = "hello\n"
@@ -34,7 +34,7 @@ fn main() -> i32 {
 /*
 print(f"{x}{y}")
 print(f"a{x}{y}")
-print(f"{x}a{y}")
+print(f"{x}a{y}") 
 print(f"{x}{y}a")
 print(f"{x}a{y}a")
 print(f"a{x}a{y}")

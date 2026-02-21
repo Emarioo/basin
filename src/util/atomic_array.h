@@ -1,7 +1,6 @@
 #pragma once
 
-#include "platform/memory.h"
-#include "platform/thread.h"
+#include "platform/platform.h"
 
 #define DEF_ATOMIC_ARRAY(T)                     \
     typedef struct AtomicArray_##T {            \
@@ -52,25 +51,25 @@ int _atomic_array_push(AtomicArray* arr, void* element);
 // NOT THREAD SAFE
 void _atomic_array_init(AtomicArray* arr, int element_size, int initial_cap, int elements_per_chunk) {
     memset(arr, 0, sizeof(*arr));
-    create_mutex(&arr->mutex);
+    thread__create_mutex(&arr->mutex);
     arr->element_size = element_size;
     arr->elements_per_chunk = elements_per_chunk;
     arr->chunk_cap = (initial_cap + elements_per_chunk - 1) / elements_per_chunk;
     if (arr->chunk_cap != 0) {
-        arr->chunks = heap_alloc(sizeof(void*) * arr->chunk_cap);
+        arr->chunks = mem__alloc(sizeof(void*) * arr->chunk_cap);
     }
 
     for (int i=0;i<arr->chunk_cap;i++) {
-        arr->chunks[i] = heap_alloc(element_size * elements_per_chunk);
+        arr->chunks[i] = mem__alloc(element_size * elements_per_chunk);
     }
 }
 // NOT THREAD SAFE
 void _atomic_array_cleanup(AtomicArray* arr) {
-    cleanup_mutex(&arr->mutex);
+    thread__cleanup_mutex(&arr->mutex);
     for (int i=0;i<arr->cap / arr->elements_per_chunk;i++) {
-        heap_free((void*)arr->chunks[i]);
+        mem__free((void*)arr->chunks[i]);
     }
-    heap_free((void*)arr->chunks);
+    mem__free((void*)arr->chunks);
     arr->chunks = NULL;
 }
 
@@ -78,7 +77,7 @@ void _atomic_array_cleanup(AtomicArray* arr) {
 int _atomic_array_push(AtomicArray* arr, void* element) {
     int index = atomic_add(&arr->len, 1);
     if (index >= arr->cap) {
-        lock_mutex(&arr->mutex);
+        thread__lock_mutex(&arr->mutex);
         if (index >= arr->cap) {
             int chunk_index = index / arr->elements_per_chunk;
             if (chunk_index >= arr->chunk_cap) {
@@ -97,20 +96,20 @@ int _atomic_array_push(AtomicArray* arr, void* element) {
                 // in a thread that have been context switched out
                 // for a long time. Is this preferably to leaking memory?
                 if (arr->old_chunks)
-                    heap_free((void*)arr->old_chunks);
+                    mem__free((void*)arr->old_chunks);
                 arr->old_chunks = arr->chunks;
 
                 int old_chunk_cap = arr->chunk_cap;
                 arr->chunk_cap = old_chunk_cap * 2;
-                void** new_chunks = heap_alloc(sizeof(void*) * arr->chunk_cap);
+                void** new_chunks = mem__alloc(sizeof(void*) * arr->chunk_cap);
                 memcpy(new_chunks, (void*)arr->old_chunks, sizeof(void*) * old_chunk_cap);
                 arr->chunks = new_chunks;
             }
 
-            arr->chunks[chunk_index] = heap_alloc(arr->element_size * arr->elements_per_chunk);
+            arr->chunks[chunk_index] = mem__alloc(arr->element_size * arr->elements_per_chunk);
             arr->cap += arr->elements_per_chunk;
         }
-        unlock_mutex(&arr->mutex);
+        thread__unlock_mutex(&arr->mutex);
     }
     if (element) {
         memcpy((char*)arr->chunks[index/arr->elements_per_chunk] + index % arr->elements_per_chunk, element, arr->element_size);

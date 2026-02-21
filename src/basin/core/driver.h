@@ -21,9 +21,9 @@
 #include "basin/basin.h"
 #include "basin/backend/ir.h"
 
-#include "platform/array.h"
-#include "platform/bucket_array.h"
-#include "platform/thread.h"
+#include "util/array.h"
+#include "util/bucket_array.h"
+#include "platform/platform.h"
 
 typedef struct AST AST;
 

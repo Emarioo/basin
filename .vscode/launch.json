@@ -4,7 +4,7 @@
         "name": "basin dev.bsn",
         "type": "cppdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/bin/basin",
+        "program": "${workspaceFolder}/bin/basin.exe",
         "args": ["dev.bsn"],
         "stopAtEntry": false,
         "cwd": "${workspaceFolder}",

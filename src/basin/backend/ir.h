@@ -6,10 +6,10 @@
 
 #pragma once
 
-#include "platform/array.h"
-#include "platform/atomic_array.h"
-#include "platform/string.h"
-#include "platform/thread.h"
+#include "util/array.h"
+#include "util/atomic_array.h"
+#include "util/string.h"
+#include "platform/platform.h"
 
 typedef enum {
     IR_ADD,
@@ -198,7 +198,9 @@ typedef struct IRDataObject {
 
 typedef struct IRSection {
     string name;
-    Memory data;
+    u64 data_len;
+    u64 data_cap;
+    u8* data;
 } IRSection;
 
 DEF_ARRAY(IRSection)

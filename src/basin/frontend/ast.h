@@ -2,7 +2,7 @@
 
 #include "basin/types.h"
 #include "basin/frontend/lexer.h" // SourceLocation
-#include "platform/array.h"
+#include "util/array.h"
 
 #define DEBUG_BUILD
 
@@ -139,13 +139,6 @@ typedef struct {
 } ASTExpression_Literal;
 
 typedef struct {
-    NODE_BASE
-
-    string name;
-
-} ASTExpression_Identifier;
-
-typedef struct {
     string name;
     ASTExpression* expr;
 } ASTExpression_Initializer_Element;
@@ -158,6 +151,13 @@ typedef struct {
     Array_ASTExpression_Initializer_Element elements;
 } ASTExpression_Initializer;
 
+
+typedef struct {
+    NODE_BASE
+
+    string name;
+
+} ASTExpression_Identifier;
 
 typedef struct {
     SourceLocation location; // points at name if exists, otherwise expr
@@ -183,10 +183,12 @@ typedef struct {
     Array_ASTExpression_Call_Argument arguments;
 } ASTExpression_Call;
 
+typedef struct ASTExpression_Block ASTExpression_Block;
+
 // Memory owner
 typedef struct AST {
     TokenStream* stream;
-    ASTExpression* global_block;
+    ASTExpression_Block* global_block;
 } AST;
 
 typedef struct ASTAnnotation {
@@ -335,7 +337,6 @@ typedef struct {
     bool share;
 } ASTEnum;
 
-typedef struct ASTExpression_Block ASTExpression_Block;
 
 typedef struct {
     SourceLocation location;
@@ -370,7 +371,7 @@ DEF_ARRAY(ASTImport)
 DEF_ARRAY(ASTLibrary)
 
 
-typedef struct ASTExpression_Block {
+struct ASTExpression_Block {
     NODE_BASE
 
     ASTExpression_Block* parent; // NULL means file level block
@@ -392,7 +393,7 @@ typedef struct ASTExpression_Block {
 
     // list of expressions
     Array_ASTExpressionP expressions;
-} ASTExpression_Block;
+};
 
 typedef enum {
     FOUND_NONE = 0,

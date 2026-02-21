@@ -1,5 +1,7 @@
 #pragma once
 
+#include "util/assert.h"
+
 typedef struct string {
     // YOU CANNOT REARRANGE THESE FIELDS.
     // CODE DEPENDS ON IT BEING THIS BECAUSE OF INITIALIZER
@@ -39,7 +41,7 @@ void   string_append(string* str, const char* text, int len);
 
 #ifdef IMPL_PLATFORM
 
-#include "platform/memory.h"
+#include "platform/platform.h"
 
 bool string_equal_cstr(cstring str, char* ptr) {
     int len = strlen(ptr);
@@ -71,7 +73,7 @@ int string_rfind(const char* text, int pos, const char* pattern) {
 string string_create(int cap) {
     string s = {};
     s.max = cap;
-    s.ptr = heap_alloc(s.max + 1);
+    s.ptr = mem__alloc(s.max + 1);
     ASSERT(s.ptr);
     return s;
 }
@@ -87,14 +89,14 @@ string string_clone(const char* text, int len) {
     string out;
     out.len = len;
     out.max = out.len;
-    out.ptr = heap_alloc(out.max + 1);
+    out.ptr = mem__alloc(out.max + 1);
     if(out.len);
         memcpy(out.ptr, text, out.len);
     out.ptr[out.len] = '\0';
     return out;
 }
 void string_cleanup(string* str) {
-    heap_free(str->ptr);
+    mem__free(str->ptr);
     memset(str, 0, sizeof(*str));
 }
 
@@ -111,7 +113,7 @@ void string_append_char(string* str, char c) {
 void string_append(string* str, const char* text, int len) {
     if (str->len + len > str->max) {
         int new_max = str->max*2 + 10 + len;
-        str->ptr = heap_realloc(str->ptr, new_max + 1);
+        str->ptr = mem__realloc(new_max + 1, str->ptr);
         str->max = new_max;
     }
     memcpy(str->ptr + str->len, text, len);

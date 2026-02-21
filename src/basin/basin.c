@@ -4,10 +4,9 @@
 #include "basin/logger.h"
 #include "basin/error.h"
 
-#include "platform/string.h"
-#include "platform/file.h"
-#include "platform/thread.h"
-#include "platform/assert.h"
+#include "util/string.h"
+#include "util/assert.h"
+#include "platform/platform.h"
 
 static const char BASIN_COMPILER_VERSION[] = "0.0.1-dev";
 
@@ -73,7 +72,9 @@ BasinResult basin_compile_text(const char* text, u64 size, const char* path, con
         array_push(&driver->import_dirs, &s);
     }
 
-    string exe_path = get_exe_path();
+    string exe_path = string_create(400);
+    fs__exepath(exe_path.max, exe_path.ptr);
+    exe_path.len = strlen(exe_path.ptr);
     if (!options->skip_default_import_dirs) {
         int closest_slash_pos = string_rfind(exe_path.ptr, exe_path.len-1, "/");
         ASSERT(closest_slash_pos != -1); // @NOCHECKIN Give good error message
@@ -145,14 +146,7 @@ void* basin_allocate(int new_size, void* old_ptr, const BasinCompileOptions* opt
         return options->allocator.allocate(new_size, old_ptr, options->allocator.user_data);
     }
 
-    if (new_size > 0 && old_ptr) {
-        return heap_realloc(old_ptr, new_size);
-    } else if (new_size > 0) {
-        return heap_alloc(new_size);
-    } else {
-        heap_free(old_ptr);
-        return NULL;
-    }
+    return mem__allocate(new_size, old_ptr);
 }
 
 
@@ -163,23 +157,25 @@ basin_string basin_read_whole_file(const char* path, const BasinCompileOptions* 
     
     basin_string out = {0};
 
-    u64 size;
-    FileHandle handle = open_file(path, &size);
-    if(!handle)
+    FSHandle handle = fs__open(path, FS_READ);
+    if(handle == FS_INVALID_HANDLE)
         return out;
 
-    char* data = basin_allocate(size, NULL, options);
+    FSInfo info;
+    fs__info(handle, &info);
+
+    char* data = basin_allocate(info.file_size, NULL, options);
     if(!data)
         return out;
     
-    bool success = read_file(handle, data, size);
+    bool success = fs__read(handle, 0, data, info.file_size);
     if(!success)
         return out;
 
-    close_file(handle);
+    fs__close(handle);
 
     out.ptr = data;
-    out.len = size;
+    out.len = info.file_size;
     out.allocator = &options->allocator;
 
     return out;
@@ -190,17 +186,17 @@ bool basin_write_whole_file(const char* path, char* data, u64 size, const BasinC
         return options->filesystem.write_whole_file(path, data, size, options->filesystem.user_data);
     }
     
-    FileHandle handle = open_file(path, NULL);
-    if(!handle)
+    FSHandle handle = fs__open(path, FS_READ);
+    if(handle == FS_INVALID_HANDLE)
         return false;
 
-    bool success = write_file(handle, data, size);
+    bool success = fs__write(handle, 0, data, size);
     if(!success) {
-        close_file(handle);
+        fs__close(handle);
         return false;
     }
 
-    close_file(handle);
+    fs__close(handle);
 
     return true;
 }
@@ -208,7 +204,17 @@ bool basin_write_whole_file(const char* path, char* data, u64 size, const BasinC
 
 BasinFS_FileInfo basin_file_info(const char* path, const BasinCompileOptions* options) {
     BasinFS_FileInfo out = {0};
-    out.exists = get_file_info(path, &out.is_directory, &out.file_size);
+    FSHandle handle = fs__open(path, FS_READ);
+    if (handle == FS_INVALID_HANDLE)
+        return out;
+
+    out.exists = true;
+    
+    FSInfo info;
+    fs__info(handle, &info);
+
+    out.is_directory = info.is_directory;
+    out.file_size = info.file_size;
     return out;
 }
 
@@ -236,7 +242,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
             if (in_string) {
                 if (!in_word) {
                     int length = head-1 - start_arg;
-                    char* arg = (char*)heap_alloc(length + 1);
+                    char* arg = (char*)mem__alloc(length + 1);
                     memcpy(arg, arguments + start_arg, length);
                     arg[length] = '\0';
                     array_push(&ptr_list, &arg);
@@ -258,7 +264,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
         if (chr == ' ' || chr == '\n' || chr == '\t' || chr == '\r') {
             if (in_word) {
                 int length = head-1 - start_arg;
-                char* arg = (char*)heap_alloc(length + 1);
+                char* arg = (char*)mem__alloc(length + 1);
                 memcpy(arg, arguments + start_arg, length);
                 arg[length] = '\0';
                 array_push(&ptr_list, &arg);
@@ -275,7 +281,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
 
         if (head == len) {
             int length = head - start_arg;
-            char* arg = (char*)heap_alloc(length + 1);
+            char* arg = (char*)mem__alloc(length + 1);
             memcpy(arg, arguments + start_arg, length);
             arg[length] = '\0';
             array_push(&ptr_list, &arg);
@@ -289,7 +295,7 @@ BasinResult basin_parse_arguments(const char* arguments, BasinCompileOptions* op
     result = basin_parse_argv(ptr_list.len, (const char**)ptr_list.ptr, options);
 
     for (int i=0;i<ptr_list.len;i++) {
-        free(ptr_list.ptr[i]);
+        mem__free(ptr_list.ptr[i]);
     }
 
     array_cleanup(&ptr_list);

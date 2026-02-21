@@ -5,7 +5,8 @@
 */
 
 #include "basin/basin.h"
-#include "platform/memory.h"
+#include "util/assert.h"
+#include "platform/platform.h"
 
 void print_help();
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/string.h"
+#include "util/string.h"
 
 typedef u16 ImportID;
 
@@ -34,3 +34,5 @@ typedef struct {
 } CLocation;
 
 #define CLOCATION { __FILE__, __LINE__ }
+
+

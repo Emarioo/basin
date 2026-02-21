@@ -1,10 +1,10 @@
 
 #include "basin/frontend/lexer.h"
 
-#include "platform/memory.h"
-#include "platform/string.h"
-#include "platform/file.h"
-#include "platform/array.h"
+#include "platform/platform.h"
+
+#include "util/string.h"
+#include "util/array.h"
 
 Result tokenize(const Import* import, TokenStream** out_stream) {
     ASSERT(out_stream);
@@ -24,11 +24,11 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
 
     stream->tokens_len = 0;
     stream->tokens_max = text.len / 2 + 10;
-    stream->tokens = heap_alloc(stream->tokens_max * sizeof(Token));
+    stream->tokens = mem__alloc(stream->tokens_max * sizeof(Token));
     
     stream->data_len = 0;
     stream->data_max = text.len / 2 + 100;
-    stream->data = heap_alloc(stream->data_max);
+    stream->data = mem__alloc(stream->data_max);
 
     array_init(&stream->line_positions, import->text.len / 40);
 
@@ -38,9 +38,9 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
     Array_int paren_depth;
     array_init(&paren_depth, 10);
 
-    #define RESERVE_TOKEN() if (stream->tokens_len + 1 > stream->tokens_max) { stream->tokens = heap_realloc(stream->tokens, (stream->tokens_max*2 + 20) * sizeof(Token)); }
-    #define RESERVE_TOKEN_EXT() if (stream->tokens_len + TOKEN_PER_EXT_TOKEN > stream->tokens_max) { stream->tokens = heap_realloc(stream->tokens, (stream->tokens_max*2 + sizeof(TokenExt) + 20) * sizeof(Token)); }
-    #define RESERVE_DATA(N) if (stream->data_len + (N) > stream->data_max) { stream->data = heap_realloc(stream->data, (stream->data_max*2 + (N) + 500)); }
+    #define RESERVE_TOKEN() if (stream->tokens_len + 1 > stream->tokens_max) { stream->tokens = mem__realloc((stream->tokens_max*2 + 20) * sizeof(Token), stream->tokens); }
+    #define RESERVE_TOKEN_EXT() if (stream->tokens_len + TOKEN_PER_EXT_TOKEN > stream->tokens_max) { stream->tokens = mem__realloc((stream->tokens_max*2 + sizeof(TokenExt) + 20) * sizeof(Token), stream->tokens); }
+    #define RESERVE_DATA(N) if (stream->data_len + (N) > stream->data_max) { stream->data = mem__realloc((stream->data_max*2 + (N) + 500), stream->data); }
 
 
     #define ADD_TOKEN(KIND,POS) do {                                    \
@@ -583,7 +583,7 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
         out_code->len = len + 1 // length of characters on the line + newline
             + (column-1) + 1 + 1; // amount of spaces + arrow + newline
         out_code->max = out_code->len;
-        out_code->ptr = heap_alloc(out_code->max + 1); // +1 for null character
+        out_code->ptr = mem__alloc(out_code->max + 1); // +1 for null character
         memcpy(out_code->ptr, code, len);
         out_code->ptr[len] = '\n';
         out_code->ptr[out_code->len] = '\0';
@@ -613,10 +613,10 @@ SourceLocation location_from_token(const TokenExt* tok) {
 
 void token_stream_cleanup(TokenStream* stream) {
     if(stream->tokens)
-        heap_free(stream->tokens);
+        mem__free(stream->tokens);
     if(stream->data)
-        heap_free(stream->data);
-    heap_free(stream);
+        mem__free(stream->data);
+    mem__free(stream);
 }
 
 const char* name_from_token(TokenKind kind) {

@@ -7,7 +7,11 @@
 #include "basin/backend/ir.h"
 #include "basin/error.h"
 
-#include "platform/memory.h"
+#include "basin/basin.h"
+
+#include "platform/platform.h"
+#include "util/assert.h"
+
 
 
 Driver* driver_create() {
@@ -15,23 +19,23 @@ Driver* driver_create() {
     barray_init(&driver->tasks, 100, 50);
     barray_init(&driver->imports, 100, 50);
 
-    create_mutex(&driver->import_mutex);
-    create_mutex(&driver->task_mutex);
-    create_semaphore(&driver->may_have_task_semaphore, 0, 1000000);
+    thread__create_mutex(&driver->import_mutex);
+    thread__create_mutex(&driver->task_mutex);
+    thread__create_semaphore(&driver->may_have_task_semaphore, 0, 1000000);
 
     return driver;
 }
 
 void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number) {
-    lock_mutex(&driver->task_mutex);
+    thread__lock_mutex(&driver->task_mutex);
     
     barray_push(&driver->tasks, task);
 
     // we try to signal in case threads are waiting
     // if there already is a thread getting semaphore then that's fine.
-    signal_semaphore(&driver->may_have_task_semaphore, 1);
+    thread__signal_semaphore(&driver->may_have_task_semaphore, 1);
 
-    unlock_mutex(&driver->task_mutex);
+    thread__unlock_mutex(&driver->task_mutex);
 
     if(enabled_logging_driver) {
         fprintf(stderr, "[%d] Add task %s\n", thread_number, task_kind_names[task->kind]);
@@ -62,10 +66,10 @@ void driver_run(Driver* driver) {
     } else {
         for (int i=0;i<driver->threads_len;i++) {
             driver->threads[i].driver = driver;
-            spawn_thread(&driver->threads[i].thread, (u32(*)(void*))driver_thread_run, &driver->threads[i]);
+            thread__spawn(&driver->threads[i].thread, (u32(*)(void*))driver_thread_run, &driver->threads[i]);
         }
         for (int i=0;i<driver->threads_len;i++) {
-            join_thread(&driver->threads[i].thread);
+            thread__join(&driver->threads[i].thread);
         }
     }
     
@@ -91,28 +95,28 @@ u32 driver_thread_run(DriverThread* thread_driver) {
             // It seems like every thread is idling BUT WE CAN'T NOW FOR SURE because in theory (very unlikely)
             // a thread may be stuck between wait_semapore and atomic_add(idle_threads).
             // So we signal the semaphore to make sure.
-            signal_semaphore(&driver->may_have_task_semaphore, 1);
+            thread__signal_semaphore(&driver->may_have_task_semaphore, 1);
         }
 
         if(enabled_logging_driver) {
             fprintf(stderr, "[%d] waiting\n", id);
         }
 
-        wait_semaphore(&driver->may_have_task_semaphore);
+        thread__wait_semaphore(&driver->may_have_task_semaphore);
 
-        lock_mutex(&driver->task_mutex);
+        thread__lock_mutex(&driver->task_mutex);
         int prev_idling_threads = atomic_add(&driver->idle_threads, -1);
 
         if(barray_count(&driver->tasks) == 0) {
             // TODO: If we read idle_threads here,
             if (prev_idling_threads == driver->threads_len) {
                 atomic_add(&driver->idle_threads, 1);
-                unlock_mutex(&driver->task_mutex);
-                signal_semaphore(&driver->may_have_task_semaphore, 1);
+                thread__unlock_mutex(&driver->task_mutex);
+                thread__signal_semaphore(&driver->may_have_task_semaphore, 1);
                 break;
             }
 
-            unlock_mutex(&driver->task_mutex);
+            thread__unlock_mutex(&driver->task_mutex);
             continue;
         }
 
@@ -126,7 +130,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         barray_pop(&driver->tasks, &task);
         int tasks_left = barray_count(&driver->tasks);
 
-        unlock_mutex(&driver->task_mutex);
+        thread__unlock_mutex(&driver->task_mutex);
 
 
         if(enabled_logging_driver) {
@@ -140,8 +144,8 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     BasinResult result = {};
                     basin_string text = basin_read_whole_file(task.lex_and_parse.import->path.ptr, driver->options);
                     if(!text.ptr) {
-                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task.lex_and_parse.import->path.ptr);
-                        printf("%s", result.error_message);
+                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "\033[31mERROR:\033[0m Cannot read '%s'\n", task.lex_and_parse.import->path.ptr);
+                        fprintf(stderr, "%s", result.error_message);
                         break;
                     }
                     // @TODO When should we add text to import?
@@ -170,11 +174,11 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 fprintf(stderr, "Parse success\n");
                 
                 task.kind = TASK_GEN_IR;
-                task.gen_ir.ast = ast;
+                // task.gen_ir.ast = ast;
                 driver_add_task_with_thread_id(driver, &task, id);
             } break;
             case TASK_GEN_IR: {
-                Result result = generate_ir(driver, task.gen_ir.ast, driver->collection);
+                Result result = generate_ir(driver, task.gen_ir.import->ast, driver->collection);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
@@ -208,15 +212,17 @@ Import* driver_create_import_id(Driver* driver, cstring path) {
     // if it was we create new import otherwise
     // we reuse the import?
 
+    // @TODO Check if path already exists!
+
     Import import = {};
     import.path = string_clone_cstr(path);
     import.import_id = atomic_add(&driver->next_import_id, 1);
 
-    lock_mutex(&driver->import_mutex);
+    thread__lock_mutex(&driver->import_mutex);
 
     Import* ptr = barray_push(&driver->imports, &import);
 
-    unlock_mutex(&driver->import_mutex);
+    thread__unlock_mutex(&driver->import_mutex);
 
     return ptr;
 }
@@ -230,7 +236,7 @@ string driver_resolve_import_path(Driver* driver, const Import* origin, cstring 
 
     if (path.ptr[0] == '.' && path.ptr[1] == '/') {
         str.max = origin->path.len + path.len - 1;
-        str.ptr = heap_alloc(str.max + 1);
+        str.ptr = mem__alloc(str.max + 1);
         str.len = str.max;
         memcpy(str.ptr, origin->path.ptr, origin->path.len);
         memcpy(str.ptr + origin->path.len, path.ptr+1, path.len-1);
@@ -238,7 +244,7 @@ string driver_resolve_import_path(Driver* driver, const Import* origin, cstring 
         return str;
     }
     str.max = 300;
-    str.ptr = heap_alloc(str.max + 1);
+    str.ptr = mem__alloc(str.max + 1);
     for (int i=driver->import_dirs.len-1;i>=0;i--) {
         string dir = driver->import_dirs.ptr[i];
         
@@ -271,7 +277,7 @@ string driver_resolve_import_path(Driver* driver, const Import* origin, cstring 
     // If it wasn't then we might not want to heap allocate
     // just to free it later.
     // @TODO We want to use an optimized linear string allocator.
-    heap_free(str.ptr);
+    mem__free(str.ptr);
     string empty = {};
     return empty;
 }
@@ -281,6 +287,6 @@ string driver_resolve_import_path(Driver* driver, const Import* origin, cstring 
 
 const char* const task_kind_names[TASK_COUNT] = {
     "TASK_INVALID",
-    "TASK_TOKENIZE",
-    "TASK_PARSE",
+    "TASK_LEX_AND_PARSE",
+    "TASK_GEN_IR",
 };

@@ -104,17 +104,19 @@ The Goal of Basin is:
 - Fast and simple to compile. 1 million lines per second (with multithreading).
 - A straight forward type system.
 - More similar to C than Rust.
-- Execute basin programs (duh)
+- Meant for software where safety and security is not critical.
+- Execute basin programs
 - Compile basin programs (to libraries and object files)
 - Compile and distribute basin programs (executables)
 
+meh goals
 
 ## Requirements language
 
 ## Requirements compiler
 A little strange to specify compiler specifics in "Basin Language Specification" but here they are.
 
-- Small codebase, 30K - 50K lines (if you can call that small)
+- Small codebase, < 100K lines
 
 
 <!-- 
@@ -141,19 +143,21 @@ When compiling intermediate files such as inline assembly and object files they 
 **NOTE**: There are plans to support .PDB which is debug information for Windows.
 
 # 3. Lexical Structure
-The lexical structure of Basin program defines the text encoding and which characters are allowed.
+The lexical structure definesthe text encoding and which characters are allowed.
 
 Basin source files should be encoded using UTF-8.
 
 Lexical analysis is applied to a file where sequences of characters are converted to tokens. These are the tokens:
+
 ## Identifiers
-Identifiers are names for variables, functions, and parameters. They start with a letter or underscore followed by letters, digits, and underscores. The allowed characters for letters are the English characters A-Z. Identifiers are sensitive to lower and upper case.
+Identifiers are names for variables, functions, and parameters. They start with a letter or underscore followed by letters, digits, and underscores. Identifiers are case-sensitive.
 
 **Examples:**
 - `myvar`
 - `_secret`
 - `_123_hey`
-- `gold` and `Gold` are different identifiers.
+- `gold` and `Gold` refer to different things.
+
 - `41kopwa` not allowed
 - `4_23` not allowed
 - `char_ä` not allowed
@@ -161,7 +165,7 @@ Identifiers are names for variables, functions, and parameters. They start with 
 ## Keywords
 Keywords are reserved identifiers.
 
-Some are: `if`, `while`, `import`, `return`.
+Some are: `if`, `in`, `for`, `while`, `import`, `return`.
 
 See `TokenKind` in [lexer.h](/src/basin/core/lexer.h).
 
@@ -176,12 +180,13 @@ There are literal numbers, strings, characters, and booleans. They have specific
 - `12.244e5` same as (12.244 * pow(10, 5))
 - `0x123` hexidecimal
 - `0o7267` octal
-- `0b10011` binary
+- `0b10_0011` binary
 
 **Literal characters**
 - `'a'` 
 - `'\0'` 
 - `'\n'`
+- `'\x41'`
 
 **Literal strings**
 - `"hello"`
@@ -190,7 +195,12 @@ There are literal numbers, strings, characters, and booleans. They have specific
 - `"hello\nhello2`
 
 **Formatted strings**
-- `f"Hello {num}\n"` -> "Hello ", num, "\n"
+- `f"Hello {num}\n"`
+- `f"package/game-{version}-{target}"`
+
+<!--
+not translated to comma like this, wont' work with a := f"package-{version}"
+ -> "Hello ", num, "\n"
 - `f"Hello {num}"` -> "Hello ", num, "\n"
 ```python
 f"{x}{y}"     ->  x, y
@@ -203,15 +213,16 @@ f"a{x}a{y}a"  ->  "a", x, "a", y, "a"
 ```
 
 - `f"Hello {name:14}"` padding is not supported yet.
+-->
 
 ## Special characters
 Operators and delimiters:
 ```
-+-*/%^&<>~!
-=
-#@$
++-*/%
+^&<>~!
+=#@$
 ()[]{}
-,.
+,.;:
 ```
 
 ## Whitespace
@@ -235,23 +246,24 @@ One instance is to resolve operator kind:
 
 # 4. Syntax
 
-The primitive component of a Basin program is the expression. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions.
+The most common primitive in a Basin program is the expression. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions. An expression is a value or a thing that can be executed.
 
-Files themselves are a block expression that contains more expressions. In a block expression there may also be global variables, constants, functions, structs, and enums. These are declarations and definitions and not expressions because they aren't executed. The initial value of a variable, constant or the code inside a function is an expression but not the entire function itself.
+The text in a file is considered contents of a block expression that contains more expressions. In a block expression there may also be global variables, constants, functions, structs, and enums. These are declarations and definitions and not expressions because they aren't executed. The initial value of a variable, constant or the code inside a function is an expression but not the entire function itself.
 
 Below are some pseudo grammar rules:
 - `thing` a normal name specifies a non-terminal, it expands to other non-terminals and terminals
 - `thing | other_thing` allows one or another thing
-- `("import" | "include") file_path` parenthesis describes precedence between terminals.
+- `("import" | "include") file_path` parenthesis declares precedence
 - `"import"` a terminal, specifies a specific string of text (keyword)
-- ` number ( "," number )* ` asterisk specifies zero or more of the thing before
-- ` number ( "+" number )+ ` plus specifies one or more of the thing before
+- ` number ( "," number ) * ` asterisk specifies zero or more of the thing before
+- ` number ( "+" number ) + ` plus specifies one or more of the thing before
+- ` number ( "+" number ) ? ` question mark specifies zero or one of the thing before
 - White space is ignored
 
 ```bash
 file := block_expression
 
-block_expression :=  ( expression | global | constant | function | struct | enum | import ) *
+block_expression :=  ( expression | global | constant | function | struct | enum | import )*
 
 expression := ( "{" block_expression "}" ) | loop_expression | if_expression | identifier | literal_expression | math_operation | function_call | assignment | local_var_declaration
 
@@ -265,7 +277,21 @@ loop_expression := "for" expression  expression
 # conditional expression that should evaluate to a boolean, keep looping while true
 loop_expression := "while" expression expression
 # loop forever (until break or return)
-loop_expression := "while" "{" ( expression | block_expression )  "}"
+loop_expression := "while" "{" block_expression "}"
+
+if_expression := "if" expression expression ( "else" expression )?
+
+function_call :=
+   ( identifier ) |
+   ( identifier NO_WHITESPACE "(" comma_arg_list ")" ) |
+   ( identifier ( shell_arg_list | comma_arg_list ) )
+
+paren_arg_list := argument ( "," argument )*
+shell_arg_list := ( argument )+
+argument       := ( expression | attribute "=" expression )
+attribute      := identifier
+
+
 ```
 
 # 5. Types

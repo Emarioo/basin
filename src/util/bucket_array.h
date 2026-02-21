@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "platform/memory.h"
+#include "platform/platform.h"
 
 
 #define DEF_BUCKET_ARRAY(T)    \
@@ -51,7 +51,7 @@ void* _barray_get(BucketArray* array, int element_size, int index);
 
 void _barray_init(BucketArray* array, int element_size, int initial_cap, int items_per_bucket) {
     memset(array, 0, sizeof(*array));
-    array->buckets = (Bucket*)heap_alloc(initial_cap * sizeof(Bucket));
+    array->buckets = (Bucket*)mem__alloc(initial_cap * sizeof(Bucket));
     // array->buckets_len = 0;
     array->buckets_cap = (initial_cap + items_per_bucket-1) / items_per_bucket;
 
@@ -59,7 +59,7 @@ void _barray_init(BucketArray* array, int element_size, int initial_cap, int ite
     
     for (int i=0; i < array->buckets_cap; i++) {
         Bucket* bucket = &array->buckets[i];
-        bucket->elements = heap_alloc(items_per_bucket * element_size);
+        bucket->elements = mem__alloc(items_per_bucket * element_size);
         memset(bucket->elements, 0, items_per_bucket * element_size);
     }
 
@@ -69,9 +69,9 @@ void _barray_init(BucketArray* array, int element_size, int initial_cap, int ite
 void _barray_cleanup(BucketArray* array, int element_size) {
     for(int i=0;i<array->buckets_cap;i++) {
         Bucket* bucket = &array->buckets[i];
-        heap_free(bucket->elements);
+        mem__free(bucket->elements);
     }
-    heap_free(array->buckets);
+    mem__free(array->buckets);
 
     array->buckets = NULL;
     // array->buckets_len = 0;
@@ -85,13 +85,13 @@ void* _barray_push(BucketArray* array, int element_size, void* element) {
 
     if(array->element_count >= element_cap) {
         int new_bucket_cap = array->buckets_cap * 2 + 2;
-        Bucket* new_buckets = (Bucket*)heap_realloc(array->buckets, new_bucket_cap * sizeof(Bucket));
+        Bucket* new_buckets = (Bucket*)mem__realloc(new_bucket_cap * sizeof(Bucket), array->buckets);
        
         // memset(new_buckets + array->buckets_max, 0, (new_max - array->buckets_max) * sizeof(Bucket));
 
         for (int i = array->buckets_cap; i < new_bucket_cap; i++) {
             Bucket* bucket = &array->buckets[i];
-            bucket->elements = heap_alloc(array->items_per_bucket * element_size);
+            bucket->elements = mem__alloc(array->items_per_bucket * element_size);
             memset(bucket->elements, 0, array->items_per_bucket * element_size);
         }
 

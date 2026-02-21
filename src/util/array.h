@@ -1,7 +1,7 @@
 #pragma once
 
-#include "platform/memory.h"
-#include "platform/assert.h"
+#include "platform/platform.h"
+#include "util/assert.h"
 
 #define DEF_ARRAY(T)                                                                                    \
     typedef struct {                                                                                    \
@@ -40,12 +40,12 @@ DEF_ARRAY(int)
 
 void _array_init(Array* array, int element_size, int cap) {
     memset(array, 0, sizeof(*array));
-    array->ptr = heap_alloc(cap * element_size);
+    array->ptr = mem__alloc(cap * element_size);
     array->len = 0;
     array->cap = cap;
 }
 void _array_cleanup(Array* array, int element_size) {
-    heap_free(array->ptr);
+    mem__free(array->ptr);
     array->len = 0;
     array->cap = 0;
 }
@@ -56,7 +56,7 @@ void _array_push(Array* array, int element_size, void* element) {
     }
     if(array->len >= array->cap) {
         int new_max = array->cap * 2 + 10;
-        void* new_ptr = heap_realloc(array->ptr, new_max * element_size);
+        void* new_ptr = mem__realloc(new_max * element_size, array->ptr);
         array->ptr = new_ptr;
         array->cap = new_max;
     }

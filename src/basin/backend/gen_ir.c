@@ -5,7 +5,7 @@
 #include "basin/frontend/ast.h"
 #include "basin/backend/ir.h"
 
-#include "platform/memory.h"
+#include "platform/platform.h"
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -97,7 +97,7 @@ Result generate_ir(Driver* driver, AST* ast, IRCollection* collection) {
 
     if (res == 0) {
 
-        walk(&context, ast->global_block);
+        walk(&context, (ASTExpression*)ast->global_block);
 
     } else {
         int line, column;
@@ -175,7 +175,7 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                     if (context->inferred_type) {
                         ASSERT(false);
                     } else {
-                        int reg = allocate_register(&context);
+                        int reg = allocate_register(context);
                         ir_imm32(&context->builder, reg, expression->int_value, IR_TYPE_SINT32);
                         ir_value.regnum = reg;
                     }
@@ -186,7 +186,7 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                     if (context->inferred_type) {
                         ASSERT(false);
                     } else {
-                        int reg = allocate_register(&context);
+                        int reg = allocate_register(context);
                         float v = expression->float_value;
                         ir_imm32(&context->builder, reg, *(i32*)&v, IR_TYPE_FLOAT32);
                         ir_value.regnum = reg;
@@ -266,7 +266,7 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
 
             for (int i=0;i<func->return_values.len;i++) {
                 ASTFunction_Parameter* param = &func->return_values.ptr[i];
-                operands[arg_count + i] = allocate_register(&context);
+                operands[arg_count + i] = allocate_register(context);
             }
 
             IRFunction_id id = 0;
@@ -281,4 +281,42 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
     }
 
     return ir_value;
+}
+
+
+
+void ir_load(IRBuilder* builder, int reg, int reg_mem, int offset, IRType type) {
+
+}
+void ir_store(IRBuilder* builder, int reg, int reg_mem, int offset, IRType type) {
+
+}
+
+void ir_add(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type) {
+
+}
+void ir_sub(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type) {
+
+}
+void ir_mul(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type) {
+
+}
+void ir_div(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type) {
+
+}
+void ir_mod(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type) {
+
+}
+
+void ir_imm8(IRBuilder* builder, int reg, i8 imm, IRType type) {
+}
+void ir_imm16(IRBuilder* builder, int reg, i16 imm, IRType type) {
+}
+void ir_imm32(IRBuilder* builder, int reg, i32 imm, IRType type) {
+}
+void ir_imm64(IRBuilder* builder, int reg, i64 imm, IRType type) {
+}
+
+void ir_call(IRBuilder* builder, IRFunction_id func_id, u8 arg_count, u8 ret_count, IROperand* operands) {
+
 }

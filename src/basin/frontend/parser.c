@@ -8,7 +8,7 @@
 #include "basin/core/driver.h"
 #include "basin/frontend/ast.h"
 
-#include "platform/memory.h"
+#include "platform/platform.h"
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -61,7 +61,7 @@ typedef enum {
 
 bool parse_type(ParserContext* context, ASTType* typename);
 ASTExpression* parse_expression(ParserContext* context);
-ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags);
+ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags);
 ASTFunction* parse_function(ParserContext* context);
 ASTEnum* parse_enum(ParserContext* context);
 ASTStruct* parse_struct(ParserContext* context);
@@ -178,7 +178,7 @@ void exit_comptime_mode(ParserContext* context) {
 #define IS_COMPTIME() (context->comptime_kind != COMPTIME_NONE)
 
 
-ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags) {
+ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags) {
 
     bool in_file_scope = block_flags & IN_FILE_SCOPE;
     bool in_case_scope = block_flags & IN_CASE_SCOPE;
@@ -279,6 +279,17 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
             }
 
             array_push(&block_expr->imports, &new_import);
+
+            tok = peek(0);
+            if (tok->kind == T_AS) {
+                advance();
+                tok = match(T_IDENTIFIER);
+
+                cstring name = DATA_FROM_STRING(tok);
+                new_import.name = string_clone_cstr(name);
+            }
+
+            // @TODO Add import to scope tree
         } else if(tok->kind == T_LIBRARY) {
             advance();
             
@@ -428,7 +439,7 @@ ASTExpression* parse_block_expression(ParserContext* context, ParseBlockFlags bl
 
     context->previous_block = block_expr->parent;
 
-    return (ASTExpression*)block_expr;
+    return block_expr;
 }
 
 int op_precedence(int op_kind) {
@@ -609,7 +620,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                 if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
                     // no body
                 } else {
-                    switch_case.body = parse_block_expression(context, IN_CASE_SCOPE);
+                    switch_case.body = (ASTExpression*)parse_block_expression(context, IN_CASE_SCOPE);
                 }
 
             } else if(tok->kind == T_DEFAULT) {
@@ -625,7 +636,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                 if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
                     // no body
                 } else {
-                    switch_case.body = parse_block_expression(context, IN_CASE_SCOPE);
+                    switch_case.body = (ASTExpression*)parse_block_expression(context, IN_CASE_SCOPE);
                 }
                 
             } else {
@@ -859,7 +870,7 @@ ASTExpression* parse_expression(ParserContext* context) {
 
                     array_push(&exprs, (ASTExpression**)&expr);
                 } else if (tok0->kind == '{') {
-                    ASTExpression* expr = parse_block_expression(context, false);
+                    ASTExpression* expr = (ASTExpression*)parse_block_expression(context, false);
 
                     array_push(&exprs, &expr);
                 } else if (tok0->kind == '(') {
@@ -1310,7 +1321,7 @@ ASTFunction* parse_function(ParserContext* context) {
 
     const TokenExt* tok_body = peek(0);
     if (tok_body->kind == '{') {
-        ASTExpression* body = parse_block_expression(context, false);
+        ASTExpression* body = (ASTExpression*)parse_block_expression(context, false);
         out_function->body = body;
     }
 
