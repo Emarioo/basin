@@ -7,6 +7,8 @@
 #include "util/array.h"
 
 Result tokenize(const Import* import, TokenStream** out_stream) {
+    TracyCZone(zone, 1);
+
     ASSERT(out_stream);
 
     TokenStream* stream = (TokenStream*)HEAP_ALLOC_OBJECT(TokenStream);
@@ -427,6 +429,8 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
 
     Result result = {};
     result.kind = SUCCESS;
+
+    TracyCZoneEnd(zone);
     return result;
 }
 
@@ -496,31 +500,40 @@ void print_token_stream(TokenStream* stream) {
 }
 
 static int pos_to_line_index(TokenStream* stream, int position) {
+    TracyCZone(zone, 1);
     int* data = stream->line_positions.ptr;
     int  len  = stream->line_positions.len;
     int  high = len-1;
     int  low  = 0;
+    int  mid, val;
 
     while (true) {
-        int mid = (high+low)/2;
-        int val = data[mid];
+        mid = (high+low)/2;
+        val = data[mid];
         if (position < val) {
             high = mid-1;
             if (position >= data[mid-1]) {
-                return mid-1;
+                mid = mid-1;
+                break;
             }
         } else if(position > val) {
             low = mid+1;
             if (position < data[mid+1]) {
-                return mid;
+                break;
             }
         } else if (high == low || position == val) {
-            return mid;
+            break;
         }
     }
+    TracyCZoneEnd(zone);
+    return mid;
 }
 
 bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_line, int* out_column, string* out_code) {
+    TracyCZone(zone, 1);
+
+    bool result = false;
+
     if(out_line) {
         *out_line = 0;
     }
@@ -533,7 +546,7 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
         out_code->max = 0;
     }
     if(location.import_id == INVALID_IMPORT_ID) {
-        return false;
+        goto end;
     }
     
     string text = {};
@@ -541,7 +554,7 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
     text.len = stream->import->text.len;
 
     if(!text.ptr) {
-        return false;
+        goto end;
     }
 
     int nr_tabs = 0;
@@ -601,7 +614,11 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
         arrow_code[arrow_head+1] = '\n';
     }
 
-    return true;
+    result = true;
+
+end:
+    TracyCZoneEnd(zone);
+    return result;
 }
 
 SourceLocation location_from_token(const TokenExt* tok) {

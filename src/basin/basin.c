@@ -61,6 +61,8 @@ BasinResult basin_compile_file(const char* path, const char* output_path, const 
 }
 
 BasinResult basin_compile_text(const char* text, u64 size, const char* path, const char* output_path, const BasinCompileOptions* options) {
+    TracyCZone(zone, 1);
+    
     BasinResult result = {};
 
     Driver* driver = driver_create();
@@ -133,6 +135,8 @@ BasinResult basin_compile_text(const char* text, u64 size, const char* path, con
     // Driver spat out executable, shared library, bytecode or whatever was specified.
     
     // write it to a file
+    
+    TracyCZoneEnd(zone);
 
     return result;
 }
@@ -151,33 +155,38 @@ void* basin_allocate(int new_size, void* old_ptr, const BasinCompileOptions* opt
 
 
 basin_string basin_read_whole_file(const char* path, const BasinCompileOptions* options) {
-    if(options->filesystem.read_whole_file) {
-        return options->filesystem.read_whole_file(path, options->filesystem.user_data);
-    }
+    TracyCZone(zone, 1);
     
     basin_string out = {0};
 
+    if(options->filesystem.read_whole_file) {
+        out = options->filesystem.read_whole_file(path, options->filesystem.user_data);
+        goto end;
+    }
+    
+
     FSHandle handle = fs__open(path, FS_READ);
     if(handle == FS_INVALID_HANDLE)
-        return out;
+        goto end;
 
     FSInfo info;
     fs__info(handle, &info);
 
     char* data = basin_allocate(info.file_size, NULL, options);
     if(!data)
-        return out;
+        goto end;
     
     bool success = fs__read(handle, 0, data, info.file_size);
     if(!success)
-        return out;
+        goto end;
 
     fs__close(handle);
 
     out.ptr = data;
     out.len = info.file_size;
     out.allocator = &options->allocator;
-
+end:
+    TracyCZoneEnd(zone);
     return out;
 }
 

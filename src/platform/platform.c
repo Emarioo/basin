@@ -16,6 +16,7 @@
     #include <stdio.h>
     #include <string.h>
     #include <stdlib.h>
+    #include <time.h>
     #include <errno.h>
 #endif
 
@@ -459,5 +460,17 @@ void thread__cleanup_semaphore(Semaphore* semaphore) {
         int index = (semaphore->handle - (u64)g_semaphore_array) / sizeof(*g_semaphore_array);
         semaphore->handle = 0;
         g_semaphore_array_used[index] = 0;
+    #endif
+}
+
+
+void thread__sleep_ns(u64 ns) {
+    #ifdef OS_WINDOWS
+        Sleep(ns / 1000000LLU);
+    #else
+        struct timespec ts;
+        ts.tv_sec = ns / 1000000000LLU;
+        ts.tv_nsec = ns % 1000000000LLU;
+        nanosleep(&ts, NULL);
     #endif
 }

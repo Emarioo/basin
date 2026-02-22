@@ -14,9 +14,14 @@
 #include <stdarg.h>
 
 #define match(KIND) ( context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match(context, KIND) )
+
 // 0 current token
 #define peek(N) _peek(context, N)
 #define advance() _advance(context)
+
+#define PROFILE_START() TracyCZone(zone, 1); push_profile_zone(context, zone)
+
+#define PROFILE_END() TracyCZoneEnd(zone); pop_profile_zone(context)
 
 typedef enum {
     COMPTIME_NONE,
@@ -39,8 +44,34 @@ typedef struct {
     TokenExt bad_token; // token causing bad syntax
     CLocation c_location; // token causing bad syntax
     char error_message[512];
+
+    // Zones for tracy are cleaned up when long jumping.
+    int zones_cap;
+    int zones_len;
+    TracyCZoneCtx* zones;
 } ParserContext;
 
+void cleanup_profile_zones(ParserContext* ctx) {
+    while (ctx->zones_len) {
+        ctx->zones_len--;
+        TracyCZoneEnd(ctx->zones[ctx->zones_len]);
+    }
+}
+
+static inline void push_profile_zone(ParserContext* ctx, TracyCZoneCtx zone) {
+    if (ctx->zones_len + 1 >= ctx->zones_cap) {
+        int new_cap = ctx->zones_cap * 2 + 100;
+        void* new_zones = mem__allocate(new_cap, ctx->zones);
+        ctx->zones = new_zones;
+        ctx->zones_cap = new_cap;
+    }
+    ctx->zones[ctx->zones_len] = zone;
+    ctx->zones_len++;
+}
+static inline void pop_profile_zone(ParserContext* ctx) {
+    ASSERT(ctx->zones_len > 0);
+    ctx->zones_len--;
+}
 
 #define CREATE_EXPR(V, T, KIND, TOK)      \
     T* V = HEAP_ALLOC_OBJECT(T);          \
@@ -73,6 +104,7 @@ ASTStruct* parse_struct(ParserContext* context);
 // }
 
 Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
+    TracyCZone(zone, 1);
     // We implement this recursively because it's easier to debug issues
     Result result = {};
     result.kind = SUCCESS;
@@ -96,6 +128,8 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
 
         *out_ast = ast;
     } else {
+        cleanup_profile_zones(&context);
+
         int line, column;
         string code;
         bool yes = compute_source_info(stream, location_from_token(&context.bad_token), &line, &column, &code);
@@ -107,13 +141,14 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
         result.kind = FAILURE;
         result.message = string_clone_cptr(buffer);
     }
-
+    TracyCZoneEnd(zone);
     return result;
 }
 
-#define check_error_ext(T, ...) ((T)->kind == T_END_OF_FILE ? parse_error((const TokenExt*)(void*)(T), __VA_ARGS__) : 0)
 
-#define parse_error(TOK, FMT, ...) ( context->c_location.path = __FILE__, context->c_location.line = __LINE__, _parse_error(context, TOK, FMT __VA_OPT__(,)  __VA_ARGS__) )
+#define parse_error(TOK, FMT, ...) do { (context->c_location.path = __FILE__, context->c_location.line = __LINE__, _parse_error(context, TOK, FMT __VA_OPT__(,)  __VA_ARGS__)); } while (0)
+
+#define check_error_ext(T, ...) do { if ((T)->kind == T_END_OF_FILE) parse_error((const TokenExt*)(void*)(T), __VA_ARGS__); } while (0)
 
 void _parse_error(ParserContext* context, const TokenExt* tok, char* fmt, ...) {
     context->bad_token = *(const TokenExt*)tok;
@@ -149,6 +184,7 @@ static const TokenExt* _match(ParserContext* context, TokenKind kind) {
         return tok;
     } else {
         _parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted '%s'", name_from_token(kind));
+        // unreachable
         return &EOF_TOKEN_EXT;
     }
 }
@@ -179,6 +215,7 @@ void exit_comptime_mode(ParserContext* context) {
 
 
 ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags) {
+    PROFILE_START();
 
     bool in_file_scope = block_flags & IN_FILE_SCOPE;
     bool in_case_scope = block_flags & IN_CASE_SCOPE;
@@ -438,7 +475,8 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
     }
 
     context->previous_block = block_expr->parent;
-
+    
+    PROFILE_END();
     return block_expr;
 }
 
@@ -478,9 +516,13 @@ int op_precedence(int op_kind) {
 }
 
 ASTExpression* parse_expression(ParserContext* context) {
+    PROFILE_START();
+
     const TokenExt* tok = peek(0);
 
     // TODO: Parse annotations
+
+    ASTExpression* ret_expr;
 
     if (tok->kind == T_RETURN) {
         advance();
@@ -511,7 +553,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             }
         }
 
-        return (ASTExpression*)out_expr;
+        ret_expr = (ASTExpression*)out_expr;
 
     } else if (tok->kind == T_YIELD) {
         advance();
@@ -542,7 +584,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             }
         }
 
-        return (ASTExpression*)out_expr;
+        ret_expr = (ASTExpression*)out_expr;
 
     } else if (tok->kind == T_IF) {
         advance();
@@ -575,7 +617,7 @@ ASTExpression* parse_expression(ParserContext* context) {
         out_expr->body_expr        = body;
         out_expr->else_expr        = else_body;
 
-        return (ASTExpression*)out_expr;
+        ret_expr = (ASTExpression*)out_expr;
     
     } else if (tok->kind == T_SWITCH) {
         advance();
@@ -645,7 +687,7 @@ ASTExpression* parse_expression(ParserContext* context) {
             array_push(&out_expr->cases, &switch_case);
         }
 
-        return (ASTExpression*)out_expr;
+        ret_expr = (ASTExpression*)out_expr;
 
     } else if (tok->kind == T_FOR) {
         advance();
@@ -694,7 +736,7 @@ ASTExpression* parse_expression(ParserContext* context) {
         expr->condition_expr    = cond;
         expr->body_expr         = body;
 
-        return (ASTExpression*)expr;
+        ret_expr = (ASTExpression*)expr;
 
     } else if (tok->kind == T_WHILE) {
         advance();
@@ -714,7 +756,7 @@ ASTExpression* parse_expression(ParserContext* context) {
         expr->condition_expr   = cond;
         expr->body_expr        = body;
         
-        return (ASTExpression*)expr;
+        ret_expr = (ASTExpression*)expr;
 
     // } else if (tok->kind == '#') {
     //     // compile time expression
@@ -751,13 +793,13 @@ ASTExpression* parse_expression(ParserContext* context) {
 
         CREATE_EXPR(expr, ASTExpression_Continue, EXPR_CONTINUE, tok);
         
-        return (ASTExpression*)expr;
+        ret_expr = (ASTExpression*)expr;
     } else if (tok->kind == T_BREAK) {
         advance();
         
         CREATE_EXPR(expr, ASTExpression_Break, EXPR_BREAK, tok);
         
-        return (ASTExpression*)expr;
+        ret_expr = (ASTExpression*)expr;
     } else {
         
         Array_ASTExpressionP exprs;
@@ -1185,12 +1227,16 @@ ASTExpression* parse_expression(ParserContext* context) {
             }
         }
 
-        return exprs.ptr[0];
+        ret_expr = exprs.ptr[0];
     }
+    PROFILE_END();
+    return ret_expr;
 }
 
 
 ASTFunction* parse_function(ParserContext* context) {
+    PROFILE_START();
+
     match(T_FN);
 
     const TokenExt* tok = match(T_IDENTIFIER);
@@ -1326,11 +1372,13 @@ ASTFunction* parse_function(ParserContext* context) {
     }
 
     context->current_function = prev_func;
-
+    
+    PROFILE_END();
     return out_function;
 }
 
 ASTEnum* parse_enum(ParserContext* context) {
+    PROFILE_START();
     match(T_ENUM);
 
     advance();
@@ -1385,12 +1433,13 @@ ASTEnum* parse_enum(ParserContext* context) {
             parse_error(tok, "Expected a field, 'item = 5,'");
         }
     }
-
+    PROFILE_END();
     return out_enum;
 }
 
 
 ASTStruct* parse_struct(ParserContext* context) {
+    PROFILE_START();
     match(T_STRUCT);
 
     advance();
@@ -1437,12 +1486,13 @@ ASTStruct* parse_struct(ParserContext* context) {
         }
         // @TODO Parse function
     }
-
+    PROFILE_END();
     return out_struct;
 }
 
 
 bool parse_type(ParserContext* context, ASTType* typename) {
+    PROFILE_START();
     string acc = {};
     // @TODO Disallow 'text: char*int'
     while (true) {
@@ -1461,5 +1511,6 @@ bool parse_type(ParserContext* context, ASTType* typename) {
         }
     }
     *typename = acc;
+    PROFILE_END();
     return true;
 }

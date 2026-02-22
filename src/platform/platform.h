@@ -99,6 +99,7 @@ void thread__spawn(Thread* thread, ThreadRoutine func, void* arg);
 void thread__join(Thread* thread);
 bool thread__joinable(Thread* thread);
 u64 thread__current_id();
+void thread__sleep_ns(u64 ns);
 
 void thread__create_mutex(Mutex* mutex);
 void thread__lock_mutex(Mutex* mutex);

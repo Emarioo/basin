@@ -29,6 +29,8 @@ class BuildConfig:
     verbose: bool = False
     silent: bool = False
 
+    tracy: bool = True
+
 def main():
 
     config = BuildConfig()
@@ -87,6 +89,10 @@ def compile_tool(config: BuildConfig):
         obj_file = obj_file.replace("\\", "/")
         object_files.append(obj_file)
 
+    if config.tracy:
+        source_files.append(f"{ROOT}/tracy/public/TracyClient.cpp")
+        object_files.append(config.int_dir + "/" + os.path.splitext(os.path.basename(source_files[-1]))[0] + ".o")
+
     proc = subprocess.run(["git","rev-parse","--short=10","HEAD"],text=True, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
     if proc.returncode != 0:
         if len(proc.stdout) == 0:
@@ -114,8 +120,15 @@ def compile_tool(config: BuildConfig):
     for src, obj in zip(source_files, object_files):
         # IMPORTANT: DO NOT ADD -Wincompatible-pointer-types. It catches sizeof type mismatch when allocating objects. Explicitly cast to void* to ignore this error.
         CWARNS = ""
-        CFLAGS = f"-c -g -O0 -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
-        runtime.commands.append(f"gcc {CFLAGS} {CWARNS} -o {obj} {src}")
+        CFLAGS = f"-c -g -O2 -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
+        if config.tracy:
+            CFLAGS += f" -DTRACY_ENABLE -I{ROOT}/tracy/public"
+            # CFLAGS += f" -DTRACY_NO_EXIT"
+        
+        if src.endswith(".cpp"):
+            runtime.commands.append(f"g++ {CFLAGS} {CWARNS} -o {obj} {src}")
+        else:
+            runtime.commands.append(f"gcc {CFLAGS} {CWARNS} -o {obj} {src}")
 
     def compile_objects(runtime: BuildRuntime):
         while runtime.next_command_index < len(runtime.commands):
@@ -126,6 +139,8 @@ def compile_tool(config: BuildConfig):
             if result != 0:
                 runtime.next_command_index = len(runtime.commands)
                 runtime.failed = True
+
+    # print("\n".join(runtime.commands))
 
     threads = []
     for i in range(multiprocessing.cpu_count()):
@@ -149,10 +164,16 @@ def compile_tool(config: BuildConfig):
         PATH_DLL = f"{config.lib_dir}/basin.dll"
     
     LDFLAGS = f"-g"
+
+    if config.tracy:
+        # Adding static libstdc libgcc because we get STATUS_ENTRYPOINT_NOT_FOUND when using gdb basin.
+        # probably my environment that is messed up somehow? static flags seems to fix it.
+        LDFLAGS += " -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc"
     
-    run(f"gcc {LDFLAGS} {' '.join(object_files)} -o {PATH_EXE}")
-    run(f"gcc -shared -fPIC {LDFLAGS} {' '.join(object_files)} -o {PATH_DLL}")
-    run(f"ar rcs {PATH_LIB} {' '.join(object_files)}")
+    # We use g++ because tracy is c++ and needs c++ runtime
+    run(f"g++ {' '.join(object_files)} -o {PATH_EXE} {LDFLAGS}")
+    # run(f"g++ -shared -fPIC {LDFLAGS} {' '.join(object_files)} -o {PATH_DLL}")
+    # run(f"ar rcs {PATH_LIB} {' '.join(object_files)}")
 
 
 def cmd(c: str, silent: bool = False):

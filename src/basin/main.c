@@ -56,6 +56,12 @@ int main(int argc, char** argv) {
     if(result.compile_errors)
         basin_allocate(0, result.compile_errors, &options);
 
+    #ifdef TRACY_ENABLE
+        // spin so tracy client can send data to server
+        // doesn't work with 
+        thread__sleep_ns(500);
+    #endif
+
     return 0;
 }
 

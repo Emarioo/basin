@@ -13,7 +13,6 @@
 #include "util/assert.h"
 
 
-
 Driver* driver_create() {
     Driver* driver = HEAP_ALLOC_OBJECT(Driver);
     barray_init(&driver->tasks, 100, 50);
@@ -27,6 +26,8 @@ Driver* driver_create() {
 }
 
 void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number) {
+    TracyCZone(zone, 1);
+
     thread__lock_mutex(&driver->task_mutex);
     
     barray_push(&driver->tasks, task);
@@ -40,11 +41,14 @@ void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_numbe
     if(enabled_logging_driver) {
         fprintf(stderr, "[%d] Add task %s\n", thread_number, task_kind_names[task->kind]);
     }
+    TracyCZoneEnd(zone);
 }
 
 u32 driver_thread_run(DriverThread* thread_driver);
 
 void driver_run(Driver* driver) {
+    TracyCZone(zone, 1);
+
     // the meat and potatoes of the compiler, the game loop if you will
 
     if (driver->options->threads == 0)
@@ -76,9 +80,12 @@ void driver_run(Driver* driver) {
     if(enabled_logging_driver) {
         fprintf(stderr, "Threads finished\n");
     }
+    TracyCZoneEnd(zone);
 }
 
 u32 driver_thread_run(DriverThread* thread_driver) {
+    TracyCZone(zone, 1);
+
     Driver* driver = thread_driver->driver;
 
     int id = ((u64)thread_driver - (u64)driver->threads) / sizeof(*thread_driver);
@@ -200,10 +207,13 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         fprintf(stderr, "[%d] Stopped\n", id);
     }
 
+    TracyCZoneEnd(zone);
+
     return 0;
 }
 
 Import* driver_create_import_id(Driver* driver, cstring path) {
+    TracyCZone(zone, 1);
     ASSERT(driver->next_import_id+1 <= 0xFFFF);
 
     // If we run driver again for incremental linking
@@ -224,62 +234,70 @@ Import* driver_create_import_id(Driver* driver, cstring path) {
 
     thread__unlock_mutex(&driver->import_mutex);
 
+    TracyCZoneEnd(zone);
     return ptr;
 }
 
 string driver_resolve_import_path(Driver* driver, const Import* origin, cstring path) {
+    TracyCZone(zone, 1);
     // 1. if path has . then relative to origin
     // 2. otherwise search import directories
     string str = {};
-    if (path.len == 0 || path.ptr[0] == '/')
-        return str;
-
-    if (path.ptr[0] == '.' && path.ptr[1] == '/') {
+    if (path.len == 0 || path.ptr[0] == '/') {
+        // empty/invalid
+    } else if (path.ptr[0] == '.' && path.ptr[1] == '/') {
         str.max = origin->path.len + path.len - 1;
         str.ptr = mem__alloc(str.max + 1);
         str.len = str.max;
         memcpy(str.ptr, origin->path.ptr, origin->path.len);
         memcpy(str.ptr + origin->path.len, path.ptr+1, path.len-1);
         str.ptr[str.len] = '\0';
-        return str;
-    }
-    str.max = 300;
-    str.ptr = mem__alloc(str.max + 1);
-    for (int i=driver->import_dirs.len-1;i>=0;i--) {
-        string dir = driver->import_dirs.ptr[i];
-        
-        // @TODO Buffer overflow if directory is longer than str.max
-        //   DO NOT ASSUME IT FITS
-        memcpy(str.ptr, dir.ptr, dir.len);
-        str.ptr[dir.len] = '/';
-        memcpy(str.ptr + dir.len + 1, path.ptr, path.len);
-        str.len = dir.len + 1 + path.len;
-        str.ptr[str.len] = '\0';
-        
-        int slash_pos = string_rfind(str.ptr, str.len-1, "/");
-        int dot_pos = string_rfind(str.ptr, str.len-1, ".");
-        
-        if (slash_pos > dot_pos || dot_pos == -1) {
-            // no file extension, add implicit .bsn
-            memcpy(str.ptr + str.len, ".bsn", 4);
-            str.len += 4;
+    } else {
+        str.max = 300;
+        str.ptr = mem__alloc(str.max + 1);
+        bool found = false;
+        for (int i=driver->import_dirs.len-1;i>=0;i--) {
+            string dir = driver->import_dirs.ptr[i];
+            
+            // @TODO Buffer overflow if directory is longer than str.max
+            //   DO NOT ASSUME IT FITS
+            memcpy(str.ptr, dir.ptr, dir.len);
+            str.ptr[dir.len] = '/';
+            memcpy(str.ptr + dir.len + 1, path.ptr, path.len);
+            str.len = dir.len + 1 + path.len;
             str.ptr[str.len] = '\0';
+            
+            int slash_pos = string_rfind(str.ptr, str.len-1, "/");
+            int dot_pos = string_rfind(str.ptr, str.len-1, ".");
+            
+            if (slash_pos > dot_pos || dot_pos == -1) {
+                // no file extension, add implicit .bsn
+                memcpy(str.ptr + str.len, ".bsn", 4);
+                str.len += 4;
+                str.ptr[str.len] = '\0';
+            }
+            
+            ASSERT(str.len < str.max);
+            
+            BasinFS_FileInfo info = basin_file_info(str.ptr, driver->options);
+            if (info.exists) {
+                found = true;
+                break;
+            }
         }
-        
-        ASSERT(str.len < str.max);
-        
-        BasinFS_FileInfo info = basin_file_info(str.ptr, driver->options);
-        if (info.exists) {
-            return str;
+        if (!found) {
+            // Most of the time the path will be resolved.
+            // If it wasn't then we might not want to heap allocate
+            // just to free it later.
+            // @TODO We want to use an optimized linear string allocator.
+            mem__free(str.ptr);
+            str.ptr = NULL;
+            str.len = 0;
+            str.max = 0;
         }
     }
-    // Most of the time the path will be resolved.
-    // If it wasn't then we might not want to heap allocate
-    // just to free it later.
-    // @TODO We want to use an optimized linear string allocator.
-    mem__free(str.ptr);
-    string empty = {};
-    return empty;
+    TracyCZoneEnd(zone);
+    return str;
 }
 // string driver_resolve_library_path(Driver* driver, const Import* origin, cstring path) {
 
