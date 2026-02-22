@@ -57,9 +57,9 @@ int main(int argc, char** argv) {
         basin_allocate(0, result.compile_errors, &options);
 
     #ifdef TRACY_ENABLE
-        // spin so tracy client can send data to server
-        // doesn't work with 
-        thread__sleep_ns(500);
+        // sleep so tracy has time to communicate the profiler data,
+        // won't happen if we exit too quickly
+        thread__sleep_ns(500000000);
     #endif
 
     return 0;

@@ -42,9 +42,9 @@ int _atomic_array_push(AtomicArray* arr, void* element);
 #define atomic_array_push(ARR, ELEMENTP) \
     _atomic_array_push((AtomicArray*)(ARR), (false && ( *(ARR)->chunks[0] = *(ELEMENTP), false), ELEMENTP))
 #define atomic_array_get(ARR, INDEX) \
-    *((char*)arr->chunks[(INDEX) / arr->elements_per_chunk] + (INDEX) % arr->elements_per_chunk)
+    (ARR)->chunks[(INDEX) / (ARR)->elements_per_chunk][(INDEX) % (ARR)->elements_per_chunk]
 #define atomic_array_getptr(ARR, INDEX) \
-    ((char*)arr->chunks[(INDEX) / arr->elements_per_chunk] + (INDEX) % arr->elements_per_chunk)
+    (&(ARR)->chunks[(INDEX) / (ARR)->elements_per_chunk][(INDEX) % (ARR)->elements_per_chunk])
 
 #ifdef IMPL_PLATFORM
 
@@ -112,7 +112,7 @@ int _atomic_array_push(AtomicArray* arr, void* element) {
         thread__unlock_mutex(&arr->mutex);
     }
     if (element) {
-        memcpy((char*)arr->chunks[index/arr->elements_per_chunk] + index % arr->elements_per_chunk, element, arr->element_size);
+        memcpy((char*)arr->chunks[index/arr->elements_per_chunk] + arr->element_size * (index % arr->elements_per_chunk), element, arr->element_size);
     }
     return index;
 }

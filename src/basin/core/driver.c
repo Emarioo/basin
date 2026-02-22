@@ -57,10 +57,35 @@ void driver_run(Driver* driver) {
         driver->threads_len = driver->options->threads;
     driver->threads = HEAP_ALLOC_ARRAY(DriverThread, driver->threads_len);
 
-    driver->collection = (IRCollection*)HEAP_ALLOC_OBJECT(IRCollection);
-    atomic_array_init(&driver->collection->functions, 1000, 1000);
-    atomic_array_init(&driver->collection->sections, 1000, 1000);
-    atomic_array_init(&driver->collection->variables, 1000, 1000);
+    driver->program = (IRProgram*)HEAP_ALLOC_OBJECT(IRProgram);
+    atomic_array_init(&driver->program->functions, 1000, 1000);
+    atomic_array_init(&driver->program->sections, 1000, 1000);
+    atomic_array_init(&driver->program->variables, 1000, 1000);
+
+    {
+        IRSection section = {};
+        section.name = string_clone_cptr(".stack");
+        int id = atomic_array_push(&driver->program->sections, &section);
+        ASSERT(id == SECTION_ID_STACK);
+    }
+    {
+        IRSection section = {};
+        section.name = string_clone_cptr(".rodata");
+        driver->sectionid_rodata = atomic_array_push(&driver->program->sections, &section);
+        driver->section_rodata = atomic_array_getptr(&driver->program->sections, driver->sectionid_rodata);
+
+        driver->section_rodata->data_cap = 0x100000;
+        driver->section_rodata->data = mem__alloc(driver->section_rodata->data_cap);
+    }
+    {
+        IRSection section = {};
+        section.name = string_clone_cptr(".data");
+        driver->sectionid_data = atomic_array_push(&driver->program->sections, &section);
+        driver->section_data = atomic_array_getptr(&driver->program->sections, driver->sectionid_data);
+        
+        driver->section_data->data_cap = 0x100000;
+        driver->section_data->data = mem__alloc(driver->section_data->data_cap);
+    }
     
     driver->idle_threads = 0;
 
@@ -176,16 +201,17 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     fprintf(stderr, "%s", result.message.ptr);
                     break;
                 }
+                task.lex_and_parse.import->ast = ast;
 
                 print_ast(ast);
-                fprintf(stderr, "Parse success\n");
+                // fprintf(stderr, "Parse success\n");
                 
                 task.kind = TASK_GEN_IR;
-                // task.gen_ir.ast = ast;
+                task.gen_ir.import = task.lex_and_parse.import;
                 driver_add_task_with_thread_id(driver, &task, id);
             } break;
             case TASK_GEN_IR: {
-                Result result = generate_ir(driver, task.gen_ir.import->ast, driver->collection);
+                Result result = generate_ir(driver, task.gen_ir.import->ast, driver->program);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);

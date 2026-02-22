@@ -36,6 +36,7 @@ We can generate 1 million lines but we need to do so in a way that somewhat repr
 Our generated code has some metrics we can choose:
 - Number of functions
 - Number of global variables
+- Constants
 - Number of files
 - Number of structs, enums
 - Number of imports

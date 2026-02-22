@@ -79,6 +79,8 @@ typedef enum {
     IR_SECTION_DATA,
 } _IRSectionID;
 
+#define SECTION_ID_STACK 0
+
 typedef u8  IROpcode;
 typedef u8  IROperand;
 typedef u8  IRSectionID;
@@ -118,7 +120,7 @@ typedef struct {
     IROpcode opcode;
     IROperand output;
     IRSectionID section;
-    int offset;
+    u32 offset;
 } IRInstruction_address_of_variable;
 
 typedef struct {
@@ -183,9 +185,9 @@ typedef struct {
     // debug info
     // number of instructions (for statistics)
 
-    u8* data;
-    int len;
-    int max;
+    u8* code;
+    int code_len;
+    int code_cap;
 } IRFunction;
 
 typedef struct IRDataObject {
@@ -218,15 +220,10 @@ typedef struct IRProgram {
     AtomicArray_IRDataObject variables;
     AtomicArray_IRFunction   functions;
 } IRProgram;
-typedef struct IRCollection {
-    AtomicArray_IRSection    sections;
-    AtomicArray_IRDataObject variables;
-    AtomicArray_IRFunction   functions;
-} IRCollection;
 
 typedef struct {
-    // IRProgram* collection;
-    IRCollection* collection;
+    IRProgram* program;
+    IRFunction* function;
 } IRBuilder;
 
 // bool, char, pointers are integers
@@ -273,3 +270,8 @@ void ir_imm32(IRBuilder* builder, int reg, i32 imm, IRType type);
 void ir_imm64(IRBuilder* builder, int reg, i64 imm, IRType type);
 
 void ir_call(IRBuilder* builder, IRFunction_id func_id, u8 arg_count, u8 ret_count, IROperand* operands);
+void ir_ret(IRBuilder* builder, u8 ret_count, IROperand* operands);
+
+void ir_address_of_variable(IRBuilder* builder, int reg, IRSectionID section, int offset);
+
+void print_ir_function(IRProgram* program, IRFunction* function);

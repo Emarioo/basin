@@ -36,3 +36,8 @@ typedef struct {
 #define CLOCATION { __FILE__, __LINE__ }
 
 
+#ifdef _WIN32
+    #define FL "%ll"
+#else
+    #define FL "%l"
+#endif

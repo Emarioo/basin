@@ -71,7 +71,12 @@ typedef struct Driver {
 
     ImportID next_import_id;
 
-    IRCollection* collection;
+    IRProgram* program;
+    // Cache them here so we don't have to look for them
+    IRSection* section_rodata;
+    IRSection* section_data;
+    IRSectionID sectionid_rodata;
+    IRSectionID sectionid_data;
 
     DriverThread* threads;
     int threads_len;

@@ -120,7 +120,7 @@ def compile_tool(config: BuildConfig):
     for src, obj in zip(source_files, object_files):
         # IMPORTANT: DO NOT ADD -Wincompatible-pointer-types. It catches sizeof type mismatch when allocating objects. Explicitly cast to void* to ignore this error.
         CWARNS = ""
-        CFLAGS = f"-c -g -O2 -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
+        CFLAGS = f"-c -g -O0 -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
         if config.tracy:
             CFLAGS += f" -DTRACY_ENABLE -I{ROOT}/tracy/public"
             # CFLAGS += f" -DTRACY_NO_EXIT"
@@ -168,7 +168,10 @@ def compile_tool(config: BuildConfig):
     if config.tracy:
         # Adding static libstdc libgcc because we get STATUS_ENTRYPOINT_NOT_FOUND when using gdb basin.
         # probably my environment that is messed up somehow? static flags seems to fix it.
-        LDFLAGS += " -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc"
+        if platform.system() == "Windows":
+            LDFLAGS += " -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc"
+        else:
+            LDFLAGS += " "
     
     # We use g++ because tracy is c++ and needs c++ runtime
     run(f"g++ {' '.join(object_files)} -o {PATH_EXE} {LDFLAGS}")

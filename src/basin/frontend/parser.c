@@ -51,7 +51,7 @@ typedef struct {
     TracyCZoneCtx* zones;
 } ParserContext;
 
-void cleanup_profile_zones(ParserContext* ctx) {
+static inline void cleanup_profile_zones(ParserContext* ctx) {
     while (ctx->zones_len) {
         ctx->zones_len--;
         TracyCZoneEnd(ctx->zones[ctx->zones_len]);
@@ -1504,6 +1504,13 @@ bool parse_type(ParserContext* context, ASTType* typename) {
         } else if (tok->kind == '*') {
             advance();
             string_append_char(&acc, tok->kind);
+        } else if (tok->kind == '[') {
+            const TokenExt* tok1 = peek(1);
+            if (tok1->kind == ']') {
+                advance();
+                advance();
+                string_append_cstr(&acc, cstr_cptr("[]"));
+            }
         } else {
             if (acc.len == 0)
                 parse_error(tok, "Invalid type.");

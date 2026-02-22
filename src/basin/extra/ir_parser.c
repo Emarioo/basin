@@ -3,7 +3,7 @@
 #include "util/string.h"
 
 
-IRCollection* ir_parse(string text) {
+IRProgram* ir_parse(string text) {
 
 
     

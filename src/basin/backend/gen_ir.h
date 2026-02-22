@@ -2,8 +2,9 @@
 
 #include "basin/types.h"
 
+#include "basin/backend/ir.h"
+
 typedef struct Driver Driver;
 typedef struct AST AST;
-typedef struct IRCollection IRCollection;
 
-Result generate_ir(Driver* driver, AST* ast, IRCollection* collection);
+Result generate_ir(Driver* driver, AST* ast, IRProgram* program);

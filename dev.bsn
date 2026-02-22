@@ -3,12 +3,12 @@ library "libc.so" as libc
 
 @external(libc) fn write(fd: i32, buf: void*, count: uword) -> uword
 
-STDOUT_FILENO <- 1
+// STDOUT_FILENO <- 1
 
 fn main() -> i32 {
     text : char[] = "hello\n"
-    write(STDOUT_FILENO, text.ptr, text.len)
-    return res
+    write(1, text.ptr, text.len)
+    return 5
 }
 
 // switch x.y + 23 {
