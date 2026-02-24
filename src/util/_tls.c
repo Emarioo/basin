@@ -1,3 +1,7 @@
+/*
+    Testing some profiling with TLS?
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

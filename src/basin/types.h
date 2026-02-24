@@ -35,6 +35,7 @@ typedef struct {
 
 #define CLOCATION { __FILE__, __LINE__ }
 
+#define ARRAY_LENGTH(A) (sizeof(A)/sizeof(*(A)))
 
 #ifdef _WIN32
     #define FL "%ll"

@@ -15,21 +15,15 @@ COLOR_RESET = "\033[0m"
 @dataclasses.dataclass
 class BuildConfig:
     # toolchain: str = "gcc"
+    release_dir: str = "releases"
+    int_dir: str = "int"
+
     debug: bool = True
     optimize: bool = False
-    # tracy: bool = False
-    bin_dir: str = "bin"
-    lib_dir: str = "lib"
-    int_dir: str = "bin/int"
-    # build_steps: list[str] = dataclasses.field(default_factory=list) # TODO: 
+    tracy: bool = True
 
-    # extra options, does not affect the binary
-    exe_output: str = "bin/basin"
-    # threads: int = multiprocessing.cdpu_count()
     verbose: bool = False
     silent: bool = False
-
-    tracy: bool = True
 
 def main():
 
@@ -54,21 +48,24 @@ def main():
         exit(1)
 
     if action_clean:
-        if os.path.exists(config.bin_dir):
-            shutil.rmtree(config.bin_dir)
-        if os.path.exists(config.lib_dir):
-            shutil.rmtree(config.lib_dir)
         if os.path.exists(config.int_dir):
             shutil.rmtree(config.int_dir)
+        if os.path.exists(config.release_dir):
+            shutil.rmtree(config.release_dir)
 
-    compile_tool(config)
+    compile_basin(config)
 
-    print(f"Basin compiled, {config.exe_output}")
+    print(f"Basin compiled")
     exit(0)
 
-def compile_tool(config: BuildConfig):
-    os.makedirs(config.bin_dir, exist_ok=True)
-    os.makedirs(config.lib_dir, exist_ok=True)
+def compile_basin(config: BuildConfig):
+    
+    VERSION = "0.0.1"
+    TARGET = f"{platform.system().lower()}-x86_64"
+    PACKAGE_DIR = f"{config.release_dir}/basin-{VERSION}-{TARGET}"
+
+    os.makedirs(PACKAGE_DIR+"/bin", exist_ok=True)
+    os.makedirs(PACKAGE_DIR+"/lib", exist_ok=True)
     os.makedirs(config.int_dir, exist_ok=True)
 
     ROOT = os.path.dirname(__file__)
@@ -77,8 +74,9 @@ def compile_tool(config: BuildConfig):
     object_files = []
     for file in glob.glob(f"{ROOT}/src/**/*.c", recursive=True):
         file = file.replace("\\","/")
-        
-        if file.startswith("_"):
+
+        base = os.path.basename(file)
+        if base.startswith("_"):
             continue
 
         file = file.replace("\\", "/")
@@ -100,14 +98,14 @@ def compile_tool(config: BuildConfig):
         print(proc.stdout)
         exit(1)
 
-    commit_file = "bin/int/commit_hash.c"
+    commit_file = f"{config.int_dir}/commit_hash.c"
     commit_hash = proc.stdout.strip()
     build_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(commit_file, "w") as f:
         f.write("const char* BASIN_COMPILER_COMMIT = \"" + commit_hash + "\";\n")
         f.write("const char* BASIN_COMPILER_BUILD_DATE = \"" + build_date + "\";\n")
     source_files.append(commit_file)
-    object_files.append("bin/int/commit_hash.o")
+    object_files.append(f"{config.int_dir}/commit_hash.o")
 
     @dataclasses.dataclass
     class BuildRuntime:
@@ -155,13 +153,13 @@ def compile_tool(config: BuildConfig):
         exit(1)
     
     if platform.system() == "Linux":
-        PATH_EXE = f"{config.bin_dir}/basin"
-        PATH_LIB = f"{config.lib_dir}/libbasin.a"
-        PATH_DLL = f"{config.lib_dir}/libbasin.so"
+        PATH_EXE = f"{PACKAGE_DIR}/bin/basin"
+        PATH_LIB = f"{PACKAGE_DIR}/lib/libbasin.a"
+        PATH_DLL = f"{PACKAGE_DIR}/lib/libbasin.so"
     else:
-        PATH_EXE = f"{config.bin_dir}/basin.exe"
-        PATH_LIB = f"{config.lib_dir}/basin.lib"
-        PATH_DLL = f"{config.lib_dir}/basin.dll"
+        PATH_EXE = f"{PACKAGE_DIR}/bin/basin.exe"
+        PATH_LIB = f"{PACKAGE_DIR}/lib/basin.lib"
+        PATH_DLL = f"{PACKAGE_DIR}/lib/basin.dll"
     
     LDFLAGS = f"-g"
 

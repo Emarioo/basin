@@ -2,6 +2,7 @@
 
 #include "basin/types.h"
 #include "basin/frontend/lexer.h" // SourceLocation
+#include "basin/backend/ir.h"
 #include "util/array.h"
 
 #define DEBUG_BUILD
@@ -300,6 +301,8 @@ typedef struct {
     Array_ASTFunction_Parameter parameters;
     Array_ASTFunction_Parameter return_values;
     ASTExpression* body;
+
+    IRFunction_id ir_function_id;
 } ASTFunction;
 
 typedef struct {

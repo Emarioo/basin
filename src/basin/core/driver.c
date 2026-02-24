@@ -5,8 +5,9 @@
 #include "basin/frontend/parser.h"
 #include "basin/backend/gen_ir.h"
 #include "basin/backend/ir.h"
-#include "basin/error.h"
+#include "basin/backend/codegen.h"
 
+#include "basin/error.h"
 #include "basin/basin.h"
 
 #include "platform/platform.h"
@@ -218,6 +219,28 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 } else {
                     fprintf(stderr, "Gen ir success\n");
                 }
+                
+                task.kind = TASK_GEN_MACHINE;
+                task.gen_machine.import = task.gen_ir.import;
+                driver_add_task_with_thread_id(driver, &task, id);
+            } break;
+            case TASK_GEN_MACHINE: {
+                // driver->program
+                static int next_func = 0;
+
+                atomic_add(&next_func, 1);
+                IRFunction* ir_func = atomic_array_getptr(&driver->program->functions, next_func);
+                CodegenFunction* func;
+                PlatformOptions opts = {};
+                opts.host_kind = HOST_windows;
+                opts.cpu_kind = CPU_x86_64;
+                CodegenResult result = codegen_generate_function(driver, ir_func, &func, &opts);
+                if(result.error_type != CODEGEN_SUCCESS) {
+                    // Print message. We are done with this series of tasks
+                    fprintf(stderr, "%s", result.error_message);
+                } else {
+                    fprintf(stderr, "Gen machine success\n");
+                }
             } break;
             default: {
                 fprintf(stderr, "Unhandled task %d\n", task.kind);
@@ -333,4 +356,5 @@ const char* const task_kind_names[TASK_COUNT] = {
     "TASK_INVALID",
     "TASK_LEX_AND_PARSE",
     "TASK_GEN_IR",
+    "TASK_GEN_MACHINE",
 };

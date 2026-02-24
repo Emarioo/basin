@@ -31,6 +31,7 @@ typedef enum {
     TASK_INVALID,
     TASK_LEX_AND_PARSE,
     TASK_GEN_IR,
+    TASK_GEN_MACHINE,
     TASK_COUNT,
 } TaskKind;
 extern const char* const task_kind_names[TASK_COUNT];
@@ -44,6 +45,9 @@ typedef struct Task {
         struct {
             Import* import;
         } gen_ir;
+        struct {
+            Import* import;
+        } gen_machine;
     };
 } Task;
 

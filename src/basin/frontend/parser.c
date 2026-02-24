@@ -1370,6 +1370,15 @@ ASTFunction* parse_function(ParserContext* context) {
         ASTExpression* body = (ASTExpression*)parse_block_expression(context, false);
         out_function->body = body;
     }
+    
+    IRFunction empty_func = {};
+
+    IRFunction_id func_id = atomic_array_push(&context->driver->program->functions, &empty_func);
+    IRFunction* ir_func = atomic_array_getptr(&context->driver->program->functions, func_id);
+
+    ir_func->id = func_id;
+    ir_func->name = string_clone_cstr(cstr(out_function->name));
+    out_function->ir_function_id = func_id;
 
     context->current_function = prev_func;
     

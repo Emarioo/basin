@@ -188,12 +188,7 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
     IRFunction* ir_func;
     {
         IRFunction empty_func = {};
-
-        IRFunction_id func_id = atomic_array_push(&context->driver->program->functions, &empty_func);
-        ir_func = atomic_array_getptr(&context->driver->program->functions, func_id);
-
-        ir_func->id = func_id;
-        ir_func->name = string_clone_cstr(cstr(func->name));
+        ir_func = atomic_array_getptr(&context->driver->program->functions, func->ir_function_id);
 
         // @TODO Init_builder(func);
         context->builder.function = ir_func;
@@ -537,9 +532,13 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                 operands[arg_count + i] = allocate_register(context);
             }
 
-            IRFunction_id id = 0;
+            IRFunction_id id = func->ir_function_id;
             
             ir_call(&context->builder, id, func->parameters.len, func->return_values.len, operands);
+
+            for (int i=0;i<arg_count + ret_count;i++) {
+                free_register(context, operands[i]);
+            }
 
             // @TODO How to return multiple IR values?
             //    Only assignment allows multiple IR values

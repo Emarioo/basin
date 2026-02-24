@@ -9,6 +9,9 @@
 #include "basin/basin.h" // needs BasinAllocator
 #include "basin/backend/ir.h"
 
+#include "basin/types.h"
+
+typedef struct Driver Driver;
 
 //###################################
 //     PUBLIC TYPES AND STRUCTS
@@ -79,7 +82,9 @@ typedef struct {
 //##################################
 
 
-CodegenResult codegen_generate_function(const IRFunction* in_function, CodegenFunction** out_function, const PlatformOptions* options, BasinAllocator* allocator);
+CodegenResult codegen_generate_function(Driver* driver, const IRFunction* in_function, CodegenFunction** out_function, const PlatformOptions* options);
+
+void codegen_generate(Driver* driver, const Import* ast_import);
 
 
 const char* platform_string(const PlatformOptions* options);
