@@ -17,6 +17,7 @@
 #define array_pushv(ARR, ELEMENT) ( _array_push((Array*)(ARR), sizeof(*(ARR)->ptr), NULL), (ARR)->ptr[(ARR)->len-1] = (ELEMENT))
 #define array_pop(ARR) (ASSERT_INDEX((ARR)->len > 0), (ARR)->len--)
 #define array_last(ARR) (ASSERT_INDEX((ARR)->len > 0), (ARR)->ptr[(ARR)->len-1])
+#define array_lastptr(ARR) (ASSERT_INDEX((ARR)->len > 0), &(ARR)->ptr[(ARR)->len-1])
 #define array_get(ARR, INDEX) (ASSERT_INDEX((INDEX) < (ARR)->len), (ARR)->ptr[INDEX])
 #define array_getptr(ARR, INDEX) (ASSERT_INDEX((INDEX) < (ARR)->len), &(ARR)->ptr[INDEX])
 #define array_size(ARR) ((ARR)->len)
