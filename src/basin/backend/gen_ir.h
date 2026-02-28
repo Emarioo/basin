@@ -7,4 +7,4 @@
 typedef struct Driver Driver;
 typedef struct AST AST;
 
-Result generate_ir(Driver* driver, AST* ast, IRProgram* program);
+Result generate_ir(Compilation* compilation, AST* ast, IRProgram* program);

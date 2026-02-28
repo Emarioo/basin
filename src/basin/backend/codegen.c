@@ -20,6 +20,7 @@ typedef struct Instruction Instruction;
 struct Instruction {
     // IROpcode opcode;
     IROpcode* base;
+    int uses;
     
     union {
         struct {
@@ -193,7 +194,12 @@ int alloc_machine_register(CodegenContext* context) {
 
     context->used_machine_registers[found] = true;
     return found;
+}
 
+void free_machine_register(CodegenContext* context, int ir_reg) {
+    int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
+    ASSERT(context->used_machine_registers[machine_reg]);
+    context->used_machine_registers[machine_reg] = false;
 }
 
 void x86_generate(CodegenContext* context) {
@@ -242,13 +248,24 @@ void x86_generate(CodegenContext* context) {
         
         switch(*opcode) {
             case IR_ADD: {
+                IRInstruction_op3* irinst = (IRInstruction_op3*)opcode;
+                Instruction* inst = alloc_inst(context);
+                inst->base = (IROpcode*)irinst;
+                inst->input0 = context->reg_to_inst_mapping[irinst->input0];
+                inst->input1 = context->reg_to_inst_mapping[irinst->input1];
+                inst->input0->uses++;
+                inst->input1->uses++;
                 
+                context->reg_to_inst_mapping[irinst->output] = inst;
+                head += sizeof(IRInstruction_op3);
+                APPEND_INST();
             } break;
             case IR_LOAD: {
                 IRInstruction_load* irinst = (IRInstruction_load*)opcode;
                 Instruction* inst = alloc_inst(context);
                 inst->base = (IROpcode*)irinst;
                 inst->input0 = context->reg_to_inst_mapping[irinst->memory];
+                inst->input0->uses++;
                 
                 context->reg_to_inst_mapping[irinst->output] = inst;
                 head += sizeof(IRInstruction_load);
@@ -260,6 +277,8 @@ void x86_generate(CodegenContext* context) {
                 inst->base = (IROpcode*)irinst;
                 inst->input0 = context->reg_to_inst_mapping[irinst->memory];
                 inst->input1 = context->reg_to_inst_mapping[irinst->input];
+                inst->input0->uses++;
+                inst->input1->uses++;
 
                 head += sizeof(IRInstruction_store);
                 APPEND_INST();
@@ -272,6 +291,7 @@ void x86_generate(CodegenContext* context) {
                     inst->inputs_outputs = alloc_operands(context, irinst->arg_count + irinst->ret_count);
                     for (int i=0;i<irinst->arg_count;i++) {
                         inst->inputs_outputs[i] = context->reg_to_inst_mapping[irinst->operands[i]];
+                        inst->inputs_outputs[i]->uses++;
                     }
                     for (int i=0;i<irinst->ret_count;i++) {
                         context->reg_to_inst_mapping[irinst->operands[irinst->arg_count + i]] = inst;
@@ -310,12 +330,16 @@ void x86_generate(CodegenContext* context) {
                     inst->inputs_outputs = alloc_operands(context, irinst->ret_count);
                     for (int i=0;i<irinst->ret_count;i++) {
                         inst->inputs_outputs[i] = context->reg_to_inst_mapping[irinst->operands[i]];
+                        inst->inputs_outputs[i]->uses++;
                     }
                 }
                 
                 head += sizeof(IRInstruction_ret) + irinst->ret_count;
                 APPEND_INST();
             } break;
+            default: {
+                ASSERT(false);
+            }
         }
     }
 
@@ -338,6 +362,44 @@ void x86_generate(CodegenContext* context) {
         Instruction* inst = context->inst_sequence[i];
 
         switch (*inst->base) {
+            case IR_ADD: {
+                IRInstruction_op3* ir_inst = (IRInstruction_op3*)inst->base;
+                
+                int machine_in0 = context->reg_to_machine_register[ir_inst->input0].machine_register;
+                int machine_in1 = context->reg_to_machine_register[ir_inst->input1].machine_register;
+
+                inst->input0->uses--;
+                inst->input1->uses--;
+
+                if (inst->input0->uses == 0) {
+                    int machine_out = machine_in0;
+                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
+                    
+                    free_machine_register(context, ir_inst->input0);
+                    if (inst->input1->uses == 0) {
+                        free_machine_register(context, ir_inst->input1);
+                    }
+    
+                    x86_emit_add(builder, machine_out, machine_in1);
+                } else if (inst->input1->uses == 0) {
+                    int machine_out = machine_in1;
+                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
+                    
+                    free_machine_register(context, ir_inst->input1);
+                    if (inst->input1->uses == 0) {
+                        free_machine_register(context, ir_inst->input0);
+                    }
+    
+                    x86_emit_add(builder, machine_out, machine_in0);
+                } else {
+                    int machine_out = alloc_machine_register(context);
+                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
+    
+                    x86_emit_mov(builder, machine_out, machine_in0);
+                    x86_emit_add(builder, machine_out, machine_in1);
+                }
+                
+            } break;
             case IR_ADDRESS_OF_VARIABLE: {
                 IRInstruction_address_of_variable* ir_inst = (IRInstruction_address_of_variable*)inst->base;
                 
@@ -374,7 +436,7 @@ void x86_generate(CodegenContext* context) {
                 int machine_reg = alloc_machine_register(context);
                 context->reg_to_machine_register[ir_inst->output].machine_register = machine_reg;
 
-                x86_emit_imm4(builder, machine_reg, ir_inst->immediate);
+                x86_emit_imm32(builder, machine_reg, ir_inst->immediate);
             } break;
             case IR_LOAD: {
                 IRInstruction_load* ir_inst = (IRInstruction_load*)inst->base;
@@ -383,6 +445,12 @@ void x86_generate(CodegenContext* context) {
                 context->reg_to_machine_register[ir_inst->output].machine_register = machine_reg;
                 int machine_mem_reg = context->reg_to_machine_register[ir_inst->memory].machine_register;
 
+                inst->input0->uses--;
+                ASSERT(inst->input0->uses >= 0);
+                if (inst->input0->uses == 0) {
+                    free_machine_register(context, ir_inst->memory);
+                }
+
                 x86_emit_load(builder, machine_reg, machine_mem_reg, ir_inst->displacement);
             } break;
             case IR_STORE: {
@@ -390,6 +458,17 @@ void x86_generate(CodegenContext* context) {
                 
                 int machine_src_reg = context->reg_to_machine_register[ir_inst->input].machine_register;
                 int machine_mem_reg = context->reg_to_machine_register[ir_inst->memory].machine_register;
+
+                inst->input0->uses--;
+                ASSERT(inst->input0->uses >= 0);
+                if (inst->input0->uses == 0) {
+                    free_machine_register(context, ir_inst->memory);
+                }
+                inst->input1->uses--;
+                ASSERT(inst->input1->uses >= 0);
+                if (inst->input1->uses == 0) {
+                    free_machine_register(context, ir_inst->input);
+                }
 
                 x86_emit_store(builder, machine_src_reg, machine_mem_reg, ir_inst->displacement);
             } break;

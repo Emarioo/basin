@@ -25,7 +25,7 @@ void fs__close(FSHandle handle);
 void fs__info(FSHandle handle, FSInfo* info);
 
 uint64_t fs__read(FSHandle handle, uint64_t offset, void* buffer, uint64_t size);
-uint64_t fs__write(FSHandle handle, uint64_t offset, void* buffer, uint64_t size);
+uint64_t fs__write(FSHandle handle, uint64_t offset, const void* buffer, uint64_t size);
 
 void fs__abspath(const char* path, int out_path_cap, char* out_path);
 void fs__exepath(int out_path_cap, char* out_path);
@@ -116,3 +116,10 @@ void thread__cleanup_semaphore(Semaphore* semaphore);
 // returns previous value
 #define atomic_add64(PTR, VAL) __atomic_fetch_add(PTR, VAL, __ATOMIC_SEQ_CST)
 
+
+//##############################
+//      SYSTEM INFORMATION
+//##############################
+
+// logical cores (threads)
+int sys__cpu_count();

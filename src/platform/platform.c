@@ -99,7 +99,7 @@ uint64_t fs__read(FSHandle handle, uint64_t offset, void* buffer, uint64_t size)
         return res;
     #endif
 }
-uint64_t fs__write(FSHandle handle, uint64_t offset, void* buffer, uint64_t size) {
+uint64_t fs__write(FSHandle handle, uint64_t offset, const void* buffer, uint64_t size) {
     #if defined(OS_WINDOWS) || defined(OS_LINUX)
         FILE* file = handles[handle];
         fseek(file, offset, SEEK_SET);
@@ -472,5 +472,23 @@ void thread__sleep_ns(u64 ns) {
         ts.tv_sec = ns / 1000000000LLU;
         ts.tv_nsec = ns % 1000000000LLU;
         nanosleep(&ts, NULL);
+    #endif
+}
+
+
+
+
+//##############################
+//      SYSTEM INFORMATION
+//##############################
+
+
+int sys__cpu_count() {
+    #ifdef OS_WINDOWS
+        GetSystemInfo(&si);
+        return si.dwNumberOfProcessors;
+    #else
+        long num_logical = sysconf(_SC_NPROCESSORS_ONLN);
+        return num_logical;
     #endif
 }

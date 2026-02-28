@@ -7,7 +7,7 @@ library "libc.so" as libc
 
 fn main() -> i32 {
     text : char[] = "hello\n"
-    write(1, text.ptr, text.len)
+    write(1 + 0, text.ptr, text.len)
     return 5
 }
 

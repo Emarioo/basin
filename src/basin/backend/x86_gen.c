@@ -104,6 +104,15 @@ static void emit_modrm_rip32(X86Builder* builder, int _reg, u32 disp32) {
     emit4(builder, disp32);
 }
 
+
+void x86_emit_add(X86Builder* builder, int dst_reg, int input_reg) {
+    EMIT_PRELUDE()
+
+    maybe_emit_prefix(builder, 0, dst_reg, input_reg);
+    emit1(builder, OPCODE_ADD_REG_RM);
+    emit_modrm(builder, MODE_REG, CLAMP_EXT_REG(dst_reg), CLAMP_EXT_REG(input_reg));
+}
+
 void x86_emit_load(X86Builder* builder, int dst_reg, int mem_reg, int displacement) {
     EMIT_PRELUDE()
 
@@ -188,7 +197,7 @@ void x86_emit_lea_rip(X86Builder* builder, int dst_reg, u32* out_fixup_address) 
     *out_fixup_address = builder->function->code_len - 4;
 }
 
-void x86_emit_imm4(X86Builder* builder, int dst_reg, u32 immediate) {
+void x86_emit_imm32(X86Builder* builder, int dst_reg, u32 immediate) {
     EMIT_PRELUDE()
 
     maybe_emit_prefix(builder, 0, 0, dst_reg);

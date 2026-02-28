@@ -18,6 +18,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    for (int i=0;i<argc;i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            print_help();
+            return 0;
+        }
+    }
+
     BasinCompileOptions options = {};
 
     BasinResult result;
@@ -27,10 +34,6 @@ int main(int argc, char** argv) {
         fprintf(stderr, "%s", result.error_message);
         return 1;
     }
-    if (options.print_help) {
-        print_help();
-        return 0;
-    }
 
     // @TEMP
     if (!options.output_file)
@@ -39,7 +42,7 @@ int main(int argc, char** argv) {
     // TODO: Measure compile time.
     //   Maybe put in result?
 
-    result = basin_compile_file(options.input_file, options.output_file, &options);
+    result = basin_compile(&options);
     if (result.error_type == BASIN_SUCCESS) {
         printf("Success");
     } else if(result.error_type == BASIN_FILE_NOT_FOUND) {
@@ -51,10 +54,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if(result.error_message)
-        basin_allocate(0, result.error_message, &options);
-    if(result.compile_errors)
-        basin_allocate(0, result.compile_errors, &options);
+    basin_free_result(&result);
 
     #ifdef TRACY_ENABLE
         // sleep so tracy has time to communicate the profiler data,

@@ -31,6 +31,7 @@ typedef enum {
 } ComptimeKind;
 
 typedef struct {
+    Compilation* compilation;
     Driver* driver;
     TokenStream* stream;
     int head; // token head
@@ -103,7 +104,7 @@ ASTStruct* parse_struct(ParserContext* context);
 //     return expr;
 // }
 
-Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
+Result parse_stream(Compilation* compilation, TokenStream* stream, AST** out_ast) {
     TracyCZone(zone, 1);
     // We implement this recursively because it's easier to debug issues
     Result result = {};
@@ -117,7 +118,8 @@ Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast) {
 
     ParserContext context = {0};
     context.stream = stream;
-    context.driver = driver;
+    context.compilation = compilation;
+    context.driver = compilation->driver;
     context.head = 0;
 
     int res = setjmp(context.jump_state);
@@ -280,7 +282,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             
             cstring path = DATA_FROM_STRING(tok);
             
-            string resolved_path = driver_resolve_import_path(context->driver, context->stream->import, path);
+            string resolved_path = comp_resolve_import_path(context->compilation, context->stream->import, path);
             if (resolved_path.len == 0) {
                 parse_error(tok, "Could not resolve path '%s'. Use 'import \"linux\"' to resolve from import directories, use 'import \"./hello.bsn\"' to resolve from relative directory relative to current source file.", path.ptr);
             }
@@ -1373,8 +1375,8 @@ ASTFunction* parse_function(ParserContext* context) {
     
     IRFunction empty_func = {};
 
-    IRFunction_id func_id = atomic_array_push(&context->driver->program->functions, &empty_func);
-    IRFunction* ir_func = atomic_array_getptr(&context->driver->program->functions, func_id);
+    IRFunction_id func_id = atomic_array_push(&context->compilation->program->functions, &empty_func);
+    IRFunction* ir_func = atomic_array_getptr(&context->compilation->program->functions, func_id);
 
     ir_func->id = func_id;
     ir_func->name = string_clone_cstr(cstr(out_function->name));

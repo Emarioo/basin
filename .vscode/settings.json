@@ -4,6 +4,8 @@
         "*.h": "c",
         "type_traits": "cpp",
         "typeinfo": "c",
-        "limits": "c"
+        "limits": "c",
+        "chrono": "c",
+        "functional": "c"
     }
 }

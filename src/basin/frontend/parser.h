@@ -24,5 +24,5 @@ typedef struct Driver Driver;
 typedef struct AST AST;
 typedef struct TokenStream TokenStream;
 
-Result parse_stream(Driver* driver, TokenStream* stream, AST** out_ast);
+Result parse_stream(Compilation* compilation, TokenStream* stream, AST** out_ast);
 void print_ast(AST* ast);

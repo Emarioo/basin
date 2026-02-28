@@ -81,6 +81,8 @@ void _barray_cleanup(BucketArray* array, int element_size) {
 }
 
 void* _barray_push(BucketArray* array, int element_size, void* element) {
+    ASSERT_DEBUG(array->items_per_bucket != 0);
+
     int element_cap = array->items_per_bucket * array->buckets_cap;
 
     if(array->element_count >= element_cap) {

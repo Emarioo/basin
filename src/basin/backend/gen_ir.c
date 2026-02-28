@@ -19,6 +19,7 @@
 
 typedef struct {
     Driver* driver;
+    Compilation* compilation;
     AST* ast;
     IRBuilder builder;
 
@@ -112,7 +113,7 @@ void _gen_error(GenIRContext* context, SourceLocation loc, char* fmt, ...) {
 }
 
 
-Result generate_ir(Driver* driver, AST* ast, IRProgram* program) {
+Result generate_ir(Compilation* compilation, AST* ast, IRProgram* program) {
     TracyCZone(zone, 1);
     // Find functions and generate them
     // We implement this recursively because it's easier to debug issues
@@ -129,9 +130,10 @@ Result generate_ir(Driver* driver, AST* ast, IRProgram* program) {
 
 
     GenIRContext context = {0};
-    context.driver = driver;
+    context.compilation = compilation;
+    context.driver = compilation->driver;
     context.ast = ast;
-    context.builder.program = driver->program;
+    context.builder.program = compilation->program;
 
     int res = setjmp(context.jump_state);
 
@@ -157,9 +159,9 @@ Result generate_ir(Driver* driver, AST* ast, IRProgram* program) {
 }
 
 u32 submit_rodata_string(GenIRContext* context, cstring str) {
-    u32 prev_offset = atomic_add64(&context->driver->section_rodata->data_len, str.len+1);
-    memcpy(context->driver->section_rodata->data, str.ptr, str.len);
-    context->driver->section_rodata->data[0] = '\0';
+    u32 prev_offset = atomic_add64(&context->compilation->section_rodata->data_len, str.len+1);
+    memcpy(context->compilation->section_rodata->data, str.ptr, str.len);
+    context->compilation->section_rodata->data[0] = '\0';
     return prev_offset;
 }
 
@@ -188,7 +190,7 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
     IRFunction* ir_func;
     {
         IRFunction empty_func = {};
-        ir_func = atomic_array_getptr(&context->driver->program->functions, func->ir_function_id);
+        ir_func = atomic_array_getptr(&context->compilation->program->functions, func->ir_function_id);
 
         // @TODO Init_builder(func);
         context->builder.function = ir_func;
@@ -206,7 +208,7 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
 
     // fini_builder(func);
 
-    print_ir_function(context->driver->program, ir_func);
+    print_ir_function(context->compilation->program, ir_func);
 
 end:
     PROFILE_END();
@@ -444,7 +446,7 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                         int reg_ptr = allocate_register(context);
 
                         ir_imm32(&context->builder, reg_length, length, IR_TYPE_UINT64);
-                        ir_address_of_variable(&context->builder, reg_ptr, context->driver->sectionid_rodata, offset);
+                        ir_address_of_variable(&context->builder, reg_ptr, context->compilation->sectionid_rodata, offset);
 
                         ir_store(&context->builder, ref.regnum, reg_ptr, 0, IR_TYPE_SINT64);
                         ir_store(&context->builder, ref.regnum, reg_length, 8, IR_TYPE_SINT64);

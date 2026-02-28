@@ -4,7 +4,32 @@
         "name": "basin dev.bsn",
         "type": "cppdbg",
         "request": "launch",
-        "program": "D:/dev/basin/releases/basin-0.0.1-windows-x86_64/bin/basin.exe",
+        "program": "${workspaceFolder}/releases/basin-0.0.1-windows-x86_64/bin/basin.exe",
+        "args": ["dev.bsn"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "miDebuggerPath": "gdb",
+        "setupCommands": [
+            {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+            },
+            {
+                "description": "Set Disassembly Flavor to Intel",
+                "text": "-gdb-set disassembly-flavor intel",
+                "ignoreFailures": true
+            }
+        ]
+    },
+     {
+        "name": "basin dev.bsn (nixos)",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/releases/basin-0.0.1-linux-x86_64/bin/basin",
         "args": ["dev.bsn"],
         "stopAtEntry": false,
         "cwd": "${workspaceFolder}",

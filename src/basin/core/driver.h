@@ -32,12 +32,15 @@ typedef enum {
     TASK_LEX_AND_PARSE,
     TASK_GEN_IR,
     TASK_GEN_MACHINE,
+    TASK_GEN_OBJECT,
     TASK_COUNT,
 } TaskKind;
 extern const char* const task_kind_names[TASK_COUNT];
 
+// A unit of work to be performed by the driver
 typedef struct Task {
     TaskKind kind;
+    Compilation* compilation;
     union {
         struct {
             Import* import;
@@ -48,13 +51,14 @@ typedef struct Task {
         struct {
             Import* import;
         } gen_machine;
+        struct {
+            Import* import;
+        } gen_object;
     };
 } Task;
 
-
-DEF_ARRAY(string)
 DEF_BUCKET_ARRAY(Task)
-DEF_BUCKET_ARRAY(Import)
+
 
 typedef struct Driver Driver;
 
@@ -63,32 +67,28 @@ typedef struct {
     Thread thread;
 } DriverThread;
 
+
+DEF_BUCKET_ARRAY(Compilation)
+
 typedef struct Driver {
-    BucketArray_Task tasks;
-    BucketArray_Import imports;
-
-    Mutex import_mutex;
-    Mutex task_mutex;
-    Semaphore may_have_task_semaphore;
-
-    volatile u32 idle_threads;
-
-    ImportID next_import_id;
-
-    IRProgram* program;
-    // Cache them here so we don't have to look for them
-    IRSection* section_rodata;
-    IRSection* section_data;
-    IRSectionID sectionid_rodata;
-    IRSectionID sectionid_data;
-
     DriverThread* threads;
-    int threads_len;
+    u32           threads_len;
+    u32           threads_cap;
 
-    Array_string import_dirs;
-    Array_string library_dirs;
+    BucketArray_Task tasks;
+    Mutex            tasks_mutex;
+    Semaphore        may_have_task_semaphore;
 
-    const BasinCompileOptions* options;
+    BucketArray_Compilation compilations;
+    Mutex                   compilations_mutex;
+    
+    BucketArray_Import imports;
+    ImportID           next_import_id;
+    Mutex              import_mutex;
+    
+    volatile u32 idle_threads;
+    volatile u32 task_process_limit;
+    
 } Driver;
 
 // ##########################
@@ -96,11 +96,15 @@ typedef struct Driver {
 // ##########################
 
 Driver* driver_create();
+void    driver_run(Driver* driver, u32 thread_count, u32 task_process_limit);
+void    driver_cleanup(Driver* driver);
 
 #define driver_add_task(...) driver_add_task_with_thread_id(__VA_ARGS__, -1)
 void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number);
 
-void driver_run(Driver* driver);
+
+Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions* options);
+// Compilation* driver_submit_compilation(Driver* driver, const BasinCompileOptions* options);
 
 
 // #############################
@@ -110,6 +114,6 @@ void driver_run(Driver* driver);
 // THREAD SAFE
 Import* driver_create_import_id(Driver* driver, cstring path);
 // THREAD SAFE
-string driver_resolve_import_path(Driver* driver, const Import* origin, cstring path);
+string comp_resolve_import_path(Compilation* compilation, const Import* origin, cstring path);
 // THREAD SAFE
-string driver_resolve_library_path(Driver* driver, const Import* origin, cstring path);
+// string comp_resolve_library_path(Compilation* compilation, const Import* origin, cstring path);

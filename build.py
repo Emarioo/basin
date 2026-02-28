@@ -118,13 +118,15 @@ def compile_basin(config: BuildConfig):
     for src, obj in zip(source_files, object_files):
         # IMPORTANT: DO NOT ADD -Wincompatible-pointer-types. It catches sizeof type mismatch when allocating objects. Explicitly cast to void* to ignore this error.
         CWARNS = ""
-        CFLAGS = f"-c -g -O0 -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
+        CFLAGS = f"-c -g -Og -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
         if config.tracy:
             CFLAGS += f" -DTRACY_ENABLE -I{ROOT}/tracy/public"
             # CFLAGS += f" -DTRACY_NO_EXIT"
         
         if src.endswith(".cpp"):
-            runtime.commands.append(f"g++ {CFLAGS} {CWARNS} -o {obj} {src}")
+            if not os.path.exists(obj):
+                # Tracy takes long to compile, skip it.
+                runtime.commands.append(f"g++ {CFLAGS} {CWARNS} -o {obj} {src}")
         else:
             runtime.commands.append(f"gcc {CFLAGS} {CWARNS} -o {obj} {src}")
 

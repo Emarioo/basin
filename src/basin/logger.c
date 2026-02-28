@@ -13,8 +13,8 @@ void dump_hex(void* address, int size, int stride) {
     int col = 0;
     uint64_t head = 0;
     while (head < size) {
-        if (col == 0)
-            log__printf("  "FL"x: ", (char*)address + head);
+        // if (col == 0)
+        //     log__printf("  "FL"x: ", (char*)address + head);
 
         log__printf("%x%x ", data[head] >> 4, data[head] & 0xF);
         col++;
