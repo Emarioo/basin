@@ -290,6 +290,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             // @TODO Check if import already exists.
             Task task = {};
             task.kind = TASK_LEX_AND_PARSE;
+            task.compilation = context->compilation;
             task.lex_and_parse.import = driver_create_import_id(context->driver, cstr(resolved_path));
 
             string_cleanup(&resolved_path);

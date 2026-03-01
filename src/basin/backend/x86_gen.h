@@ -4,7 +4,7 @@
 
 typedef struct X86Builder {
 
-    CodegenFunction* function;
+    MachineFunction* function;
 
     int pointer_size;
 

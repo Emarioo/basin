@@ -6,6 +6,7 @@
 #include "basin/backend/gen_ir.h"
 #include "basin/backend/ir.h"
 #include "basin/backend/codegen.h"
+#include "basin/backend/objfile.h"
 
 #include "basin/error.h"
 #include "basin/basin.h"
@@ -34,6 +35,8 @@ Driver* driver_create() {
 
 void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number) {
     TracyCZone(zone, 1);
+
+    ASSERT_DEBUG(task->compilation);
 
     thread__lock_mutex(&driver->tasks_mutex);
     
@@ -108,7 +111,7 @@ Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions
     string_cleanup(&exe_path);
 
     // Made where and when?
-    comp->program = (IRProgram*)HEAP_ALLOC_OBJECT(IRProgram);
+    comp->program = HEAP_ALLOC_OBJECT(IRProgram);
     atomic_array_init(&comp->program->functions, 1000, 1000);
     atomic_array_init(&comp->program->sections, 1000, 1000);
     atomic_array_init(&comp->program->variables, 1000, 1000);
@@ -137,6 +140,9 @@ Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions
         comp->section_data->data = mem__alloc(comp->section_data->data_cap);
     }
 
+    comp->machine_program = HEAP_ALLOC_OBJECT(MachineProgram);
+    atomic_array_init(&comp->machine_program->functions, 1000, 1000);
+
     TracyCZoneEnd(zone);
     return comp;
 }
@@ -152,9 +158,10 @@ void driver_run(Driver* driver, u32 thread_count, u32 task_process_limit) {
     if (task_process_limit == 0)
         driver->task_process_limit = 0xFFFFFFFF;
 
+    // Starting threads is slow (15 threads roughly ~10ms depending on computer).
+    // But doing work in parallel is very beneficial so this static cost is fine.
     if (thread_count == 0) {
         thread_count = sys__cpu_count();
-        printf("Threads %d\n", thread_count);
     }
     
     if (thread_count > driver->threads_cap) {
@@ -259,9 +266,16 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         //   dependencies would be parsing after tokenizing.
         //   compile time exec after function declaration checking
 
+        // Check fulfilled tasks, if none.
+
+        // Calculate dependencies for a task and run it.
+
         Task task = {};
         barray_pop(&driver->tasks, &task);
         int tasks_left = barray_count(&driver->tasks);
+
+        atomic_add(&task.compilation->active_tasks, 1);
+        atomic_add(&task.compilation->pending_tasks, -1);
 
         thread__unlock_mutex(&driver->tasks_mutex);
 
@@ -308,6 +322,16 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 driver_add_task_with_thread_id(driver, &task, id);
             } break;
             case TASK_GEN_IR: {
+                // All previous parse tasks for the compilation unit must be done at this point.
+                // If we in comp time add parse tasks we are kind of doomed. off-sync.
+                
+                // We cannot add dependency check here and add it back to the task queue.
+                // It's a waste of CPU time. We would need to add it to the front too.
+                
+                // Tasks for next phase, do we put them in a temp queue and then add
+                // them to the real queue when all tasks are done?
+
+
                 Result result = generate_ir(task.compilation, task.gen_ir.import->ast, task.compilation->program);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
@@ -316,38 +340,40 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     fprintf(stderr, "Gen ir success\n");
                 }
                 
-                task.kind = TASK_GEN_MACHINE;
-                task.gen_machine.import = task.gen_ir.import;
-                driver_add_task_with_thread_id(driver, &task, id);
+                // task.kind = TASK_GEN_MACHINE;
+                // task.gen_machine.import = task.gen_ir.import;
+                // driver_add_task_with_thread_id(driver, &task, id);
             } break;
             case TASK_GEN_MACHINE: {
-                // driver->program
-                static int next_func = 0;
-
-                atomic_add(&next_func, 1);
-                IRFunction* ir_func = atomic_array_getptr(&task.compilation->program->functions, next_func);
-                CodegenFunction* func;
-                PlatformOptions opts = {};
-                opts.host_kind = HOST_windows;
-                opts.cpu_kind = CPU_x86_64;
-                CodegenResult result = codegen_generate_function(driver, ir_func, &func, &opts);
+                
+                MachineFunction* func;
+                // This function adds the MachineFunction to machine program.
+                CodegenResult result = codegen_generate_function(driver, task.gen_machine.ir_function, &func);
                 if(result.error_type != CODEGEN_SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.error_message);
                 } else {
                     fprintf(stderr, "Gen machine success\n");
                 }
+
+                // if not tasks in compilation unit
+
+                // If last task then gen object.
+                // Well, what if we add another gen machine task.
+
             } break;
-            // case TASK_GEN_OBJECT: {
+            case TASK_GEN_OBJECT: {
 
-            //     generate_object();
+                generate_object_file(task.compilation);
 
-            // } break;
+            } break;
             default: {
                 fprintf(stderr, "Unhandled task %d\n", task.kind);
                 ASSERT(false);
             }
         }
+
+        atomic_add(&task.compilation->active_tasks, -1);
 
         // once done, we may add new tasks, atomically, with mutex
         // loop again find a new task

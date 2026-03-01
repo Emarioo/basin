@@ -25,6 +25,13 @@ int main(int argc, char** argv) {
         }
     }
 
+
+    #ifdef TRACY_ENABLE
+        // Sleep a little or tracy won't show advanced CPU stats
+        // when running program as sudo/administrator
+        thread__sleep_ns(100000000);
+    #endif
+
     BasinCompileOptions options = {};
 
     BasinResult result;
@@ -59,7 +66,7 @@ int main(int argc, char** argv) {
     #ifdef TRACY_ENABLE
         // sleep so tracy has time to communicate the profiler data,
         // won't happen if we exit too quickly
-        thread__sleep_ns(500000000);
+        thread__sleep_ns(300000000);
     #endif
 
     return 0;

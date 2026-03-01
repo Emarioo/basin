@@ -39,7 +39,7 @@ typedef struct MachineDataObject {
 
 typedef struct {
     const IRFunction* ir_func;
-    CodegenFunction* machine_func;
+    MachineFunction* machine_func;
     
     Instruction* reg_to_inst_mapping[256];
 
@@ -83,7 +83,7 @@ typedef struct {
 void x86_generate(CodegenContext* context);
 
 
-CodegenResult codegen_generate_function(Driver* driver, const IRFunction* in_function, CodegenFunction** out_function, const PlatformOptions* options) {
+CodegenResult codegen_generate_function(Compilation* compilation, const IRFunction* in_function, MachineFunction** out_function) {
     PROFILE_START();
     
     CodegenResult result = {};
@@ -91,9 +91,9 @@ CodegenResult codegen_generate_function(Driver* driver, const IRFunction* in_fun
     result.error_message = NULL;
     *out_function = NULL;
 
-    result = validate_platform_options(options);
-    if (result.error_type != CODEGEN_SUCCESS)
-        return result;
+    // result = validate_platform_options(options);
+    // if (result.error_type != CODEGEN_SUCCESS)
+    //     return result;
 
     // switch(options->cpu_kind) {
     //     case CPU_x86_64:
@@ -111,8 +111,9 @@ CodegenResult codegen_generate_function(Driver* driver, const IRFunction* in_fun
     
     CodegenContext context = {};
     context.ir_func = in_function;
-    context.machine_func = mem__alloc(sizeof(CodegenFunction));
-    memset(context.machine_func, 0, sizeof(CodegenFunction));
+
+    MachineFunction func = {};
+    context.machine_func = atomic_array_push(&compilation->machine_program->functions, &func);
 
     x86_generate(&context);
 
@@ -131,7 +132,7 @@ CodegenResult codegen_generate_function(Driver* driver, const IRFunction* in_fun
 
 //     CodegenContext context = {};
 //     context.ir_func = in_function;
-//     context.machine_func = mem__alloc(sizeof(CodegenFunction));
+//     context.machine_func = mem__alloc(sizeof(MachineFunction));
 
 //     x86_generate(&context);
 
@@ -205,7 +206,7 @@ void free_machine_register(CodegenContext* context, int ir_reg) {
 void x86_generate(CodegenContext* context) {
     PROFILE_START();
     const IRFunction* ir = context->ir_func;
-    CodegenFunction* mac = context->machine_func;
+    MachineFunction* mac = context->machine_func;
 
     /*
     

@@ -3,6 +3,7 @@
 #include "util/string.h"
 #include "util/array.h"
 #include "util/bucket_array.h"
+#include "util/atomic_array.h"
 
 DEF_ARRAY(string)
 
@@ -20,6 +21,24 @@ typedef struct IRSection IRSection;
 typedef u8 IRSectionID;
 
 typedef struct Driver Driver;
+
+
+typedef struct {
+    IRFunction_id id;
+    
+    u8* code;
+    int code_len;
+    int code_max;
+
+    // TODO: Debug information
+} MachineFunction;
+
+DEF_ATOMIC_ARRAY(MachineFunction);
+
+typedef struct {
+    AtomicArray_MachineFunction functions;
+    
+} MachineProgram;
 
 typedef struct {
     ImportID import_id;
@@ -63,8 +82,13 @@ typedef struct Compilation {
     IRSectionID sectionid_rodata;
     IRSectionID sectionid_data;
 
+    MachineProgram* machine_program;
+    
     Array_string import_dirs;
     Array_string library_dirs;
+
+    volatile u32 pending_tasks;
+    volatile u32 active_tasks;
 
     // Keeping driver here lets us pass around Compilation to functions
     // without also specifying the driver.

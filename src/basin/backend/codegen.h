@@ -56,16 +56,6 @@ typedef struct {
 } PlatformOptions;
 
 
-typedef struct {
-    IRFunction_id id;
-    
-    u8* code;
-    int code_len;
-    int code_max;
-
-    // TODO: Debug information
-} CodegenFunction;
-
 typedef enum {
     CODEGEN_SUCCESS,
     CODEGEN_INVALID_PLATFORM_OPTIONS,
@@ -82,9 +72,9 @@ typedef struct {
 //##################################
 
 
-CodegenResult codegen_generate_function(Driver* driver, const IRFunction* in_function, CodegenFunction** out_function, const PlatformOptions* options);
+CodegenResult codegen_generate_function(Compilation* compilation, const IRFunction* in_function, MachineFunction** out_function);
 
-void codegen_generate(Driver* driver, const Import* ast_import);
+// void codegen_generate(Driver* driver, const Import* ast_import);
 
 
 const char* platform_string(const PlatformOptions* options);

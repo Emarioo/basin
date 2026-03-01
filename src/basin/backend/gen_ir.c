@@ -210,6 +210,12 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
 
     print_ir_function(context->compilation->program, ir_func);
 
+    Task task = {};
+    task.kind = TASK_GEN_MACHINE;
+    task.compilation = context->compilation;
+    task.gen_machine.ir_function = ir_func;
+    driver_add_task(context->driver, &task);
+
 end:
     PROFILE_END();
 }

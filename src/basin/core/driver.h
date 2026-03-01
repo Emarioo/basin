@@ -49,7 +49,8 @@ typedef struct Task {
             Import* import;
         } gen_ir;
         struct {
-            Import* import;
+            // Import* import;
+            IRFunction* ir_function;
         } gen_machine;
         struct {
             Import* import;
