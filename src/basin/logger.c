@@ -1,7 +1,7 @@
 
 #include "basin/logger.h"
 
-#include "basin/types.h"
+#include "basin/common.h"
 #include "platform/platform.h"
 
 bool enabled_logging_driver = true;

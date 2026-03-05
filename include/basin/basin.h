@@ -39,6 +39,13 @@ typedef enum {
 } BasinTargetArch;
 
 typedef enum {
+    BASIN_TARGET_FORMAT_host,
+    BASIN_TARGET_FORMAT_ELF,
+    BASIN_TARGET_FORMAT_COFF,
+    BASIN_TARGET_FORMAT_COUNT,
+} BasinTargetFormat;
+
+typedef enum {
     BASIN_TARGET_OS_host,
     BASIN_TARGET_OS_windows,
     BASIN_TARGET_OS_linux,
@@ -74,6 +81,7 @@ typedef struct {
 typedef struct BasinCompileOptions {
     BasinTargetArch    target_arch;
     BasinTargetOS      target_os;
+    BasinTargetFormat  target_format;
     BasinBinaryType    binary_output_type;
     BasinOptimizeFlags optimize_flags;
     bool               disable_debug;

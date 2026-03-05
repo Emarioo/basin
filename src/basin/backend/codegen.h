@@ -9,7 +9,7 @@
 #include "basin/basin.h" // needs BasinAllocator
 #include "basin/backend/ir.h"
 
-#include "basin/types.h"
+#include "basin/common.h"
 
 typedef struct Driver Driver;
 
@@ -56,6 +56,11 @@ typedef struct {
 } PlatformOptions;
 
 
+typedef enum CallingConvention {
+    CALLING_CONVENTION_WIN_X64,
+    CALLING_CONVENTION_SYSV,
+} CallingConvention;
+
 typedef enum {
     CODEGEN_SUCCESS,
     CODEGEN_INVALID_PLATFORM_OPTIONS,
@@ -73,8 +78,6 @@ typedef struct {
 
 
 CodegenResult codegen_generate_function(Compilation* compilation, const IRFunction* in_function, MachineFunction** out_function);
-
-// void codegen_generate(Driver* driver, const Import* ast_import);
 
 
 const char* platform_string(const PlatformOptions* options);

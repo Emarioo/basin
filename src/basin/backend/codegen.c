@@ -38,6 +38,7 @@ typedef struct MachineDataObject {
 } MachineDataObject;
 
 typedef struct {
+    Compilation* compilation;
     const IRFunction* ir_func;
     MachineFunction* machine_func;
     
@@ -110,10 +111,12 @@ CodegenResult codegen_generate_function(Compilation* compilation, const IRFuncti
     
     
     CodegenContext context = {};
+    context.compilation = compilation;
     context.ir_func = in_function;
 
     MachineFunction func = {};
-    context.machine_func = atomic_array_push(&compilation->machine_program->functions, &func);
+    int index = atomic_array_push(&compilation->machine_program->functions, &func);
+    context.machine_func = atomic_array_getptr(&compilation->machine_program->functions, index);
 
     x86_generate(&context);
 
@@ -125,19 +128,6 @@ CodegenResult codegen_generate_function(Compilation* compilation, const IRFuncti
     return result;
 }
 
-// void codegen_generate(Driver* driver, const Import* ast_import) {
-//     PROFILE_START();
-    
-//     for (int fi=0;fi<ast_import->;fi++) {
-
-//     CodegenContext context = {};
-//     context.ir_func = in_function;
-//     context.machine_func = mem__alloc(sizeof(MachineFunction));
-
-//     x86_generate(&context);
-
-//     PROFILE_END();
-// }
 
 //#############################
 //     PRIVATE FUNCTIONS
@@ -145,16 +135,20 @@ CodegenResult codegen_generate_function(Compilation* compilation, const IRFuncti
 
 void reserve_code_sequence(CodegenContext* context) {
     if (context->inst_sequence_len + 1 >= context->inst_sequence_cap) {
-        int new_cap = context->inst_sequence_cap*2 + 256;
+        int new_cap = context->inst_sequence_cap*2 + 2560;
+        // @TODO We need bucket array
         Instruction** new_insts = mem__allocate(new_cap * sizeof(Instruction*), context->inst_sequence);
+        memset(&new_insts[context->inst_sequence_cap], 0, (new_cap - context->inst_sequence_cap) * sizeof(Instruction*));
         context->inst_sequence = new_insts;
         context->inst_sequence_cap = new_cap;
     }
 }
 Instruction* alloc_inst(CodegenContext* context) {
     if (context->instructions_len + 1 >= context->instructions_cap) {
-        int new_cap = context->instructions_cap*2 + 256;
+        // @TODO We need bucket array
+        int new_cap = context->instructions_cap*2 + 2560;
         Instruction* new_insts = mem__allocate(new_cap * sizeof(Instruction), context->instructions);
+        memset(&new_insts[context->instructions_cap], 0, (new_cap - context->instructions_cap) * sizeof(Instruction));
         context->instructions = new_insts;
         context->instructions_cap = new_cap;
     }
@@ -166,11 +160,13 @@ Instruction* alloc_inst(CodegenContext* context) {
 
 Instruction** alloc_operands(CodegenContext* context, int count) {
     if (context->operands_len + count >= context->operands_cap) {
+        // @TODO We need bucket array
         // @TODO We leak memory for previous IROperand array.
         //    We'll improve the 'Instruction' struct later so it's fine for now.
         //    I must explore the complexity before I know which layout to use.
-        int new_cap = context->operands_cap*2 + count + 20;
+        int new_cap = context->operands_cap*2 + count + 100;
         Instruction** new_operands = mem__allocate(new_cap * sizeof(Instruction*), NULL);
+        memset(&new_operands[context->operands_cap], 0, (new_cap - context->operands_cap) * sizeof(Instruction*));
         context->operands = new_operands;
         context->operands_cap = new_cap;
         context->operands_len = 0;
@@ -197,10 +193,37 @@ int alloc_machine_register(CodegenContext* context) {
     return found;
 }
 
+int alloc_specific_machine_register(CodegenContext* context, int reg) {
+    ASSERT(!context->used_machine_registers[reg]);
+    context->used_machine_registers[reg] = true;
+    return reg;
+}
+
 void free_machine_register(CodegenContext* context, int ir_reg) {
     int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
     ASSERT(context->used_machine_registers[machine_reg]);
     context->used_machine_registers[machine_reg] = false;
+}
+
+bool is_machine_register_free(CodegenContext* context, int reg) {
+    return !context->used_machine_registers[reg];
+}
+
+void add_call_relocation(CodegenContext* context, int code_offset, IRFunction_id function_id) {
+    MachineRelocation rel = {};
+    rel.code_offset = code_offset;
+    rel.type = RELOCATION_TYPE_FUNCTION;
+    rel.function_id = function_id;
+    array_push(&context->machine_func->relocations, &rel);
+}
+
+void add_object_relocation(CodegenContext* context, int code_offset, IRSectionID section_id, int value_offset) {
+    MachineRelocation rel = {};
+    rel.code_offset = code_offset;
+    rel.type = RELOCATION_TYPE_DATA_OBJECT;
+    rel.section_id = section_id;
+    rel.value_offset= value_offset;
+    array_push(&context->machine_func->relocations, &rel);
 }
 
 void x86_generate(CodegenContext* context) {
@@ -233,6 +256,16 @@ void x86_generate(CodegenContext* context) {
     */
 
     int head = 0;
+
+    CallingConvention callingConvention;
+
+    BasinTargetOS target_os = determine_os(context->compilation->options);
+    BasinTargetArch target_arch = determine_arch(context->compilation->options);
+    if (target_os == BASIN_TARGET_OS_windows && target_arch == BASIN_TARGET_ARCH_x86_64) {
+        callingConvention = CALLING_CONVENTION_WIN_X64;
+    } else if (target_os == BASIN_TARGET_OS_linux) {
+        callingConvention = CALLING_CONVENTION_SYSV;
+    }
 
     #define APPEND_INST() context->inst_sequence[context->inst_sequence_len++] = inst
     
@@ -359,8 +392,8 @@ void x86_generate(CodegenContext* context) {
     _builder.function = context->machine_func;
     X86Builder* builder = &_builder;
 
-    for (int i=0;i<context->inst_sequence_len;i++) {
-        Instruction* inst = context->inst_sequence[i];
+    for (int inst_index=0;inst_index<context->inst_sequence_len;inst_index++) {
+        Instruction* inst = context->inst_sequence[inst_index];
 
         switch (*inst->base) {
             case IR_ADD: {
@@ -376,7 +409,6 @@ void x86_generate(CodegenContext* context) {
                     int machine_out = machine_in0;
                     context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
                     
-                    free_machine_register(context, ir_inst->input0);
                     if (inst->input1->uses == 0) {
                         free_machine_register(context, ir_inst->input1);
                     }
@@ -385,8 +417,8 @@ void x86_generate(CodegenContext* context) {
                 } else if (inst->input1->uses == 0) {
                     int machine_out = machine_in1;
                     context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
+                    alloc_specific_machine_register(context, machine_out);
                     
-                    free_machine_register(context, ir_inst->input1);
                     if (inst->input1->uses == 0) {
                         free_machine_register(context, ir_inst->input0);
                     }
@@ -416,8 +448,9 @@ void x86_generate(CodegenContext* context) {
 
                     u32 fixup_address;
                     x86_emit_lea_rip(builder, machine_reg, &fixup_address);
-
-                    printf("  %04x: lea %d, [rip+?] (requires relocation)\n", fixup_address, machine_reg);
+                    
+                    add_object_relocation(context, fixup_address, ir_inst->section, ir_inst->offset);
+                    // printf("  %04x: lea reg%d, [rip+?] (requires relocation)\n", fixup_address, machine_reg);
                 }
             } break;
             case IR_IMM8:
@@ -442,15 +475,17 @@ void x86_generate(CodegenContext* context) {
             case IR_LOAD: {
                 IRInstruction_load* ir_inst = (IRInstruction_load*)inst->base;
                 
-                int machine_reg = alloc_machine_register(context);
-                context->reg_to_machine_register[ir_inst->output].machine_register = machine_reg;
-                int machine_mem_reg = context->reg_to_machine_register[ir_inst->memory].machine_register;
-
                 inst->input0->uses--;
                 ASSERT(inst->input0->uses >= 0);
                 if (inst->input0->uses == 0) {
                     free_machine_register(context, ir_inst->memory);
                 }
+
+                int machine_reg = alloc_machine_register(context);
+                context->reg_to_machine_register[ir_inst->output].machine_register = machine_reg;
+                int machine_mem_reg = context->reg_to_machine_register[ir_inst->memory].machine_register;
+
+
 
                 x86_emit_load(builder, machine_reg, machine_mem_reg, ir_inst->displacement);
             } break;
@@ -472,6 +507,123 @@ void x86_generate(CodegenContext* context) {
                 }
 
                 x86_emit_store(builder, machine_src_reg, machine_mem_reg, ir_inst->displacement);
+            } break;
+            case IR_CALL: {
+                IRInstruction_call* ir_inst = (IRInstruction_call*)inst->base;
+                
+                ASSERT(ir_inst->ret_count <= 1);
+                ASSERT(ir_inst->arg_count <= 4);
+
+                switch (callingConvention) {
+                    case CALLING_CONVENTION_WIN_X64: {
+                        // @IMPORTANT THIS code is SO FLAWED that a light feather will break it if it were ice.
+
+                        // @TODO Save used volatile registers (EAX...) to stack
+                        //   Only those that aren't freed after they have been used as arguments.
+
+                        int table[] = {
+                            X64_REG_C,
+                            X64_REG_D,
+                            X64_REG_R8,
+                            X64_REG_R9,
+                        };
+                        int from_table[4] = {};
+
+                        int temp_reg = X64_REG_R15;
+                        ASSERT(is_machine_register_free(context, temp_reg));
+
+                        for (int i=0;i<ir_inst->arg_count;i++) {
+                            int machine_reg = context->reg_to_machine_register[ir_inst->operands[i]].machine_register;
+                            from_table[i] = machine_reg;
+                        }
+
+                        for (int i=ir_inst->arg_count-1;i>=0;i--) {
+                            int machine_reg = from_table[i];
+
+                            // if (table[i] != machine_reg) {
+                            //     // The from_table and this loop makes sure we don't mix argument registers and loose values.
+                            //     // when moving them around.
+                            //     for (int j=i + 1;j<ir_inst->arg_count;j++) {
+                            //         int inner = from_table[j];
+                            //         if (table[i] == inner) {
+                            //             // @TODO AAAAAAAAAHHHHHHHHHH this only solves one move, if the in arg registers and convention table
+                            //             // are reversed from each other then it wont work!
+                            //             x86_emit_mov(builder, temp_reg, inner);
+                            //             from_table[j] = temp_reg;
+                            //             break;
+                            //         }
+                            //     }
+
+                            //     // @TODO We are potentially overwriting used registers which is why we need to save used volatile registers.
+                            // }
+                            x86_emit_mov(builder, table[i], machine_reg);
+
+
+                            inst->inputs_outputs[i]->uses--;
+                            ASSERT(inst->inputs_outputs[i]->uses >= 0);
+                            if (inst->inputs_outputs[i]->uses == 0) {
+                                free_machine_register(context, ir_inst->operands[i]);
+                            }
+                        }
+
+
+                        // @TODO Depending on function_id we emit direct or indirect call.
+                        IRFunction* callee = atomic_array_getptr(&context->compilation->program->functions, ir_inst->function_id);
+                        u32 fixup_address;
+                        x86_emit_call_rel(builder, &fixup_address);
+                        // printf("  %04x: call %s (requires relocation)\n", fixup_address, callee->name.ptr);
+
+                        add_call_relocation(context, fixup_address, ir_inst->function_id);
+                        
+                        if (ir_inst->ret_count > 0) {
+                            int reg;
+                            if (is_machine_register_free(context, X64_REG_A)) {
+                                // Prefer to allocate EAX register.
+                                reg = alloc_specific_machine_register(context, X64_REG_A);
+                            } else {
+                                // Otherwise move EAX to allocated register.
+                                reg = alloc_machine_register(context);
+                                x86_emit_mov(builder, reg, X64_REG_A);
+                            }
+                            context->reg_to_machine_register[ir_inst->operands[ir_inst->arg_count]].machine_register = reg;
+                        }
+
+                        // @TODO Restore used volatile registers (EAX...) from stack
+
+                    } break;
+                    case CALLING_CONVENTION_SYSV: {
+                        ASSERT(false);
+                    } break;
+                    default: ASSERT(false);
+                }
+            } break;
+            case IR_RET: {
+                IRInstruction_ret* ir_inst = (IRInstruction_ret*)inst->base;
+                
+                // @TODO Do stuff based on function's calling convention.
+                //    Pretty much all calling convention return value in EAX but want
+                //    something here that shows that we have thought about it.
+
+                if (ir_inst->ret_count == 0) {
+                    // nothing
+                } else if (ir_inst->ret_count == 1) {
+                    inst->inputs_outputs[0]->uses--;
+                    ASSERT(inst->inputs_outputs[0]->uses >= 0);
+                    if (inst->inputs_outputs[0]->uses == 0) {
+                        free_machine_register(context, ir_inst->operands[0]);
+                    }
+                    
+                    int machine_reg = context->reg_to_machine_register[ir_inst->operands[0]].machine_register;
+
+                    if (X64_REG_A != machine_reg) {
+                        // @TODO Optimize register allocation so that we'll put it in register EAX and don't need this move, most of the time.
+                        x86_emit_mov(builder, X64_REG_A, machine_reg);
+                    }
+                } else {
+                    ASSERT((false, "x86 gen can't handle multiple return values"));
+                }
+                
+                x86_emit_ret(builder);
             } break;
         }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "basin/types.h"
+#include "basin/common.h"
 #include "basin/frontend/lexer.h" // SourceLocation
 #include "basin/backend/ir.h"
 #include "util/array.h"

@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
 
     // @TEMP
     if (!options.output_file)
-        options.output_file = "bin/dev.txt";
+        options.output_file = "dev.o";
 
     // TODO: Measure compile time.
     //   Maybe put in result?

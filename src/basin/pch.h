@@ -21,9 +21,3 @@ typedef int64_t i64;
 typedef int32_t i32;
 typedef int16_t i16;
 typedef int8_t i8;
-
-#ifdef _WIN32
-    #define OS_WINDOWS
-#else
-    #define OS_LINUX
-#endif

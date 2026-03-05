@@ -122,10 +122,17 @@ def compile_basin(config: BuildConfig):
         if config.tracy:
             CFLAGS += f" -DTRACY_ENABLE -I{ROOT}/tracy/public"
             # CFLAGS += f" -DTRACY_NO_EXIT"
+        if platform.system() == "Windows":
+            CFLAGS += " -DOS_WINDOWS"
+        elif platform.system() == "Linux":
+            CFLAGS += " -DOS_LINUX"
         
         if src.endswith(".cpp"):
             if not os.path.exists(obj):
                 # Tracy takes long to compile, skip it.
+                # @TODO Only skip if its code wasn't updated and if
+                #    build.py wasn't updated, if so we should recompile with the
+                #    new code or new compile flags.
                 runtime.commands.append(f"g++ {CFLAGS} {CWARNS} -o {obj} {src}")
         else:
             runtime.commands.append(f"gcc {CFLAGS} {CWARNS} -o {obj} {src}")

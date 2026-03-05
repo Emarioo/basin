@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "basin/types.h"
+#include "basin/common.h"
 #include "basin/frontend/lexer.h"
 #include "basin/basin.h"
 #include "basin/backend/ir.h"

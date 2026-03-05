@@ -7,6 +7,7 @@
     #include <stdio.h>
     #include <string.h>
     #include <stdlib.h>
+    #include <time.h>
 #endif
 #ifdef OS_LINUX
     #include <unistd.h>
@@ -261,7 +262,7 @@ void log__printf(const char* format, ...) {
 
 #ifdef OS_WINDOWS
     #include "windows.h"
-#else
+#elif defined(OS_LINUX)
     #include <pthread.h>
     #include <semaphore.h>
     #include <errno.h>
@@ -277,7 +278,7 @@ void thread__spawn(Thread* thread, ThreadRoutine func, void* arg) {
 
         thread->handle = (u64)handle;
         thread->id = thread_id;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         u64 thread_id;
         res = pthread_create((pthread_t*)&thread_id, NULL, (void *(*) (void *))func, arg);
@@ -296,7 +297,7 @@ void thread__join(Thread* thread) {
         
         u32 yes = CloseHandle((HANDLE)thread->handle);
         ASSERT(yes);
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = pthread_join(thread->handle, NULL);
         ASSERT(res == 0);
@@ -308,7 +309,7 @@ bool thread__joinable(Thread* thread) {
 u64 thread__current_id() {
     #ifdef OS_WINDOWS
         return (u64)GetCurrentThreadId();
-    #else
+    #elif defined(OS_LINUX)
         return (u64)pthread_self();
     #endif
 }
@@ -325,7 +326,7 @@ void thread__create_mutex(Mutex* mutex) {
         HANDLE handle = CreateMutex(NULL, false, NULL);
         ASSERT(handle != INVALID_HANDLE_VALUE);
         mutex->handle = (u64)handle;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         int index;
         int limit = MAX_MUTEX;
@@ -347,7 +348,7 @@ void thread__lock_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
         u32 res = WaitForSingleObject((HANDLE)mutex->handle, INFINITE);
         ASSERT(res != WAIT_FAILED);
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = pthread_mutex_lock((pthread_mutex_t*)mutex->handle);
         ASSERT(res == 0);
@@ -360,7 +361,7 @@ bool thread__trylock_mutex(Mutex* mutex) {
             return false;
         ASSERT(res != WAIT_FAILED);
         return true;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = pthread_mutex_trylock((pthread_mutex_t*)mutex->handle);
         if (res == 0)
@@ -375,7 +376,7 @@ void thread__unlock_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
         bool yes = ReleaseMutex((HANDLE)mutex->handle);
         ASSERT(yes);
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = pthread_mutex_unlock((pthread_mutex_t*)mutex->handle);
         ASSERT(res == 0);
@@ -385,7 +386,7 @@ void thread__cleanup_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
         bool yes = CloseHandle((HANDLE)mutex->handle);
         mutex->handle = 0;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = pthread_mutex_destroy((pthread_mutex_t*)mutex->handle);
         ASSERT(res == 0);
@@ -409,7 +410,7 @@ void thread__create_semaphore(Semaphore* semaphore, u32 initial, u32 max_locks) 
         HANDLE handle = CreateSemaphore(NULL, initial, max_locks, NULL);
         ASSERT(handle != INVALID_HANDLE_VALUE);
         semaphore->handle = (u64)handle;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         int index;
         int limit = MAX_SEMAPHORE;
@@ -432,7 +433,7 @@ void thread__wait_semaphore(Semaphore* semaphore) {
     #ifdef OS_WINDOWS
         u32 res = WaitForSingleObject((HANDLE)semaphore->handle, INFINITE);
         ASSERT(res != WAIT_FAILED);
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = sem_wait((sem_t*)semaphore->handle);
         ASSERT(res == 0);
@@ -442,7 +443,7 @@ bool thread__signal_semaphore(Semaphore* semaphore, int count) {
     #ifdef OS_WINDOWS
         bool yes = ReleaseSemaphore((HANDLE)semaphore->handle, count, NULL);
         return yes;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = sem_post((sem_t*)semaphore->handle);
         ASSERT(res == 0);
@@ -453,7 +454,7 @@ void thread__cleanup_semaphore(Semaphore* semaphore) {
     #ifdef OS_WINDOWS
         bool yes = CloseHandle((HANDLE)semaphore->handle);
         semaphore->handle = 0;
-    #else
+    #elif defined(OS_LINUX)
         int res;
         res = sem_destroy((sem_t*)semaphore->handle);
         ASSERT(res == 0);
@@ -467,7 +468,7 @@ void thread__cleanup_semaphore(Semaphore* semaphore) {
 void thread__sleep_ns(u64 ns) {
     #ifdef OS_WINDOWS
         Sleep(ns / 1000000LLU);
-    #else
+    #elif defined(OS_LINUX)
         struct timespec ts;
         ts.tv_sec = ns / 1000000000LLU;
         ts.tv_nsec = ns % 1000000000LLU;
@@ -485,10 +486,44 @@ void thread__sleep_ns(u64 ns) {
 
 int sys__cpu_count() {
     #ifdef OS_WINDOWS
+        SYSTEM_INFO si;
         GetSystemInfo(&si);
         return si.dwNumberOfProcessors;
-    #else
+    #elif defined(OS_LINUX)
         long num_logical = sysconf(_SC_NPROCESSORS_ONLN);
         return num_logical;
+    #endif
+}
+
+
+//##############################
+//      TIME
+//##############################
+
+
+u64 time__now() {
+    #ifdef OS_WINDOWS
+        LARGE_INTEGER counter, frequency;
+        BOOL res = QueryPerformanceCounter(&counter);
+        if (!res) {
+            int err = GetLastError();
+            fprintf(stderr, "ERR QueryPerformanceCounter, %d\n", err);
+        }
+        res = QueryPerformanceFrequency(&frequency);
+        if (!res) {
+            int err = GetLastError();
+            fprintf(stderr, "ERR QueryPerformanceFrequency, %d\n", err);
+        }
+        // Frequency is usually 1e7.
+        // Which means 1e9 / 1e7 = 100.
+        // I am going to be daring and assume this is the case.
+        // The alternative is (number.QuadPart * NANOSECOND_PER_SECOND) / freq.QuadPart
+        // But if number grows large then counter * NS_PER_SEC will overflow and cause issues.
+        // Therefore i go with this:
+        return counter.QuadPart * (NANOSECOND_PER_SECOND / frequency.QuadPart);
+    #elif defined(OS_LINUX)
+        struct timespec tm;
+        clock_gettime(CLOCK_MONOTONIC, &tm);
+        return (u64)tm.tv_sec * NANOSECOND_PER_SECOND + (u64)tm.tv_nsec;
     #endif
 }

@@ -6,6 +6,7 @@
         "typeinfo": "c",
         "limits": "c",
         "chrono": "c",
-        "functional": "c"
+        "functional": "c",
+        "charconv": "c"
     }
 }

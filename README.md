@@ -94,7 +94,7 @@ D:\dev\basin\releases\basin-0.0.1-windows-x86_64\bin\basin.exe
 basin dev.bsn
 ```
 
-# folders
+# Project structure
 ```bash
 docs         - Documentation, guides, language specification
 include      - Public API headers to use basin as library

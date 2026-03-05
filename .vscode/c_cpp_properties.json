@@ -12,7 +12,9 @@
                 "UNICODE",
                 "_UNICODE",
                 "IMPL_PLATFORM",
-                "TRACY_ENABLE"
+                "TRACY_ENABLE",
+                "OS_WINDOWS",
+                "OS_LINUX"
             ],
             "windowsSdkVersion": "10.0.22621.0",
             "compilerPath": "C:/Program Files/mingw/x86_64-14.2.0-release-posix-seh-msvcrt-rt_v12-rev1/bin/gcc.exe",

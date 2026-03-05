@@ -1,5 +1,7 @@
 #pragma once
 
+#include "basin/basin.h"
+
 #include "util/string.h"
 #include "util/array.h"
 #include "util/bucket_array.h"
@@ -19,9 +21,29 @@ typedef struct BasinCompileOptions BasinCompileOptions;
 typedef struct IRProgram IRProgram;
 typedef struct IRSection IRSection;
 typedef u8 IRSectionID;
+typedef u32 IRFunction_id;
 
 typedef struct Driver Driver;
 
+typedef enum {
+    RELOCATION_TYPE_FUNCTION,
+    RELOCATION_TYPE_DATA_OBJECT,
+} _MachineRelocationType;
+typedef u8 MachineRelocationType;
+
+typedef struct {
+    int code_offset;
+    MachineRelocationType type;
+    union {
+        IRFunction_id function_id;
+        struct {
+            IRSectionID section_id;
+            int         value_offset;
+        };
+    };
+} MachineRelocation;
+
+DEF_ARRAY(MachineRelocation)
 
 typedef struct {
     IRFunction_id id;
@@ -29,6 +51,8 @@ typedef struct {
     u8* code;
     int code_len;
     int code_max;
+
+    Array_MachineRelocation relocations;
 
     // TODO: Debug information
 } MachineFunction;
@@ -119,3 +143,50 @@ typedef struct {
 #else
     #define FL "%l"
 #endif
+
+
+static inline BasinTargetFormat determine_format(const BasinCompileOptions* options) {
+    if (options->target_format != BASIN_TARGET_FORMAT_host)
+        return options->target_format;
+    
+    if (options->target_os == BASIN_TARGET_OS_linux)
+        return BASIN_TARGET_FORMAT_ELF;
+    else if (options->target_os == BASIN_TARGET_OS_windows)
+        return BASIN_TARGET_FORMAT_COFF;
+    
+    #ifdef OS_WINDOWS
+        return BASIN_TARGET_FORMAT_COFF;
+    #elif defined(OS_LINUX)
+        return BASIN_TARGET_FORMAT_ELF;
+    #endif
+}
+
+static inline BasinTargetArch determine_arch(const BasinCompileOptions* options) {
+    if (options->target_arch != BASIN_TARGET_FORMAT_host)
+        return options->target_format;
+    
+    #ifdef ARCH_X86_64
+        return BASIN_TARGET_ARCH_x86_64;
+    #elif defined(ARCH_X86_32)
+        return BASIN_TARGET_ARCH_x86_32;
+    #elif defined(ARCH_ARM_64)
+        return BASIN_TARGET_ARCH_arm_64;
+    #elif defined(ARCH_ARM_32)
+        return BASIN_TARGET_ARCH_arm_32;
+    #else
+        // @TODO Defaulting to x86 for now.
+        return BASIN_TARGET_ARCH_x86_64;
+    #endif
+}
+
+
+static inline BasinTargetArch determine_os(const BasinCompileOptions* options) {
+    if (options->target_os != BASIN_TARGET_OS_host)
+        return options->target_os;
+    
+    #ifdef OS_WINDOWS
+        return BASIN_TARGET_OS_windows;
+    #elif defined(OS_LINUX)
+        return BASIN_TARGET_OS_linux;
+    #endif
+}

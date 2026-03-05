@@ -71,7 +71,7 @@ static inline void pop_profile_zone(GenIRContext* ctx) {
 int allocate_register(GenIRContext* context) {
     // @TODO Optimize
     int max = sizeof(context->registers)/sizeof(*context->registers);
-    for (int i=1;i<max;i++) {
+    for (int i=0;i<max;i++) {
         if (context->registers[i] == 0) {
             context->registers[i] = 1;
             return i;

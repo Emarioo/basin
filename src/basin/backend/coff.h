@@ -2,7 +2,6 @@
 
 // This information comes from this site:
 // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
-// I will refer to this site as MSDOC
 
 typedef enum _Machine_Type {
     MACHINE_ZERO = 0,
@@ -13,8 +12,6 @@ typedef enum _Machine_Type {
 } _Machine_Type;
 typedef u16 Machine_Type;
 
-// MSDOC calls this Characteristics
-// This collides with some structs' member names.
 typedef enum COFF_Header_Flag {
     CHARACTERISTICS_ZERO=0,
     IMAGE_FILE_RELOCS_STRIPPED = 0x0001, // Image only, Windows CE, and Microsoft Windows NT and later. This indicates that the file does not contain base relocations and must therefore be loaded at its preferred base address. If the base address is not available, the loader reports an error. The default behavior of the linker is to strip base relocations from executable (EXE) files.

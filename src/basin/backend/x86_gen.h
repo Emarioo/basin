@@ -24,3 +24,13 @@ void x86_emit_lea_rip(X86Builder* builder, int dst_reg, u32* out_fixup_address);
 
 void x86_emit_imm32(X86Builder* builder, int dst_reg, u32 immediate);
 
+
+void x86_emit_ret(X86Builder* builder);
+
+void x86_emit_call_rel(X86Builder* builder, u32* out_fixup_address);
+
+void x86_emit_call_rip(X86Builder* builder, u32* out_fixup_address);
+
+void x86_emit_call_reg(X86Builder* builder, int reg);
+
+

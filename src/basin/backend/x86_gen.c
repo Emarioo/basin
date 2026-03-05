@@ -95,7 +95,67 @@ static void emit_modrm(X86Builder* builder, u8 mod, int _reg, int _rm) {
     // ASSERT(("Use addModRM_disp32 instead",(mod!=0b10)));
     emit1(builder, (u8)(rm | (reg << (u8)3) | (mod << (u8)6)));
 }
+
+// static void emit_modrm_sib(X86Builder* builder, u8 mod, int _reg, u8 scale, u8 index, int _base) {
+//     u8 base = _base - 1;
+//     u8 reg = _reg - 1;
+//     //  register to register (mod = 0b11) doesn't work with SIB byte
+//     Assert(("Use addModRM instead", mod != 0b11));
+
+//     Assert(("Ignored meaning in SIB byte. Look at intel x64 manual and fix it.",
+//                     base != 0b101));
+
+//     u8 rm = 0b100;
+//     Assert((mod & ~3) == 0 && (reg & ~7) == 0 && (rm & ~7) == 0);
+//     Assert((scale & ~3) == 0 && (index & ~7) == 0 && (base & ~7) == 0);
+
+//     emit1(builder, (u8)(rm | (reg << (u8)3) | (mod << (u8)6)));
+//     emit1(builder, (u8)(base | (index << (u8)3) | (scale << (u8)6)));
+// }
+
+void emit_modrm_sib_slash(X86Builder* builder, u8 mod, u8 reg, u8 scale, u8 index, int _base) {
+    u8 base = _base - 1;
+    //  register to register (mod = 0b11) doesn't work with SIB byte
+    ASSERT(("Use addModRM instead", mod != 0b11));
+
+    ASSERT(("Ignored meaning in SIB byte. Look at intel x64 manual and fix it.",
+                    base != 0b101));
+
+    u8 rm = 0b100;
+    ASSERT((mod & ~3) == 0 && (reg & ~7) == 0 && (rm & ~7) == 0);
+    ASSERT((scale & ~3) == 0 && (index & ~7) == 0 && (base & ~7) == 0);
+
+    emit1(builder, (u8)(rm | (reg << (u8)3) | (mod << (u8)6)));
+    emit1(builder, (u8)(base | (index << (u8)3) | (scale << (u8)6)));
+}
+
+static void emit_modrm_slash(X86Builder* builder, u8 mod, int reg, int _rm) {
+    if (_rm == X64_REG_SP && mod != MODE_REG) {
+        // SP register is not allowed with standard modrm byte, we must use a SIB
+        emit_modrm_sib_slash(builder, mod, reg, SIB_SCALE_1, SIB_INDEX_NONE, _rm);
+        return;
+    }
+    u8 rm = _rm - 1;
+    ASSERT((mod & ~3) == 0 && (reg & ~7) == 0 && (rm & ~7) == 0);
+    // You probably made a mistake and used REG_BP thinking it works with just
+    // ModRM byte.
+    ASSERT(("Use addModRM_SIB instead", !(mod != 0b11 && rm == 0b100)));
+    // X64_REG_SP isn't available with mod=0b00, see intel x64 manual about 32 bit
+    // addressing for more details
+    ASSERT(("Use addModRM_disp32 instead", !(mod == 0b00 && rm == 0b101)));
+    // Assert(("Use addModRM_disp32 instead",(mod!=0b10)));
+    emit1(builder, (u8)(rm | (reg << (u8)3) | (mod << (u8)6)));
+}
+
 static void emit_modrm_rip32(X86Builder* builder, int _reg, u32 disp32) {
+    u8 reg = _reg;
+    u8 mod = 0b00;
+    u8 rm = 0b101;
+    ASSERT((mod & ~3) == 0 && (reg & ~7) == 0 && (rm & ~7) == 0);
+    emit1(builder, (u8)(rm | (reg << (u8)3) | (mod << (u8)6)));
+    emit4(builder, disp32);
+}
+static void emit_modrm_rip32_slash(X86Builder* builder, u8 _reg, u32 disp32) {
     u8 reg = _reg;
     u8 mod = 0b00;
     u8 rm = 0b101;
@@ -203,5 +263,36 @@ void x86_emit_imm32(X86Builder* builder, int dst_reg, u32 immediate) {
     maybe_emit_prefix(builder, 0, 0, dst_reg);
     emit1(builder, (u8)(OPCODE_MOV_REG_IMM_RD | CLAMP_EXT_REG(dst_reg)));
     emit4(builder, (u32)immediate);
+}
+
+
+void x86_emit_ret(X86Builder* builder) {
+    EMIT_PRELUDE()
+
+    emit1(builder, OPCODE_RET);
+}
+
+
+void x86_emit_call_rel(X86Builder* builder, u32* out_fixup_address) {
+    EMIT_PRELUDE()
+
+    emit1(builder, OPCODE_CALL_IMM);
+    emit4(builder, 0);
+    *out_fixup_address = builder->function->code_len - 4;
+}
+
+void x86_emit_call_rip(X86Builder* builder, u32* out_fixup_address) {
+    EMIT_PRELUDE()
+
+    emit1(builder, OPCODE_CALL_RM_SLASH_2);
+    emit_modrm_rip32_slash(builder, 2, 0);
+    *out_fixup_address = builder->function->code_len - 4;
+}
+
+void x86_emit_call_reg(X86Builder* builder, int reg) {
+    EMIT_PRELUDE()
+
+    emit1(builder, OPCODE_CALL_RM_SLASH_2);
+    emit_modrm_slash(builder, MODE_REG, 2, reg);
 }
 

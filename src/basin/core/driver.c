@@ -64,7 +64,7 @@ Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions
 
     thread__unlock_mutex(&driver->compilations_mutex);
 
-
+    comp->driver  = driver;
     comp->options = options;
 
     for (int i=0;i<options->import_dirs_len;i++) {
@@ -163,6 +163,9 @@ void driver_run(Driver* driver, u32 thread_count, u32 task_process_limit) {
     if (thread_count == 0) {
         thread_count = sys__cpu_count();
     }
+
+    // @TODO Temporary Buggy printing without this
+    thread_count = 1;
     
     if (thread_count > driver->threads_cap) {
         int new_max = thread_count;
@@ -348,7 +351,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 
                 MachineFunction* func;
                 // This function adds the MachineFunction to machine program.
-                CodegenResult result = codegen_generate_function(driver, task.gen_machine.ir_function, &func);
+                CodegenResult result = codegen_generate_function(task.compilation, task.gen_machine.ir_function, &func);
                 if(result.error_type != CODEGEN_SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.error_message);
@@ -379,7 +382,10 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         // loop again find a new task
     }
 
-    
+    // @TODO Temporary
+    if (id == 0) {
+        generate_object_file(barray_get(&driver->compilations, 0));
+    }
 
     if(enabled_logging_driver) {
         fprintf(stderr, "[%d] Stopped\n", id);

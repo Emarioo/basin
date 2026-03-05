@@ -37,6 +37,9 @@ int _atomic_array_push(AtomicArray* arr, void* element);
     _atomic_array_init((AtomicArray*)ARR, sizeof(**(ARR)->chunks), CAP, ELEMENTS_PER_CHUNK)
 #define atomic_array_cleanup(ARR) \
     _atomic_array_cleanup((AtomicArray*)ARR)
+#define atomic_array_size(ARR) \
+    ((ARR)->len)
+
 
 // THREAD SAFE
 #define atomic_array_push(ARR, ELEMENTP) \
@@ -45,6 +48,7 @@ int _atomic_array_push(AtomicArray* arr, void* element);
     (ARR)->chunks[(INDEX) / (ARR)->elements_per_chunk][(INDEX) % (ARR)->elements_per_chunk]
 #define atomic_array_getptr(ARR, INDEX) \
     (&(ARR)->chunks[(INDEX) / (ARR)->elements_per_chunk][(INDEX) % (ARR)->elements_per_chunk])
+
 
 #ifdef IMPL_PLATFORM
 

@@ -1,6 +1,6 @@
 #include "basin/backend/ir.h"
 
-#include "basin/types.h"
+#include "basin/common.h"
 
 static inline void reserve_code(IRBuilder* builder) {
     if (builder->function->code_len + 256 >= builder->function->code_cap) {

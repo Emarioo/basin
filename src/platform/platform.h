@@ -123,3 +123,15 @@ void thread__cleanup_semaphore(Semaphore* semaphore);
 
 // logical cores (threads)
 int sys__cpu_count();
+
+
+//##############################
+//      TIME
+//##############################
+
+
+#define NANOSECOND_PER_SECOND (1000000000LLU)
+#define NS_TO_SEC(NS) ((NS)/NANOSECOND_PER_SECOND)
+
+// Nanoseconds since Jan 1, 1970
+u64 time__now();

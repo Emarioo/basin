@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "basin/types.h"
+#include "basin/common.h"
 
 typedef struct Driver Driver;
 typedef struct AST AST;

@@ -1,3 +1,10 @@
 
 int
 releases
+
+*.o
+*.ilk
+*.lib
+*.dll
+*.a
+*.so
