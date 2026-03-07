@@ -25,6 +25,7 @@
 // #define platform_log(...) log__printf(__VA_ARGS__)
 #define platform_log(...)
 
+#undef ASSERT
 #define ASSERT(E) ( (E) ? 0 : (log__printf("[ASSERT] %s:%d %s\n", __FILE__, __LINE__, #E), *((int*)0) = 5) )
 
 // ##########################

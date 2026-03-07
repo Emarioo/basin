@@ -26,7 +26,7 @@ void generate_elf(ObjectContext* context);
 void generate_object_file(Compilation* compilation) {
     PROFILE_START()
 
-    printf("Gen object file %s\n", compilation->options->output_file);
+    debug("Gen object file %s\n", compilation->options->output_file);
 
     ObjectContext context = {};
     context.compilation = compilation;
@@ -99,7 +99,9 @@ int get_ir_id_from_machine_id(ObjectContext* context, int machine_function_id) {
 void generate_coff(ObjectContext* context) {
     PROFILE_START()
 
-    print_compilation(context);
+    if (should_debug_print()) {
+        print_compilation(context);
+    }
 
     const char* obj_path = context->compilation->options->output_file;
     FSHandle handle = fs__open(obj_path, FS_WRITE);

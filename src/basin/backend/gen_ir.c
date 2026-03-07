@@ -182,10 +182,10 @@ void walk(GenIRContext* context, ASTExpression* _expr) {
 
 void generate_function(GenIRContext* context, ASTFunction* func) {
     PROFILE_START();
-    printf("Gen Func %s\n", func->name.ptr);
+    debug("Gen Func %s\n", func->name.ptr);
     
     if(!func->body) {
-        printf(" skip no body %s\n", func->name.ptr);
+        debug(" skip no body %s\n", func->name.ptr);
         goto end;
     }
 
@@ -210,7 +210,9 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
 
     // fini_builder(func);
 
-    print_ir_function(context->compilation->program, ir_func);
+    if (should_debug_print()) {
+        print_ir_function(context->compilation->program, ir_func);
+    }
 
     Task task = {};
     task.kind = TASK_GEN_MACHINE;

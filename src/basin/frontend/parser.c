@@ -269,7 +269,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
                 }
             }
 
-            printf("ANOT %s '%.*s'\n", anot.name.ptr, anot.content.len, anot.content.ptr);
+            debug("ANOT %s '%.*s'\n", anot.name.ptr, anot.content.len, anot.content.ptr);
 
             // TODO: Add annotations to the AST
             continue;

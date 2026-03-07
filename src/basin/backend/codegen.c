@@ -120,8 +120,9 @@ CodegenResult codegen_generate_function(Compilation* compilation, const IRFuncti
 
     x86_generate(&context);
 
-    dump_hex(context.machine_func->code, context.machine_func->code_len, 12);
-
+    if (should_debug_print()) {
+        dump_hex(context.machine_func->code, context.machine_func->code_len, 12);
+    }
     // on success do this
     *out_function = context.machine_func;
     PROFILE_END();
@@ -450,7 +451,7 @@ void x86_generate(CodegenContext* context) {
                     x86_emit_lea_rip(builder, machine_reg, &fixup_address);
                     
                     add_object_relocation(context, fixup_address, ir_inst->section, ir_inst->offset);
-                    // printf("  %04x: lea reg%d, [rip+?] (requires relocation)\n", fixup_address, machine_reg);
+                    // debug("  %04x: lea reg%d, [rip+?] (requires relocation)\n", fixup_address, machine_reg);
                 }
             } break;
             case IR_IMM8:
@@ -571,7 +572,7 @@ void x86_generate(CodegenContext* context) {
                         IRFunction* callee = atomic_array_getptr(&context->compilation->program->functions, ir_inst->function_id);
                         u32 fixup_address;
                         x86_emit_call_rel(builder, &fixup_address);
-                        // printf("  %04x: call %s (requires relocation)\n", fixup_address, callee->name.ptr);
+                        // debug("  %04x: call %s (requires relocation)\n", fixup_address, callee->name.ptr);
 
                         add_call_relocation(context, fixup_address, ir_inst->function_id);
                         

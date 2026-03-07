@@ -12,6 +12,11 @@
 
 #include "tracy/TracyC.h"
 
+// @TODO Move these elsewhere.
+//   common.h perhaps?
+#include "util/assert.h"
+#include "basin/logger.h"
+
 typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint16_t u16;

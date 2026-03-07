@@ -49,7 +49,7 @@ void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_numbe
     thread__unlock_mutex(&driver->tasks_mutex);
 
     if(enabled_logging_driver) {
-        fprintf(stderr, "[%d] Add task %s\n", thread_number, task_kind_names[task->kind]);
+        debug("[%d] Add task %s\n", thread_number, task_kind_names[task->kind]);
     }
     TracyCZoneEnd(zone);
 }
@@ -189,7 +189,7 @@ void driver_run(Driver* driver, u32 thread_count, u32 task_process_limit) {
     }
     
     if(enabled_logging_driver) {
-        fprintf(stderr, "Threads finished\n");
+        debug("Threads finished\n");
     }
     TracyCZoneEnd(zone);
 }
@@ -225,7 +225,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
     int id = ((u64)thread_driver - (u64)driver->threads) / sizeof(*thread_driver);
 
     if(enabled_logging_driver) {
-        fprintf(stderr, "[%d] Started\n", id);
+        debug("[%d] Started\n", id);
     }
 
     while(true) {
@@ -240,7 +240,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         }
 
         if(enabled_logging_driver) {
-            fprintf(stderr, "[%d] waiting\n", id);
+            debug("[%d] waiting\n", id);
         }
 
         thread__wait_semaphore(&driver->may_have_task_semaphore);
@@ -284,7 +284,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
 
         if(enabled_logging_driver) {
-            fprintf(stderr, "[%d] pick %s (%d left)\n", id, task_kind_names[task.kind], tasks_left);
+            debug("[%d] pick %s (%d left)\n", id, task_kind_names[task.kind], tasks_left);
         }
 
         // Perform task
@@ -317,7 +317,9 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 }
                 task.lex_and_parse.import->ast = ast;
 
-                print_ast(ast);
+                if (should_debug_print()) {
+                    print_ast(ast);
+                }
                 // fprintf(stderr, "Parse success\n");
                 
                 task.kind = TASK_GEN_IR;
@@ -340,7 +342,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
                 } else {
-                    fprintf(stderr, "Gen ir success\n");
+                    debug("Gen ir success\n");
                 }
                 
                 // task.kind = TASK_GEN_MACHINE;
@@ -356,7 +358,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.error_message);
                 } else {
-                    fprintf(stderr, "Gen machine success\n");
+                    debug("Gen machine success\n");
                 }
 
                 // if not tasks in compilation unit
@@ -371,7 +373,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
             } break;
             default: {
-                fprintf(stderr, "Unhandled task %d\n", task.kind);
+                debug("Unhandled task %d\n", task.kind);
                 ASSERT(false);
             }
         }
@@ -388,7 +390,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
     }
 
     if(enabled_logging_driver) {
-        fprintf(stderr, "[%d] Stopped\n", id);
+        debug("[%d] Stopped\n", id);
     }
 
     TracyCZoneEnd(zone);
