@@ -527,3 +527,29 @@ u64 time__now() {
         return (u64)tm.tv_sec * NANOSECOND_PER_SECOND + (u64)tm.tv_nsec;
     #endif
 }
+
+
+u64 time__now_utc() {
+    #ifdef OS_WINDOWS
+        FILETIME fileTime;
+        GetSystemTimePreciseAsFileTime(&fileTime);
+
+        // 100-nanosecond intervals since January 1, 1601 (UTC)
+        u64 timestamp = ((u64)fileTime.dwLowDateTime) | ((u64)fileTime.dwHighDateTime << 32);
+
+        // seconds between January 1, 1601 (UTC) and January 1, 1970 (UTC)
+        const u64 seconds_between = 11644473600ULL;
+
+        // timestamp now in January 1, 1970 (UTC), 100-nanosecond intervals
+        timestamp -= seconds_between * 10000000ULL;
+
+        // nanosecond intervals
+        timestamp = timestamp * 100ULL;
+
+        return timestamp;
+    #elif defined(OS_LINUX)
+        struct timespec tm;
+        clock_gettime(CLOCK_REALTIME, &tm);
+        return (u64)tm.tv_sec * NANOSECOND_PER_SECOND + (u64)tm.tv_nsec;
+    #endif
+}

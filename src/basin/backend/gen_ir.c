@@ -41,6 +41,8 @@ typedef struct {
     TracyCZoneCtx* zones;
 } GenIRContext;
 
+#define INVALID_REG_NUM (-1)
+
 typedef struct IRValue {
     int regnum;
 } IRValue;
@@ -255,6 +257,84 @@ IRValue generate_reference(GenIRContext* context, ASTExpression* _expression) {
 }
 
 
+IRValue generate_call(GenIRContext* context, ASTExpression_Call* expr_call) {
+    // @TODO Handle polymorphic arguments
+    ASSERT(expr_call->polymorphic_args.len == 0);
+    // @TODO Handle calling function pointers
+    ASSERT(expr_call->expr->kind == EXPR_IDENTIFIER);
+    
+    ASTExpression_Identifier* expr_ident = (ASTExpression_Identifier*) expr_call->expr;
+
+    // @TODO Implement find_function. special stuff for overloading etc. ?
+    FindResult result = {};
+    bool res = find_identifier(cstr(expr_ident->name), context->ast, context->current_block, &result);
+    if (!res) {
+        gen_error(expr_ident->location, "Could not find '%s'", expr_ident->name.ptr);
+    }
+    
+    if (result.kind != FOUND_FUNCTION) {
+        // @TODO Print what kind we found (struct, global, etc)
+        gen_error(expr_ident->location, "Cannot call non-function '%s'", expr_ident->name.ptr);
+    }
+    
+    ASTFunction* func = result.f_function;
+    ASSERT(func);
+
+    IROperand operands[20];
+    int arg_count = func->parameters.len;
+    int ret_count = func->return_values.len;
+    ASSERT(arg_count + ret_count <= sizeof(operands)/sizeof(*operands));
+
+    for (int i=0;i<expr_call->arguments.len;i++) {
+        ASTExpression_Call_Argument* arg = &expr_call->arguments.ptr[i];
+
+        int param_index = i;
+        if (arg->name.len) {
+            param_index = find_function_parameter(cstr(arg->name), func);
+            if (param_index == -1) {
+                gen_error(arg->location, "Function '%s' does not have parameter '%s', mispelled?", func->name.ptr, arg->name.ptr);
+            }
+        }
+
+        ASTFunction_Parameter* param = &func->parameters.ptr[param_index];
+
+        // @TODO Infer type from param
+        IRValue arg_value = generate_expression(context, arg->expr, GEN_NONE);
+
+        operands[param_index] = arg_value.regnum;
+    }
+
+    for (int i=0;i<func->return_values.len;i++) {
+        ASTFunction_Parameter* param = &func->return_values.ptr[i];
+        operands[arg_count + i] = allocate_register(context);
+    }
+
+    IRFunction_id id = func->ir_function_id;
+    
+    ir_call(&context->builder, id, func->parameters.len, func->return_values.len, operands);
+
+    for (int i=0;i<arg_count;i++) {
+        free_register(context, operands[i]);
+    }
+
+    ASSERT(func->return_values.len <= 1);
+
+    if(func->return_values.len == 0) {
+        IRValue value = {};
+        value.regnum = -1;
+        return value;
+    } else {
+        IRValue value = {};
+        value.regnum = operands[arg_count];
+        return value;
+    }
+
+
+    // @TODO How to return multiple IR values?
+    //    Only assignment allows multiple IR values
+}
+
+
 IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, GenFlags flags) {
     PROFILE_START();
     IRValue ir_value = {};
@@ -350,6 +430,13 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
         } break;
         case EXPR_IDENTIFIER: {
             ASTExpression_Identifier* expr_identifier = (ASTExpression_Identifier*)_expression;
+
+            if (string_equal_cstr(cstr(expr_identifier->name), "null")) {
+                ir_value.regnum = allocate_register(context);
+                ir_imm32(builder, ir_value.regnum, 0, IR_TYPE_SINT64);
+                break;
+            }
+
             FindResult result = {};
             bool yes= find_identifier(cstr(expr_identifier->name), context->ast, context->current_block, &result);
             switch (result.kind) {
@@ -434,6 +521,23 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
             free_register(context, left_value.regnum);
             free_register(context, right_value.regnum);
         } break;
+         case EXPR_UNARY: {
+            ASTExpression_Unary* expr_unary = (ASTExpression_Unary*) _expression;
+
+            IRValue left_value = generate_expression(context, expr_unary->expr, 0);
+
+            ir_value.regnum = allocate_register(context);
+
+            switch (expr_unary->op_kind) {
+                case EXPR_OP_SUB: {
+                    ir_imm32(builder, ir_value.regnum, 0, IR_TYPE_SINT32);
+                    ir_sub(builder, ir_value.regnum, ir_value.regnum, left_value.regnum, IR_TYPE_SINT64);
+                } break;
+                default: ASSERT(false);
+            }
+
+            free_register(context, left_value.regnum);
+        } break;
         case EXPR_ASSIGN: {
             ASTExpression_Assign* expr_assign = (ASTExpression_Assign*) _expression;
 
@@ -483,6 +587,15 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
 
                 // free_register(context, ref.regnum);
                 // free_register(context, val.regnum);
+            } else if (expr_assign->value->kind == EXPR_CALL) {
+                IRValue value = generate_call(context, (ASTExpression_Call*)expr_assign->value);
+                ASSERT(value.regnum != -1);
+
+                // @TODO Handle struct
+
+                ir_store(&context->builder, ref.regnum, value.regnum, 0, IR_TYPE_SINT64);
+                free_register(context, ref.regnum);
+                free_register(context, value.regnum);
             } else ASSERT(false);
 
             // return no IR value

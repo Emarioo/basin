@@ -67,19 +67,21 @@ typedef enum {
     EXPR_LITERAL_STRING,
 } _LiteralKind;
 
-typedef u8 ExpressionKind;
-typedef u8 OperatorKind;
-typedef u8 LiteralKind;
+
+#ifdef DEBUG_BUILD
+    typedef _ExpressionKind ExpressionKind;
+    typedef _OperatorKind OperatorKind;
+    typedef _LiteralKind LiteralKind;
+#else
+    typedef u8 ExpressionKind;
+    typedef u8 OperatorKind;
+    typedef u8 LiteralKind;
+#endif
 
 typedef string ASTType;
 
-#ifdef DEBUG_BUILD
-#define NODE_BASE   SourceLocation location;  \
-                    _ExpressionKind kind;
-#else
 #define NODE_BASE   SourceLocation location;  \
                     ExpressionKind kind;
-#endif
 
 typedef struct {
     NODE_BASE
@@ -101,22 +103,14 @@ typedef struct {
 
 typedef struct {
     NODE_BASE
-    #ifdef DEBUG_BUILD
-        _OperatorKind op_kind;
-    #else
-        OperatorKind op_kind;
-    #endif
+    OperatorKind op_kind;
 
     ASTExpression* expr;
 } ASTExpression_Unary;
 
 typedef struct {
     NODE_BASE
-    #ifdef DEBUG_BUILD
-        _OperatorKind op_kind;
-    #else
-        OperatorKind op_kind;
-    #endif
+    OperatorKind op_kind;
 
     ASTExpression* left;
     ASTExpression* right;
@@ -126,11 +120,7 @@ typedef struct {
 
 typedef struct {
     NODE_BASE
-    #ifdef DEBUG_BUILD
-        _LiteralKind literal_kind;
-    #else
-        LiteralKind literal_kind;
-    #endif
+    LiteralKind literal_kind;
 
     union {
         int64_t int_value;

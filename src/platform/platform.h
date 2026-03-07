@@ -130,8 +130,11 @@ int sys__cpu_count();
 //##############################
 
 
-#define NANOSECOND_PER_SECOND (1000000000LLU)
+#define NANOSECOND_PER_SECOND (1000000000ULL)
 #define NS_TO_SEC(NS) ((NS)/NANOSECOND_PER_SECOND)
 
-// Nanoseconds since Jan 1, 1970
+// Arbitrary nanosecond counter used for interval measurements, usually has higher precision
 u64 time__now();
+
+// Nanoseconds since Jan 1, 1970
+u64 time__now_utc();

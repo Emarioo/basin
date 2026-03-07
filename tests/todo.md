@@ -12,3 +12,8 @@ Tests to write
 - comptime emit
 - comptime eval
 - comptime normal
+
+
+# Object File
+- `dumpbin /all` and `objdump -x` on COFF file, search for errors in the output.
+- `objdump -x` on ELF file, search for errors in the output.

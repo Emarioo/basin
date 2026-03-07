@@ -8,3 +8,6 @@ releases
 *.dll
 *.a
 *.so
+*.exe
+*.dis
+*.log

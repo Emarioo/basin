@@ -185,6 +185,8 @@ typedef struct {
     // debug info
     // number of instructions (for statistics)
 
+    int frame_size;
+
     u8* code;
     int code_len;
     int code_cap;
@@ -256,7 +258,7 @@ typedef enum {
 
 
 void ir_load(IRBuilder* builder, int reg, int reg_mem, int offset, IRType type);
-void ir_store(IRBuilder* builder, int reg, int reg_mem, int offset, IRType type);
+void ir_store(IRBuilder* builder, int reg_mem, int reg, int offset, IRType type);
 
 void ir_add(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type);
 void ir_sub(IRBuilder* builder, int reg_dst, int reg0, int reg1, IRType type);

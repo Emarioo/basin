@@ -47,6 +47,11 @@ def main():
         print(f"{COLOR_RED}ERROR:{COLOR_RESET} Missing GNU Compiler")
         exit(1)
 
+    if platform.system() == "Windows":
+        config.int_dir = "int/windows"
+    else:
+        config.int_dir = "int/linux"
+
     if action_clean:
         if os.path.exists(config.int_dir):
             shutil.rmtree(config.int_dir)

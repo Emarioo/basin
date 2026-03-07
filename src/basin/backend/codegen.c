@@ -648,32 +648,32 @@ void x86_generate(CodegenContext* context) {
 
 
 
-static CodegenResult validate_platform_options(const PlatformOptions* options) {
-    CodegenResult result = {};
-    result.error_message = NULL;
-    result.error_type = CODEGEN_SUCCESS;
+// static CodegenResult validate_platform_options(const PlatformOptions* options) {
+//     CodegenResult result = {};
+//     result.error_message = NULL;
+//     result.error_type = CODEGEN_SUCCESS;
 
-    switch (options->cpu_kind) {
-        case CPU_x86_64: break;
-        default:
-            result.error_message = "Invalid CPU kind options";
-            result.error_type = CODEGEN_INVALID_PLATFORM_OPTIONS;
-            return result;
-    }
+//     switch (options->cpu_kind) {
+//         case CPU_x86_64: break;
+//         default:
+//             result.error_message = "Invalid CPU kind options";
+//             result.error_type = CODEGEN_INVALID_PLATFORM_OPTIONS;
+//             return result;
+//     }
 
-    switch (options->host_kind) {
-        case HOST_windows:
-        case HOST_linux: break;
-        default:
-            result.error_message = "Invalid HOST kind options";
-            result.error_type = CODEGEN_INVALID_PLATFORM_OPTIONS;
-            return result;
-    }
+//     switch (options->host_kind) {
+//         case HOST_windows:
+//         case HOST_linux: break;
+//         default:
+//             result.error_message = "Invalid HOST kind options";
+//             result.error_type = CODEGEN_INVALID_PLATFORM_OPTIONS;
+//             return result;
+//     }
 
-    return result;
+//     return result;
 
-LABEL_invalid:
-}
+// LABEL_invalid:
+// }
 
 const char* platform_string(const PlatformOptions* options) {
     static char buffer[128];
