@@ -92,8 +92,10 @@ def compile_basin(config: BuildConfig):
         obj_file = obj_file.replace("\\", "/")
         object_files.append(obj_file)
 
+    TRACY_PUBLIC = f"{ROOT}/tracy/0.12.2/public"
+
     if config.tracy:
-        source_files.append(f"{ROOT}/tracy/public/TracyClient.cpp")
+        source_files.append(f"{TRACY_PUBLIC}/TracyClient.cpp")
         object_files.append(config.int_dir + "/" + os.path.splitext(os.path.basename(source_files[-1]))[0] + ".o")
 
     proc = subprocess.run(["git","rev-parse","--short=10","HEAD"],text=True, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -125,7 +127,7 @@ def compile_basin(config: BuildConfig):
         CWARNS = ""
         CFLAGS = f"-c -g -Og -fPIC -I{ROOT}/src -I{ROOT}/include -include {ROOT}/src/basin/pch.h"
         if config.tracy:
-            CFLAGS += f" -DTRACY_ENABLE -I{ROOT}/tracy/public"
+            CFLAGS += f" -DTRACY_ENABLE -I{TRACY_PUBLIC}"
             # CFLAGS += f" -DTRACY_NO_EXIT"
         if platform.system() == "Windows":
             CFLAGS += " -DOS_WINDOWS"

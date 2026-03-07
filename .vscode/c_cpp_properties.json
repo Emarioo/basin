@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/tracy/public"
+                "${workspaceFolder}/tracy/0.12.2/public"
             ],
             "defines": [
                 "_DEBUG",

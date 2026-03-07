@@ -1,7 +1,7 @@
 
 library "libc.so" as libc
 
-// @external(libc) fn write(fd: i32, buf: void*, count: uword) -> uword
+@external(libc) fn write(fd: i32, buf: void*, count: uword) -> uword
 
 @external(libc) fn WriteFile(handle: u64, buf: void*, count: uword, written: void*, overlapped: void*) -> uword
 @external(libc) fn GetStdHandle(handle: i32) -> u64
@@ -10,9 +10,9 @@ library "libc.so" as libc
 
 fn main() -> i32 {
     text : char[] = "hello\n"
-    // write(1 + 0, text.ptr, text.len)
-    handle := GetStdHandle(-11)
-    WriteFile(handle, text.ptr, text.len, null, null)
+    write(1 + 0, text.ptr, text.len)
+    // handle := GetStdHandle(-11)
+    // WriteFile(handle, text.ptr, text.len, null, null)
     return 5
 }
 
