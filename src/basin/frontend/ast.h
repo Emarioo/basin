@@ -306,6 +306,7 @@ typedef struct {
     SourceLocation location;
     string name;
     ASTType type_name;
+    int frame_offset;
 } ASTVariable;
 
 typedef struct {

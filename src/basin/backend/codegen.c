@@ -115,6 +115,7 @@ CodegenResult codegen_generate_function(Compilation* compilation, const IRFuncti
     context.ir_func = in_function;
 
     MachineFunction func = {};
+    func.function_id = in_function->id;
     int index = atomic_array_push(&compilation->machine_program->functions, &func);
     context.machine_func = atomic_array_getptr(&compilation->machine_program->functions, index);
 
@@ -180,8 +181,13 @@ Instruction** alloc_operands(CodegenContext* context, int count) {
 
 int alloc_machine_register(CodegenContext* context) {
     int found = -1;
-    for (int i=0;i<ARRAY_LENGTH(context->used_machine_registers);i++) {
+    for (int i=ARRAY_LENGTH(context->used_machine_registers)-1;i>=0;i--) {
         if (i == X64_REG_SP || i == X64_REG_BP)
+            continue;
+        // @NOCHECKIN These don't need to be here. We don't consider register's as volatile at them moment.
+        if (i == X64_REG_A || i == X64_REG_C || i == X64_REG_D)
+            continue;
+        if (i == X64_REG_R8 || i == X64_REG_R9 || i == X64_REG_R10 || i == X64_REG_R11)
             continue;
         if (!context->used_machine_registers[i]) {
             found = i;
@@ -282,7 +288,11 @@ void x86_generate(CodegenContext* context) {
         reserve_code_sequence(context);
         
         switch(*opcode) {
-            case IR_ADD: {
+            case IR_ADD:
+            case IR_SUB:
+            case IR_MUL:
+            case IR_DIV:
+            case IR_MOD: {
                 IRInstruction_op3* irinst = (IRInstruction_op3*)opcode;
                 Instruction* inst = alloc_inst(context);
                 inst->base = (IROpcode*)irinst;
@@ -325,11 +335,13 @@ void x86_generate(CodegenContext* context) {
                 if (irinst->arg_count + irinst->ret_count > 0) {
                     inst->inputs_outputs = alloc_operands(context, irinst->arg_count + irinst->ret_count);
                     for (int i=0;i<irinst->arg_count;i++) {
-                        inst->inputs_outputs[i] = context->reg_to_inst_mapping[irinst->operands[i]];
+                        int reg = CALL_GET_ARG(irinst, i);
+                        inst->inputs_outputs[i] = context->reg_to_inst_mapping[reg];
                         inst->inputs_outputs[i]->uses++;
                     }
                     for (int i=0;i<irinst->ret_count;i++) {
-                        context->reg_to_inst_mapping[irinst->operands[irinst->arg_count + i]] = inst;
+                        int reg = CALL_GET_RET_VALUE(irinst, i);
+                        context->reg_to_inst_mapping[reg] = inst;
                     }
                 }
                 
@@ -340,12 +352,20 @@ void x86_generate(CodegenContext* context) {
             case IR_IMM16:
             case IR_IMM32:
             case IR_IMM64: {
-                IRInstruction_imm* irinst = (IRInstruction_imm*)opcode;
+                IRInstruction_imm8* irinst = (IRInstruction_imm8*)opcode;
                 Instruction* inst = alloc_inst(context);
                 inst->base = (IROpcode*)irinst;
                 
                 context->reg_to_inst_mapping[irinst->output] = inst;
-                head += sizeof(IRInstruction_imm);
+                if (*opcode == IR_IMM8) {
+                    head += sizeof(IRInstruction_imm8);
+                } else if (*opcode == IR_IMM16) {
+                    head += sizeof(IRInstruction_imm16);
+                } else if (*opcode == IR_IMM32) {
+                    head += sizeof(IRInstruction_imm32);
+                } else if (*opcode == IR_IMM64) {
+                    head += sizeof(IRInstruction_imm64);
+                } else ASSERT(false);
                 APPEND_INST();
             } break;
             case IR_ADDRESS_OF_VARIABLE: {
@@ -391,13 +411,55 @@ void x86_generate(CodegenContext* context) {
 
     X86Builder _builder = {};
     _builder.function = context->machine_func;
+    switch (target_arch) {
+        case BASIN_TARGET_ARCH_x86_64: {
+            _builder.pointer_size = 8;
+        } break;
+        default: ASSERT(false);
+    }
+
     X86Builder* builder = &_builder;
+    
+
+    //
+    // Prelude
+    //
+    int extraFrameSize = 64; // @TODO +64 to make temporary space for extra arguments and temporary values. We shouldn't hardcode it.
+    int frameSize = context->ir_func->frame_size + extraFrameSize; 
+    ASSERT((frameSize & 15) == 0); // Must be 16-byte aligned
+
+    int start_of_locals = extraFrameSize;
+
+    // @TODO If the function is process entry point on Linux then it is already 16-byte aligned.
+    //   We therefore need to add +8 to frame size. Or don't push RBP but we want RBP so can't do that.
+    //   '_start' needs +8. 'main' does not unless main is set to be entry point and c runtime isn't used.
+    
+    // @OPTIMIZE_OUTPUT  When possible omit RBP. RSP can fulfill it's use cases. We get some problems
+    //   with debug info, exception and unwinding. However DWARF has good support for describing stack layout with OPs
+    //   and our language doesn't have exceptions or unwinding. It may be problematic with stack traces though?
+    //   stack traces could read DWARF do no? Also does PDB have similar support to omit RBP as PDB, probably?
+    //   To allow omission of RBP we will only use RSP in the codegen.
+
+    x86_emit_push(builder, X64_REG_BP);
+    x86_emit_sub_imm(builder, X64_REG_SP, frameSize);
+    x86_emit_mov(builder, X64_REG_BP, X64_REG_SP);
+    // @TODO We should fixup frame size when done with codegen. In the loop below we may need bigger stack for temporary values or big stack for arguments.
+    //   Since we don't know in advance we would fixup frame size afterwards.
+
+    #define EPILOG() do {                                  \
+        x86_emit_add_imm(builder, X64_REG_SP, frameSize);  \
+        x86_emit_pop(builder, X64_REG_BP);                 \
+        } while(false);
 
     for (int inst_index=0;inst_index<context->inst_sequence_len;inst_index++) {
         Instruction* inst = context->inst_sequence[inst_index];
 
         switch (*inst->base) {
-            case IR_ADD: {
+            case IR_ADD:
+            case IR_SUB:
+            case IR_MUL:
+            case IR_DIV:
+            case IR_MOD: {
                 IRInstruction_op3* ir_inst = (IRInstruction_op3*)inst->base;
                 
                 int machine_in0 = context->reg_to_machine_register[ir_inst->input0].machine_register;
@@ -406,31 +468,45 @@ void x86_generate(CodegenContext* context) {
                 inst->input0->uses--;
                 inst->input1->uses--;
 
+                int op0,op1;
                 if (inst->input0->uses == 0) {
                     int machine_out = machine_in0;
-                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
                     
                     if (inst->input1->uses == 0) {
                         free_machine_register(context, ir_inst->input1);
                     }
-    
-                    x86_emit_add(builder, machine_out, machine_in1);
+
+                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
+                    op0 = machine_out;
+                    op1 = machine_in1;
+                    // x86_emit_add(builder, machine_out, machine_in1);
                 } else if (inst->input1->uses == 0) {
                     int machine_out = machine_in1;
-                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
-                    alloc_specific_machine_register(context, machine_out);
                     
-                    if (inst->input1->uses == 0) {
-                        free_machine_register(context, ir_inst->input0);
-                    }
+                    // free_machine_register(context, ir_inst->input1);
+                    // alloc_specific_machine_register(context, machine_out);
+                    context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
     
-                    x86_emit_add(builder, machine_out, machine_in0);
+                    op0 = machine_out;
+                    op1 = machine_in0;
+                    // x86_emit_add(builder, machine_out, machine_in0);
                 } else {
                     int machine_out = alloc_machine_register(context);
                     context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
     
                     x86_emit_mov(builder, machine_out, machine_in0);
-                    x86_emit_add(builder, machine_out, machine_in1);
+                    op0 = machine_out;
+                    op1 = machine_in1;
+                    // x86_emit_add(builder, machine_out, machine_in1);
+                    
+                }
+                switch (*inst->base) {
+                    case IR_ADD: x86_emit_add(builder, op0, op1); break;
+                    case IR_SUB: x86_emit_sub(builder, op0, op1); break;
+                    // case IR_MUL: x86_emit_mul(builder, op0, op1); break;
+                    // case IR_DIV: x86_emit_div(builder, op0, op1); break;
+                    // case IR_MOD: x86_emit_add(builder, op0, op1); break;
+                    default: ASSERT(false);
                 }
                 
             } break;
@@ -441,7 +517,7 @@ void x86_generate(CodegenContext* context) {
                     int machine_reg = alloc_machine_register(context);
                     context->reg_to_machine_register[ir_inst->output].machine_register = machine_reg;
 
-                    x86_emit_lea(builder, machine_reg, X64_REG_SP, ir_inst->offset);
+                    x86_emit_lea(builder, machine_reg, X64_REG_SP, ir_inst->offset + extraFrameSize);
 
                 } else {
                     int machine_reg = alloc_machine_register(context);
@@ -458,7 +534,10 @@ void x86_generate(CodegenContext* context) {
             case IR_IMM16:
             case IR_IMM32:
             case IR_IMM64: {
-                IRInstruction_imm* ir_inst = (IRInstruction_imm*)inst->base;
+                IRInstruction_imm8* ir_inst = (IRInstruction_imm8*)inst->base;
+                IRInstruction_imm16* ir_inst16 = (IRInstruction_imm16*)inst->base;
+                IRInstruction_imm32* ir_inst32 = (IRInstruction_imm32*)inst->base;
+                IRInstruction_imm64* ir_inst64 = (IRInstruction_imm64*)inst->base;
                 
                 // @TODO How do we know when we are done with the register?
                 //   We have limited machine registers and must free them.
@@ -471,7 +550,47 @@ void x86_generate(CodegenContext* context) {
                 int machine_reg = alloc_machine_register(context);
                 context->reg_to_machine_register[ir_inst->output].machine_register = machine_reg;
 
-                x86_emit_imm32(builder, machine_reg, ir_inst->immediate);
+                int byte_size = BYTE_SIZE_OF_IR_TYPE(ir_inst->type);
+                
+                // @NOCHECKIN How to handle floats.
+
+                switch (*inst->base) {
+                    case IR_IMM8: {
+                        ASSERT(byte_size >= 1);
+                        if (IR_TYPE_IS_SIGNED(ir_inst->type)) {
+                            x86_emit_imm32_signext(builder, machine_reg, (i32)ir_inst->immediate);
+                         } else if (IR_TYPE_IS_UNSIGNED(ir_inst->type)) {
+                            x86_emit_imm32_zeroext(builder, machine_reg, (u32)(u8)ir_inst->immediate);
+                         } else {
+                            ASSERT(false);
+                         }
+                    } break;
+                    case IR_IMM16: {
+                        ASSERT(byte_size >= 2);
+                        if (IR_TYPE_IS_SIGNED(ir_inst->type)) {
+                            x86_emit_imm32_signext(builder, machine_reg, (i32)ir_inst16->immediate);
+                         } else if (IR_TYPE_IS_UNSIGNED(ir_inst->type)) {
+                            x86_emit_imm32_zeroext(builder, machine_reg, (u32)(u16)ir_inst16->immediate);
+                         } else {
+                            ASSERT(false);
+                         }
+                    } break;
+                    case IR_IMM32: {
+                        ASSERT((IR_TYPE_IS_FLOAT(ir_inst->type) && byte_size == 4) ||
+                            (!IR_TYPE_IS_FLOAT(ir_inst->type) && byte_size >= 4));
+                         if (IR_TYPE_IS_SIGNED(ir_inst->type)) {
+                            x86_emit_imm32_signext(builder, machine_reg, ir_inst32->immediate);
+                         } else if (IR_TYPE_IS_UNSIGNED(ir_inst->type)) {
+                            x86_emit_imm32_zeroext(builder, machine_reg, ir_inst32->immediate);
+                         } else {
+                            ASSERT(false);
+                         }
+                    } break;
+                    case IR_IMM64: {
+                        ASSERT(byte_size == 8);
+                        x86_emit_imm64(builder, machine_reg, ir_inst64->immediate);
+                    } break;
+                }
             } break;
             case IR_LOAD: {
                 IRInstruction_load* ir_inst = (IRInstruction_load*)inst->base;
@@ -513,7 +632,8 @@ void x86_generate(CodegenContext* context) {
                 IRInstruction_call* ir_inst = (IRInstruction_call*)inst->base;
                 
                 ASSERT(ir_inst->ret_count <= 1);
-                ASSERT(ir_inst->arg_count <= 4);
+                // ASSERT(ir_inst->arg_count <= 4);  // check if we don't support args on stack
+                ASSERT(ir_inst->arg_count <= 8); // we hardcode 64 bytes of extra stack at the start.
 
                 switch (callingConvention) {
                     case CALLING_CONVENTION_WIN_X64: {
@@ -531,17 +651,40 @@ void x86_generate(CodegenContext* context) {
                         int from_table[4] = {};
 
                         int temp_reg = X64_REG_R15;
-                        ASSERT(is_machine_register_free(context, temp_reg));
+                        // ASSERT(is_machine_register_free(context, temp_reg));
 
-                        for (int i=0;i<ir_inst->arg_count;i++) {
-                            int machine_reg = context->reg_to_machine_register[ir_inst->operands[i]].machine_register;
+                        int first_args = ir_inst->arg_count <= 4 ? ir_inst->arg_count : 4;
+
+                        for (int i=0;i<first_args;i++) {
+                            int ir_reg = CALL_GET_ARG(ir_inst, i);
+                            int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
                             from_table[i] = machine_reg;
                         }
 
-                        for (int i=ir_inst->arg_count-1;i>=0;i--) {
+                        // @TODO We need to implement Artificial Registers like we had in BTB's codegen.
+                        //    Artificial registers represents a lifetime of a value in a register.
+
+                        // @OPTIMIZE_OUTPUT  The instruction that puts stuff in a register could put it directly onto argument stack.
+                        //     May be efficient in some situations?
+                        const int REGISTER_SIZE = 8;
+                        for (int i=4;i<ir_inst->arg_count;i++) {
+                            int ir_reg = CALL_GET_ARG(ir_inst, i);
+                            int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
+                            x86_emit_store(builder, machine_reg, X64_REG_SP, 32 + (i-4) * REGISTER_SIZE);
+
+                            inst->inputs_outputs[i]->uses--;
+                            ASSERT(inst->inputs_outputs[i]->uses >= 0);
+                            if (inst->inputs_outputs[i]->uses == 0) {
+                                free_machine_register(context, ir_reg);
+                            }
+                        }
+
+
+                        for (int i=first_args-1;i>=0;i--) {
+                            int ir_reg = CALL_GET_ARG(ir_inst, i);
                             int machine_reg = from_table[i];
 
-                            // if (table[i] != machine_reg) {
+                            if (table[i] != machine_reg) {
                             //     // The from_table and this loop makes sure we don't mix argument registers and loose values.
                             //     // when moving them around.
                             //     for (int j=i + 1;j<ir_inst->arg_count;j++) {
@@ -556,17 +699,18 @@ void x86_generate(CodegenContext* context) {
                             //     }
 
                             //     // @TODO We are potentially overwriting used registers which is why we need to save used volatile registers.
-                            // }
-                            x86_emit_mov(builder, table[i], machine_reg);
+                                x86_emit_mov(builder, table[i], machine_reg);
+                            }
 
 
                             inst->inputs_outputs[i]->uses--;
                             ASSERT(inst->inputs_outputs[i]->uses >= 0);
                             if (inst->inputs_outputs[i]->uses == 0) {
-                                free_machine_register(context, ir_inst->operands[i]);
+                                free_machine_register(context, ir_reg);
                             }
                         }
 
+             
 
                         // @TODO Depending on function_id we emit direct or indirect call.
                         IRFunction* callee = atomic_array_getptr(&context->compilation->program->functions, ir_inst->function_id);
@@ -586,7 +730,8 @@ void x86_generate(CodegenContext* context) {
                                 reg = alloc_machine_register(context);
                                 x86_emit_mov(builder, reg, X64_REG_A);
                             }
-                            context->reg_to_machine_register[ir_inst->operands[ir_inst->arg_count]].machine_register = reg;
+                            int ir_reg = CALL_GET_RET_VALUE(ir_inst, 0);
+                            context->reg_to_machine_register[ir_reg].machine_register = reg;
                         }
 
                         // @TODO Restore used volatile registers (EAX...) from stack
@@ -623,6 +768,8 @@ void x86_generate(CodegenContext* context) {
                 } else {
                     ASSERT((false, "x86 gen can't handle multiple return values"));
                 }
+
+                EPILOG();
                 
                 x86_emit_ret(builder);
             } break;
@@ -630,7 +777,11 @@ void x86_generate(CodegenContext* context) {
 
     }
 
-    // 
+    // Make sure we end with a return
+    if (builder->function->code[builder->function->code_len-1] != OPCODE_RET) {
+        EPILOG();
+        x86_emit_ret(builder);
+    }
 
 
     //

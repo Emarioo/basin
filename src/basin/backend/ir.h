@@ -2,6 +2,17 @@
     Intermediate Representation (IR)
 
     A compact representation of a program which is understood by the backend.
+
+
+    The IR does not represent structs. Pointers are just U64 (or U32 depending on architecture).
+    This means calling convention of struct passing is 
+
+
+    v : struct16 = [ ptr0, ptr1 ]
+
+
+
+
 */
 
 #pragma once
@@ -17,18 +28,6 @@ typedef enum {
     IR_MUL,
     IR_DIV,
     IR_MOD,
-    
-    IR_UADD,
-    IR_USUB,
-    IR_UMUL,
-    IR_UDIV,
-    IR_UMOD,
-
-    IR_FADD,
-    IR_FSUB,
-    IR_FMUL,
-    IR_FDIV,
-    IR_FMOD,
 
     IR_BIT_OR,
     IR_BIT_AND,
@@ -68,6 +67,8 @@ typedef enum {
 
     IR_ASSEMBLY,
 
+    // @TODO Vector instructions
+
     IR_EXTEND1 = 253, // extended opcode
     IR_EXTEND2 = 254,
     IR_RESERVED_255 = 255,
@@ -81,6 +82,42 @@ typedef enum {
 
 #define SECTION_ID_STACK 0
 
+
+// bool, char, pointers are integers
+typedef enum {
+    IR_TYPE_U8 = 0x00,
+    IR_TYPE_U16,
+    IR_TYPE_U32,
+    IR_TYPE_U64,
+    IR_TYPE_U128,
+    IR_TYPE_U256,
+    IR_TYPE_U512,
+
+    IR_TYPE_S8 = 0x10,
+    IR_TYPE_S16,
+    IR_TYPE_S32,
+    IR_TYPE_S64,
+    IR_TYPE_S128,
+    IR_TYPE_S256,
+    IR_TYPE_S512,
+    
+    
+    IR_TYPE_F8 = 0x20,
+    IR_TYPE_F16, // we add f8, f16 for completeness, we don't actually support these.
+    IR_TYPE_F32,
+    IR_TYPE_F64,
+    IR_TYPE_F128,
+    IR_TYPE_F256,
+    IR_TYPE_F512,
+} _IRType;
+
+#define BYTE_SIZE_OF_IR_TYPE(T) (1 << ((T) & 0xF))
+
+#define IR_TYPE_IS_FLOAT(T)     ((T & ~0xf) == IR_TYPE_F8)
+#define IR_TYPE_IS_SIGNED(T)    ((T & ~0xf) == IR_TYPE_S8)
+#define IR_TYPE_IS_UNSIGNED(T)  ((T & ~0xf) == IR_TYPE_U8)
+
+typedef u8  IRType;
 typedef u8  IROpcode;
 typedef u8  IROperand;
 typedef u8  IRSectionID;
@@ -106,6 +143,7 @@ typedef struct {
     IROpcode opcode;
     IROperand output;
     IROperand memory;
+    IRType type;
     int displacement;
 } IRInstruction_load;
 
@@ -132,8 +170,30 @@ typedef struct {
 typedef struct {
     IROpcode opcode;
     IROperand output;
+    IRType type;
+    i8 immediate;
+} IRInstruction_imm8;
+
+typedef struct {
+    IROpcode opcode;
+    IROperand output;
+    IRType type;
+    i16 immediate;
+} IRInstruction_imm16;
+
+typedef struct {
+    IROpcode opcode;
+    IROperand output;
+    IRType type;
+    i32 immediate;
+} IRInstruction_imm32;
+
+typedef struct {
+    IROpcode opcode;
+    IROperand output;
+    IRType type;
     i64 immediate;
-} IRInstruction_imm; // TODO: 8,16,32 versions
+} IRInstruction_imm64; // larger immediates should be put in .rodata section.
 
 typedef struct {
     IROpcode opcode;
@@ -157,15 +217,20 @@ typedef struct {
     IRFunction_id function_id;
     u8 arg_count;
     u8 ret_count;
-    IROperand operands[/* arg_count + ret_count */];
+    u8 _data[/* arg_count + 2*ret_count */]; // use macros to access arguments and return value
 } IRInstruction_call;
+
+#define CALL_GET_ARG(IRINST, INDEX) ((IROperand)(IRINST)->_data[INDEX])
+#define CALL_GET_RET_VALUE(IRINST, INDEX) ((IROperand)(IRINST)->_data[(IRINST)->arg_count + 2*(INDEX)])
+#define CALL_GET_RET_TYPE(IRINST, INDEX) ((IRType)(IRINST)->_data[(IRINST)->arg_count + 1 + 2*(INDEX)])
 
 typedef struct {
     IROpcode opcode;
     IROperand input_ptr;
     u8 arg_count;
     u8 ret_count;
-    IROperand operands[/* arg_count + ret_count */];
+    u8 _data[/* arg_count + 2*ret_count */]; // use macros to access arguments and return value
+    // IROperand operands[/* arg_count + ret_count */];
 } IRInstruction_call_ptr;
 
 typedef struct {
@@ -228,30 +293,6 @@ typedef struct {
     IRFunction* function;
 } IRBuilder;
 
-// bool, char, pointers are integers
-typedef enum {
-    IR_TYPE_INVALID = 0,
-    IR_TYPE_SINT8,  
-    IR_TYPE_SINT16,
-    IR_TYPE_SINT32,
-    IR_TYPE_SINT64,
-    
-    IR_TYPE_UINT8,
-    IR_TYPE_UINT16,
-    IR_TYPE_UINT32,
-    IR_TYPE_UINT64,
-    
-    IR_TYPE_FLOAT32,
-    IR_TYPE_FLOAT64,
-
-    // Here for calling conventions (some put 16-byte struct in two registers)
-    IR_TYPE_STRUCT8,
-    IR_TYPE_STRUCT16,
-    IR_TYPE_STRUCT32,
-    IR_TYPE_STRUCT64,
-    IR_TYPE_STRUCT128,
-    IR_TYPE_STRUCT_LARGE,
-} IRType;
 
 // This is the interface for building instructions. They are represented differently in binary.
 //   For example, add instructions have specific ones for 
@@ -271,7 +312,7 @@ void ir_imm16(IRBuilder* builder, int reg, i16 imm, IRType type);
 void ir_imm32(IRBuilder* builder, int reg, i32 imm, IRType type);
 void ir_imm64(IRBuilder* builder, int reg, i64 imm, IRType type);
 
-void ir_call(IRBuilder* builder, IRFunction_id func_id, u8 arg_count, u8 ret_count, IROperand* operands);
+void ir_call(IRBuilder* builder, IRFunction_id func_id, u8 arg_count, u8 ret_count, IROperand* args, IROperand* ret_values, IROperand* ret_types);
 void ir_ret(IRBuilder* builder, u8 ret_count, IROperand* operands);
 
 void ir_address_of_variable(IRBuilder* builder, int reg, IRSectionID section, int offset);

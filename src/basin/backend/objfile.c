@@ -64,7 +64,7 @@ void print_compilation(ObjectContext* context) {
     printf("Functions [%d]\n", atomic_array_size(&context->machine_program->functions));
     for (int i=0;i<atomic_array_size(&context->machine_program->functions);i++) {
         MachineFunction* function = atomic_array_getptr(&context->machine_program->functions, i);
-        IRFunction* ir_function = atomic_array_getptr(&context->ir_program->functions, function->id);
+        IRFunction* ir_function = atomic_array_getptr(&context->ir_program->functions, function->function_id);
 
         printf("  %s, %d bytes\n", ir_function->name.ptr, (int)function->code_len);
     }
@@ -82,7 +82,7 @@ int get_machine_id_from_ir_id(ObjectContext* context, int ir_function_id) {
 
     for (int i=0;i<atomic_array_size(&context->machine_program->functions);i++) {
         MachineFunction* func = atomic_array_getptr(&context->machine_program->functions, i);
-        if (func->id == ir_function_id) {
+        if (func->function_id == ir_function_id) {
             return i;
         }
     }
@@ -92,7 +92,7 @@ int get_machine_id_from_ir_id(ObjectContext* context, int ir_function_id) {
 int get_ir_id_from_machine_id(ObjectContext* context, int machine_function_id) {
     // @TODO Create a map somewhere
     MachineFunction* func = atomic_array_getptr(&context->machine_program->functions, machine_function_id);
-    return func->id;
+    return func->function_id;
 }
 
 
@@ -273,7 +273,7 @@ void generate_coff(ObjectContext* context) {
         IRFunction* ir_function = atomic_array_getptr(&context->ir_program->functions, fi);
         int mi = get_machine_id_from_ir_id(context, fi);
         MachineFunction* function = NULL;
-        if (mi == -1) {
+        if (mi != -1) {
             function = atomic_array_getptr(&context->machine_program->functions, mi);
         }
 
@@ -286,7 +286,9 @@ void generate_coff(ObjectContext* context) {
             symbol.StorageClass = IMAGE_SYM_CLASS_EXTERNAL;
             symbol.Value = current_function_text_offset;
             current_function_text_offset += function->code_len;
+            printf("avail %s\n", ir_function->name.ptr);
         } else {
+            printf("ext %s\n", ir_function->name.ptr);
             symbol.SectionNumber = 0;
             symbol.StorageClass = IMAGE_SYM_CLASS_EXTERNAL;
         }

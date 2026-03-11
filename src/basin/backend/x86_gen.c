@@ -114,7 +114,7 @@ static void emit_modrm(X86Builder* builder, u8 mod, int _reg, int _rm) {
 // }
 
 void emit_modrm_sib_slash(X86Builder* builder, u8 mod, u8 reg, u8 scale, u8 index, int _base) {
-    u8 base = _base - 1;
+    u8 base = _base;
     //  register to register (mod = 0b11) doesn't work with SIB byte
     ASSERT(("Use addModRM instead", mod != 0b11));
 
@@ -135,7 +135,7 @@ static void emit_modrm_slash(X86Builder* builder, u8 mod, int reg, int _rm) {
         emit_modrm_sib_slash(builder, mod, reg, SIB_SCALE_1, SIB_INDEX_NONE, _rm);
         return;
     }
-    u8 rm = _rm - 1;
+    u8 rm = _rm;
     ASSERT((mod & ~3) == 0 && (reg & ~7) == 0 && (rm & ~7) == 0);
     // You probably made a mistake and used REG_BP thinking it works with just
     // ModRM byte.
@@ -165,18 +165,61 @@ static void emit_modrm_rip32_slash(X86Builder* builder, u8 _reg, u32 disp32) {
 }
 
 
+void x86_emit_push(X86Builder* builder, int reg) {
+    EMIT_PRELUDE()
+
+    // No need to add REXW to push
+    maybe_emit_prefix(builder, 0, reg, 0);
+    emit1(builder, OPCODE_PUSH_REG_RD | CLAMP_EXT_REG(reg));
+}
+void x86_emit_pop(X86Builder* builder, int reg) {
+    EMIT_PRELUDE()
+
+    // No need to add REXW to pop
+    maybe_emit_prefix(builder, 0, reg, 0);
+    emit1(builder, OPCODE_POP_REG_RD | CLAMP_EXT_REG(reg));
+}
+
 void x86_emit_add(X86Builder* builder, int dst_reg, int input_reg) {
     EMIT_PRELUDE()
 
-    maybe_emit_prefix(builder, 0, dst_reg, input_reg);
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, dst_reg, input_reg);
     emit1(builder, OPCODE_ADD_REG_RM);
     emit_modrm(builder, MODE_REG, CLAMP_EXT_REG(dst_reg), CLAMP_EXT_REG(input_reg));
+}
+void x86_emit_sub(X86Builder* builder, int dst_reg, int input_reg) {
+    EMIT_PRELUDE()
+
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, dst_reg, input_reg);
+    emit1(builder, OPCODE_SUB_REG_RM);
+    emit_modrm(builder, MODE_REG, CLAMP_EXT_REG(dst_reg), CLAMP_EXT_REG(input_reg));
+}
+
+
+void x86_emit_add_imm(X86Builder* builder, int reg, int immediate) {
+    EMIT_PRELUDE()
+
+    // @TODO If immediate fits in 8 bits then don't use 32 bit immediate
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, 0, reg);
+    emit1(builder, OPCODE_ADD_RM_IMM_SLASH_0);
+    emit_modrm_slash(builder, MODE_REG, 0, CLAMP_EXT_REG(reg));
+    emit4(builder, immediate);
+}
+
+void x86_emit_sub_imm(X86Builder* builder, int reg, int immediate) {
+    EMIT_PRELUDE()
+
+    // @TODO If immediate fits in 8 bits then don't use 32 bit immediate
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, 0, reg);
+    emit1(builder, OPCODE_SUB_RM_IMM_SLASH_5);
+    emit_modrm_slash(builder, MODE_REG, 5, CLAMP_EXT_REG(reg));
+    emit4(builder, immediate);
 }
 
 void x86_emit_load(X86Builder* builder, int dst_reg, int mem_reg, int displacement) {
     EMIT_PRELUDE()
 
-    maybe_emit_prefix(builder, 0, dst_reg, mem_reg);
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, dst_reg, mem_reg);
 
     emit1(builder, OPCODE_MOV_REG_RM);
     
@@ -198,7 +241,7 @@ void x86_emit_load(X86Builder* builder, int dst_reg, int mem_reg, int displaceme
 void x86_emit_store(X86Builder* builder, int src_reg, int mem_reg, int displacement) {
     EMIT_PRELUDE()
 
-    maybe_emit_prefix(builder, 0, src_reg, mem_reg);
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, src_reg, mem_reg);
 
     emit1(builder, OPCODE_MOV_RM_REG);
     
@@ -220,7 +263,7 @@ void x86_emit_store(X86Builder* builder, int src_reg, int mem_reg, int displacem
 void x86_emit_mov(X86Builder* builder, int dst_reg, int src_reg) {
     EMIT_PRELUDE()
 
-    maybe_emit_prefix(builder, 0, dst_reg, src_reg);
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, dst_reg, src_reg);
 
     emit1(builder, OPCODE_MOV_REG_RM);
     emit_modrm(builder, MODE_REG, CLAMP_EXT_REG(dst_reg), CLAMP_EXT_REG(src_reg));
@@ -257,14 +300,38 @@ void x86_emit_lea_rip(X86Builder* builder, int dst_reg, u32* out_fixup_address) 
     *out_fixup_address = builder->function->code_len - 4;
 }
 
-void x86_emit_imm32(X86Builder* builder, int dst_reg, u32 immediate) {
+
+// void x86_emit_imm8(X86Builder* builder, int dst_reg, u32 immediate) {
+//     EMIT_PRELUDE()
+
+//     maybe_emit_prefix(builder, 0, dst_reg, 0);
+//     emit1(builder, (u8)(OPCODE_MOV_REG8_IMM_RD | CLAMP_EXT_REG(dst_reg)));
+//     emit4(builder, (u32)immediate);
+// }
+
+void x86_emit_imm32_zeroext(X86Builder* builder, int dst_reg, u32 immediate) {
     EMIT_PRELUDE()
 
-    maybe_emit_prefix(builder, 0, 0, dst_reg);
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, dst_reg, 0);
     emit1(builder, (u8)(OPCODE_MOV_REG_IMM_RD | CLAMP_EXT_REG(dst_reg)));
     emit4(builder, (u32)immediate);
 }
 
+void x86_emit_imm32_signext(X86Builder* builder, int dst_reg, u32 immediate) {
+    EMIT_PRELUDE()
+
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, 0, dst_reg);
+    emit1(builder, (u8)(OPCODE_MOV_RM_IMM32_SLASH_0));
+    emit_modrm_slash(builder, MODE_REG, 0, CLAMP_EXT_REG(dst_reg));
+    emit4(builder, immediate);
+}
+void x86_emit_imm64(X86Builder* builder, int dst_reg, u64 immediate) {
+    EMIT_PRELUDE()
+
+    maybe_emit_prefix(builder, PREFIX_REXW, dst_reg, 0);
+    emit1(builder, (u8)(OPCODE_MOV_REG_IMM_RD | CLAMP_EXT_REG(dst_reg)));
+    emit8(builder, immediate);
+}
 
 void x86_emit_ret(X86Builder* builder) {
     EMIT_PRELUDE()
@@ -292,6 +359,7 @@ void x86_emit_call_rip(X86Builder* builder, u32* out_fixup_address) {
 void x86_emit_call_reg(X86Builder* builder, int reg) {
     EMIT_PRELUDE()
 
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, 0, reg);
     emit1(builder, OPCODE_CALL_RM_SLASH_2);
     emit_modrm_slash(builder, MODE_REG, 2, reg);
 }

@@ -46,7 +46,7 @@ typedef struct {
 DEF_ARRAY(MachineRelocation)
 
 typedef struct {
-    IRFunction_id id;
+    IRFunction_id function_id;
     
     u8* code;
     int code_len;

@@ -9,10 +9,10 @@ library "libc.so" as libc
 // STDOUT_FILENO <- 1
 
 fn main() -> i32 {
-    text : char[] = "hello\n"
-    write(1 + 0, text.ptr, text.len)
-    // handle := GetStdHandle(-11)
-    // WriteFile(handle, text.ptr, text.len, null, null)
+    text : char[] = "Hello World\n"
+    // write(1 + 0, text.ptr, text.len)
+    handle := GetStdHandle(-11)
+    WriteFile(handle, text.ptr, text.len, null, null)
     return 5
 }
 

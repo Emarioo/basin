@@ -13,7 +13,7 @@ import "stdio.h"
 // A body expression
 # {
     printf("Printing\n")
-    printf("with a second line!\")
+    printf("with a second line!\n")
 }
 
 global state: i32 = 2 + 3 // running at compile time

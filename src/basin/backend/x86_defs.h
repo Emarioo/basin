@@ -56,7 +56,8 @@ About x64:
 // But not in this case.
 // See x64 manual.
 // also known as movabs
-#define OPCODE_MOV_REG_IMM_RD (u8)0xB8
+#define OPCODE_MOV_REG_IMM_RD  (u8)0xB8
+#define OPCODE_MOV_REG8_IMM_RD (u8)0xB0
 
 #define OPCODE_MOV_RM_IMM32_SLASH_0 (u8)0xC7
 #define OPCODE_MOV_RM_REG8 (u8)0x88
@@ -153,8 +154,10 @@ About x64:
 #define OPCODE_PUSH_RM_SLASH_6 (u8)0xFF
 #define OPCODE_POP_RM_SLASH_0 (u8)0x8F
 
+#define OPCODE_PUSH_REG_RD ((u8)0x50)
+#define OPCODE_POP_REG_RD ((u8)0x58)
+
 #define OPCODE_INC_RM_SLASH_0 (u8)0xFF
-#define OPCODE_INC_REG32_RD (u8)0x40
 
 #define OPCODE_CMP_RM_IMM8_SLASH_7 (u8)0x83 // rm can be 64-bit with rexw
 #define OPCODE_CMP_REG_RM (u8)0x3B

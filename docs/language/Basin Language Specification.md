@@ -292,6 +292,47 @@ argument       := ( expression | attribute "=" expression )
 attribute      := identifier
 
 
+cast_expression := " expression ":" type
+
+```
+
+@TODO I have to solve this:
+
+```c
+// normally {} represent initializers
+v := struct16{ ptr0, ptr1 }
+
+// in the language {} is just for code blocks.
+// [] represent index operator or initializer.
+// This is however ambiguous with index operator.
+v := struct16[ ptr0, ptr1 ]
+
+// i guest we can just cast operator
+v := [ ptr0, ptr1 ] : struct16   // experimental cast operator, : is usually related to types, might make since. any ambiguouy though?
+v := cast<struct16> [ ptr0, ptr1 ]
+
+// we always have this as fallback
+v: struct16 = [ ptr0, ptr1 ]
+
+// Our index operator should allow for nice slicing.
+v := struct16[ 0 : 5 ]  // this has ambiguouity with cast operator
+v := struct16[ 0 : i32 : 5 ]  // this has ambiguouity with cast operator
+
+// operator overloading
+"[:]" :: (arr: i32[], x: i32, y : i32) -> i32[] {
+
+}
+
+v := struct16[0, 5]
+"[,]" :: (arr: i32[], x: i32, y : i32) -> i32[] {
+
+}
+
+v := struct16[0, 5]
+"[]" :: (arr: i32[], x: i32) -> i32 {
+
+}
+
 ```
 
 # 5. Types
