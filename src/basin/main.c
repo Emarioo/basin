@@ -73,12 +73,24 @@ int main(int argc, char** argv) {
 }
 
 void print_help() {
-    printf("Usage: basin [OPTIONS...] <input_file>my_file.bsn -o app.exe\n"
-        "Options:\n"
+    printf("Usage: basin [OPTIONS...] <input_file>\n"
+        "Options: (WIP, most are not implemented)\n"
         "  -o <path>    Path to output file\n"
-        "  -g           Debug info\n"
-        "  -O<N>        Optimize level (WIP, has no affect)\n");
-        printf("\n");
+        "  -debug       Debug info\n"
+        "  -run         Run program\n"
+        "  -O <N>       Optimize level\n"
+        "  -silent      Silence success and compile time info\n"
+        "  -target      Short-hand target\n"
+        "  -mos         Target OS\n"
+        "  -march       Target Architecture\n"
+        "  -mabi        Target ABI\n"
+        "  -mformat     Target File Format\n"
+        "  -mfeature    CPU extension features\n"
+        "  -dump-ast    Dump AST\n"
+        "  -dump-ir     Dump Intermediate Representation code\n"
+        "  -dump-driver Dump compiler task scheduling\n"
+    );
+    printf("\n");
     printf( "Example usage: basin my_file.bsn -o app.exe\n");
     printf("\n");
     printf("Version %s\n", basin_version(NULL));

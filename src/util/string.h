@@ -39,6 +39,13 @@ void   string_append_char(string* str, char c);
 void   string_append(string* str, const char* text, int len);
 
 
+static inline bool is_hex(char letter) {
+    return (letter >= '0' && letter <= '9') || ((letter|32) >= 'a' && (letter|32) <= 'f');
+}
+static inline int hex_to_byte(char letter) {
+    return letter <= '9' ? letter - '0' : (letter|32) - 'a' + 10;
+}
+
 #ifdef IMPL_PLATFORM
 
 #include "platform/platform.h"

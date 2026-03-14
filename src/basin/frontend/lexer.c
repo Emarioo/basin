@@ -348,7 +348,7 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
             while(head < text.len) {
                 char chr = text.ptr[head];
                 head++;
-                if(chr == '"') {
+                if(chr == '"' && text.ptr[head-2] != '\\') {
                     break;
                 }
                 if (chr == '\n') {
@@ -368,14 +368,149 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
                 ASSERT(false);
             }
 
-            // TODO: Handle escape character
 
             RESERVE_DATA(word_count + 2 + 1);
             new_token->ptr_data = stream->data + stream->data_len;
-            stream->data_len += word_count + 2 + 1;
-            
-            *(u16*)new_token->ptr_data = word_count;
-            memcpy(new_token->ptr_data + 2, text.ptr + word_start, word_count);
+
+            // Handle escape character
+            char* ptr = new_token->ptr_data + 2;
+            int index = 0;
+            int real_count = 0;
+            while (index < word_count) {
+                char chr = text.ptr[word_start + index];
+                index++;
+                if (chr == '\\') {
+                    if (index < word_count) {
+                        char chr2 = text.ptr[word_start + index];
+                        if (chr2 == 'n') {
+                            index++;
+                            ptr[real_count] = '\n';
+                            real_count++;
+                            continue;
+                        } else if (chr2 == 't') {
+                            index++;
+                            ptr[real_count] = '\t';
+                            real_count++;
+                            continue;
+                        } else if (chr2 == 'r') {
+                            index++;
+                            ptr[real_count] = '\r';
+                            real_count++;
+                            continue;
+                        } else if (chr2 == 'e') {
+                            index++;
+                            ptr[real_count] = '\033';
+                            real_count++;
+                            continue;
+                        }  else if (chr2 == '"') {
+                            index++;
+                            ptr[real_count] = '"';
+                            real_count++;
+                            continue;
+                        }  else if (chr2 == '\'') {
+                            index++;
+                            ptr[real_count] = '\'';
+                            real_count++;
+                            continue;
+                        } else if (chr2 == '0') {
+                            index++;
+                            ptr[real_count] = '\0';
+                            real_count++;
+                            continue;
+                        } else if (chr2 == '\\') {
+                            index++;
+                            ptr[real_count] = '\\';
+                            real_count++;
+                            continue;
+                        } else if (chr2 == 'x') {
+                            index++;
+                            char c0 = text.ptr[word_start + index];
+                            char c1 = text.ptr[word_start + index+1];
+                            index+=2;
+                            if (!is_hex(c0) || !is_hex(c1)) {
+                                char* bad_text     = text.ptr + word_start + index - 4;
+                                int   bad_text_len = (index) - (index - 4);
+                                // @TODO Add location of error.
+                                fprintf(stderr, "ERROR: Invalid escape sequence '%.*s'. (\\xXX)\n", bad_text_len, bad_text);
+                                ASSERT(false);
+                            }
+                            ptr[real_count] = (hex_to_byte(c0) << 4) | hex_to_byte(c1);
+                            real_count++;
+                            continue;
+                        } else {
+                            u32 codepoint;
+                            if (chr2 == 'u') {
+                                index++;
+                                char c0 = text.ptr[word_start + index];
+                                char c1 = text.ptr[word_start + index+1];
+                                char c2 = text.ptr[word_start + index+2];
+                                char c3 = text.ptr[word_start + index+3];
+                                index += 4;
+                                if (!is_hex(c0) || !is_hex(c1)|| !is_hex(c2) || !is_hex(c3)) {
+                                    char* bad_text     = text.ptr + word_start + index - 6;
+                                    int   bad_text_len = (index) - (index - 6);
+                                    // @TODO Add location of error.
+                                    fprintf(stderr, "ERROR: Invalid escape sequence '%.*s'. (\\uXXXX)\n", bad_text_len, bad_text);
+                                    ASSERT(false);
+                                }
+                                // @TODO Error check, c0,c1,c2,c3 should be [0-9a-fA-F]
+                                codepoint = (hex_to_byte(c0) << 12) | (hex_to_byte(c1) << 8) | (hex_to_byte(c2) << 4) | (hex_to_byte(c3));
+                                goto emit_codepoint;
+                            } else if (chr2 == 'U') {
+                                index++;
+                                char c0 = text.ptr[word_start + index];
+                                char c1 = text.ptr[word_start + index+1];
+                                char c2 = text.ptr[word_start + index+2];
+                                char c3 = text.ptr[word_start + index+3];
+                                char c4 = text.ptr[word_start + index+4];
+                                char c5 = text.ptr[word_start + index+5];
+                                char c6 = text.ptr[word_start + index+6];
+                                char c7 = text.ptr[word_start + index+7];
+                                index += 8;
+                                if (!is_hex(c0) || !is_hex(c1)|| !is_hex(c2) || !is_hex(c3)||
+                                !is_hex(c4) || !is_hex(c5)|| !is_hex(c6) || !is_hex(c7)) {
+                                    char* bad_text     = text.ptr + word_start + index - 10;
+                                    int   bad_text_len = (index) - (index - 10);
+                                    // @TODO Add location of error.
+                                    fprintf(stderr, "ERROR: Invalid escape sequence '%.*s'. (\\uXXXX)\n", bad_text_len, bad_text);
+                                    ASSERT(false);
+                                }
+                                goto emit_codepoint;
+                            }
+                            if (false) {
+                            emit_codepoint:
+                                if (codepoint <= 0x7F) {
+                                    ptr[real_count] = codepoint;
+                                    real_count+=1;
+                                } else if (codepoint <= 0x7FF) {
+                                    ptr[real_count]   = 0b11000000 | (codepoint >> 6);
+                                    ptr[real_count+1] = 0b10000000 | (codepoint & 0b111111);
+                                    real_count+=2;
+                                } else if (codepoint <= 0xFFFF) {
+                                    ptr[real_count]   = 0b11100000 | (codepoint >> 12);
+                                    ptr[real_count+1] = 0b10000000 | ((codepoint >> 6) & 0b111111);
+                                    ptr[real_count+2] = 0b10000000 | (codepoint & 0b111111);
+                                    real_count+=3;
+                                } else if (codepoint <= 0x10FFFF) {
+                                    ptr[real_count]   = 0b11100000 | (codepoint >> 18);
+                                    ptr[real_count+1] = 0b10000000 | ((codepoint >> 12) & 0b111111);
+                                    ptr[real_count+2] = 0b10000000 | ((codepoint >> 6) & 0b111111);
+                                    ptr[real_count+3] = 0b10000000 | (codepoint & 0b111111);
+                                    real_count+=4;
+                                }
+                                continue;
+                            }
+                        }
+                    } else {
+                        fprintf(stderr, "ERROR: Strings cannot be larger than 65536 characters (token was %d chars.)\n", word_count);
+                        ASSERT(false);
+                    }
+                }
+                ptr[real_count] = chr;
+                real_count++;
+            }
+            stream->data_len += real_count + 2 + 1;
+            *(u16*)new_token->ptr_data = real_count;
             new_token->ptr_data[2 + word_count] = '\0';
             continue;
         }

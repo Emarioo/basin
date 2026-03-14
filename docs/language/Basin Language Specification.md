@@ -143,7 +143,7 @@ When compiling intermediate files such as inline assembly and object files they 
 **NOTE**: There are plans to support .PDB which is debug information for Windows.
 
 # 3. Lexical Structure
-The lexical structure definesthe text encoding and which characters are allowed.
+The lexical structure defines the text encoding and which characters are allowed.
 
 Basin source files should be encoded using UTF-8.
 
@@ -193,6 +193,18 @@ There are literal numbers, strings, characters, and booleans. They have specific
 - `"\"hello\""`
 - `"'hello' is here"`
 - `"hello\nhello2`
+
+**Escape sequences**
+- `"\0"`
+- `"\t"`
+- `"\n"`
+- `"\r"`
+- `"\e"` (0x1b)
+- `"\""` (")
+- `"\'"` (')
+- `"\x41"` (byte A)
+- `"\u03BB"` (Unicode -> UTF-8, λ)
+- `"\U000003bb"` (Unicode -> UTF-8, λ)
 
 **Formatted strings**
 - `f"Hello {num}\n"`
