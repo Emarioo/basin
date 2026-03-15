@@ -7,6 +7,7 @@
         "limits": "c",
         "chrono": "c",
         "functional": "c",
-        "charconv": "c"
+        "charconv": "c",
+        "format": "c"
     }
 }

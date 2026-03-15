@@ -31,10 +31,10 @@ typedef enum {
 
 typedef enum {
     BASIN_TARGET_ARCH_host,
-    BASIN_TARGET_ARCH_x86_32,
+    BASIN_TARGET_ARCH_i386,
     BASIN_TARGET_ARCH_x86_64,
-    BASIN_TARGET_ARCH_arm_32,
-    BASIN_TARGET_ARCH_arm_64,
+    BASIN_TARGET_ARCH_arm,
+    BASIN_TARGET_ARCH_aarch64,
     BASIN_TARGET_ARCH_COUNT,
 } BasinTargetArch;
 
@@ -53,17 +53,39 @@ typedef enum {
 } BasinTargetOS;
 
 typedef enum {
-    BASIN_BINARY_none,
-    BASIN_BINARY_executable,
+    BASIN_TARGET_ABI_host,
+    BASIN_TARGET_ABI_msx64, // Microsoft x64 calling convention
+    BASIN_TARGET_ABI_sysv,
+    BASIN_TARGET_ABI_eabi,
+    BASIN_TARGET_ABI_COUNT,
+} BasinTargetABI;
+
+typedef enum {
+    BASIN_BINARY_none, // indicates not specified
     BASIN_BINARY_object_file,
+    BASIN_BINARY_executable,
     BASIN_BINARY_static_library,
     BASIN_BINARY_dynamic_library,
+    BASIN_BINARY_COUNT,
 } BasinBinaryType;
 
 typedef enum {
     BASIN_OPTIMIZE_FLAG_none,
     BASIN_OPTIMIZE_FLAG_all = 0xFFFFFFFF,
 } BasinOptimizeFlags;
+
+typedef enum {
+    BASIN_DEBUG_FLAG_none  = 0x0,
+    // BASIN_DEBUG_FLAG_lines = 0x1,
+    BASIN_DEBUG_FLAG_full  = 0xFFFFFFFF,
+} BasinDebugFlags;
+
+typedef enum {
+    BASIN_DEBUG_FORMAT_host,
+    BASIN_DEBUG_FORMAT_dwarf,
+    BASIN_DEBUG_FORMAT_pdb,
+    BASIN_DEBUG_FORMAT_COUNT,
+} BasinDebugFormat;
 
 // Returned from functions and its contents can
 // be freed with basin_free_result.
@@ -81,13 +103,16 @@ typedef struct {
 typedef struct BasinCompileOptions {
     BasinTargetArch    target_arch;
     BasinTargetOS      target_os;
+    BasinTargetABI     target_abi;
     BasinTargetFormat  target_format;
     BasinBinaryType    binary_output_type;
     BasinOptimizeFlags optimize_flags;
-    bool               disable_debug;
+    BasinDebugFlags    debug_flags;
+    BasinDebugFormat   debug_format;
     bool               run_output;
     bool               skip_default_import_dirs;
     bool               skip_default_library_dirs;
+    bool               silent;
     
     const char* const* import_dirs;
     int                import_dirs_len;

@@ -10,17 +10,24 @@
 
 void print_help();
 
+void print_version() {
+    printf("basin  \033[32m%s\033[0m\n", basin_version(NULL));
+    printf("commit \033[33m%s\033[0m\n", basin_commit());
+    printf("built  \033[34m%s\033[0m\n", basin_build_date());
+}
+
 int main(int argc, char** argv) {
     if(argc < 2) {
-        printf("basin  \033[32m%s\033[0m\n", basin_version(NULL));
-        printf("commit \033[33m%s\033[0m\n", basin_commit());
-        printf("built  \033[34m%s\033[0m\n", basin_build_date());
+        print_version();
         return 1;
     }
 
     for (int i=0;i<argc;i++) {
-        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-help")) {
             print_help();
+            return 0;
+        } else if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-version")) {
+            print_version();
             return 0;
         }
     }
@@ -80,11 +87,13 @@ void print_help() {
         "  -run         Run program\n"
         "  -O <N>       Optimize level\n"
         "  -silent      Silence success and compile time info\n"
+        "  -type        File code type. object, static library, executable...\n"
         "  -target      Short-hand target\n"
         "  -mos         Target OS\n"
         "  -march       Target Architecture\n"
         "  -mabi        Target ABI\n"
         "  -mformat     Target File Format\n"
+        "  -dformat     Debug format\n"
         "  -mfeature    CPU extension features\n"
         "  -dump-ast    Dump AST\n"
         "  -dump-ir     Dump Intermediate Representation code\n"
