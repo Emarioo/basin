@@ -118,9 +118,9 @@ void generate_coff(ObjectContext* context) {
     
     switch (target_arch) {
         case BASIN_TARGET_ARCH_x86_64: header.Machine = IMAGE_FILE_MACHINE_AMD64; break;
-        case BASIN_TARGET_ARCH_x86_32: header.Machine = IMAGE_FILE_MACHINE_I386;  break; 
-        case BASIN_TARGET_ARCH_arm_64: header.Machine = IMAGE_FILE_MACHINE_ARM64; break;
-        case BASIN_TARGET_ARCH_arm_32: header.Machine = IMAGE_FILE_MACHINE_ARM;   break;
+        case BASIN_TARGET_ARCH_i386: header.Machine = IMAGE_FILE_MACHINE_I386;  break; 
+        case BASIN_TARGET_ARCH_aarch64: header.Machine = IMAGE_FILE_MACHINE_ARM64; break;
+        case BASIN_TARGET_ARCH_arm: header.Machine = IMAGE_FILE_MACHINE_ARM;   break;
         default:
             // @TODO Error message
             ASSERT(false);

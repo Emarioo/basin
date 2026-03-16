@@ -1,4 +1,4 @@
-
+#!/usr/bin/env cat
 library "libc.so" as libc
 
 @external(libc) fn write(fd: i32, buf: void*, count: uword) -> uword

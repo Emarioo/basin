@@ -208,7 +208,8 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
         const char* value;
         argi++;
 
-        #define COMBINE(x,y) x ## y
+        #define COMBINE2(x,y) x ## y
+        #define COMBINE(x,y) COMBINE2(x,y)
 
         #define DEF_ARG_CHOICE(FLAG,MISSING_ERROR)                                  \
             } else if(!strcmp(arg, FLAG)) {                                                    \

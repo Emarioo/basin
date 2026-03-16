@@ -87,7 +87,17 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
     #define UPDATE_POST_NEWLINE() (stream->tokens_len ? stream->tokens[stream->tokens_len-(added_normal_token ? 1 : TOKEN_PER_EXT_TOKEN)].flags |= TF_POST_NEWLINE : 0 )
     #define UPDATE_POST_SPACE() (stream->tokens_len ? stream->tokens[stream->tokens_len-(added_normal_token ? 1 : TOKEN_PER_EXT_TOKEN)].flags |= TF_POST_SPACE : 0 )
 
-    while(head < import->text.len) {
+    if (text.len >= 2 && text.ptr[head] == '#' && text.ptr[head+1] == '!') {
+        // Skip shebang
+        head += 2;
+        while (head < text.len) {
+            if (text.ptr[head] == '\n')
+                break;
+            head++;
+        }
+    }
+
+    while(head < text.len) {
         int cur_head = head;
         char c = text.ptr[head];
         char c2 = head + 1 < text.len ? text.ptr[head + 1] : 0;
