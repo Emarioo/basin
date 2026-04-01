@@ -12,6 +12,7 @@ Features we provide:
     - Debug Information
     - Target architecture and OS
     - Silent
+- Generate declarations
 - Dumping
     - AST
     - IR
@@ -19,12 +20,15 @@ Features we provide:
     - Import resolution
 
 
-```bash
+# Run Basin program
 
-# run
+```bash
 basin main.bsn
 basin main.bsn -run
+```
 
+# Compile Basin Program
+```bash
 # object file
 basin main.bsn -o main.o
 basin main.bsn -o main.obj
@@ -44,7 +48,10 @@ basin main.bsn -o main.dat -type dyn
 basin main.bsn -o main
 basin main.bsn -o main.exe
 basin main.bsn -o main.dat -type exe
+```
 
+# Extra flags
+```bash
 # debug info
 basin main.bsn -o main -debug 
 basin main.bsn -o main -debug=full
@@ -85,16 +92,23 @@ basin main.bsn -o main.o -mabi eabi \
                          -mformat elf \
                          -march armv7
 
-
 # CPU extensions
 basin main.bsn -o main.o -mfeature=avx-512,bmi2
 
+# Silence success and compile time info
+basin main.bsn -o main.o -silent
+```
+
+# Generate declarations
+```bash
+basin import/audio/audio.bsn --extract-decls -o audio-decl.bsn
+```
+
 # Dumping
+
+```bash
 basin main.bsn -o main.o -dump-ast
 basin main.bsn -o main.o -dump-ir
 basin main.bsn -o main.o -dump-driver
-
-# Silence success and compile time info
-basin main.bsn -o main.o -silent
 
 ```

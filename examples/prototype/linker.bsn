@@ -1,0 +1,71 @@
+/*
+
+    Linker script in Basin
+
+*/
+
+/*
+    src
+        boot.bsn
+        uart.bsn
+        main.bsn
+        linker-script.bsn
+*/
+
+// boot.bsn
+
+import "./main.bsn"
+
+
+@asm
+_start :: fn {
+    // ARM assembly
+    .extern main
+    
+    bl main
+}
+
+// uart.bsn
+
+UART_ADDRESS :: 0x600000
+
+init_uart :: fn () {
+    // ... initialize uart ...
+}
+
+putc :: fn (c: char) {
+    // ... talk to serial port with UART ...
+}
+puts :: fn (s: char[]) {
+    for c in s
+        putc(c)
+}
+
+
+// main.bsn
+
+import "./uart.bsn"
+
+main :: fn () {
+
+    init_uart()
+
+    puts("Hello!")
+
+}
+
+// linker-script.bsn
+
+#import "basin" as basin
+
+#import "os" as os
+
+// nix inspired declarative
+
+SRC_DIR <- os.dirname __file__
+
+src_files: char[][] = [ f"{SRC_DIR}/boot.bsn" ]
+
+// produce flat binary
+
+// produce binary usable by GDB

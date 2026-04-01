@@ -1,0 +1,23 @@
+/*
+    Platform independent audio library
+
+*/
+
+import "linux/alsa.bsn"
+
+if BUILD_LIB {
+    @export(audio_init)
+    @export(audio_play)
+}
+
+
+
+@export
+audio_init :: fn () {
+
+}
+
+@export
+audio_play :: fn (path: string) {
+
+}

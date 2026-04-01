@@ -1,0 +1,22 @@
+/*
+
+    Audio library
+
+*/
+
+import "linux/alsa.bsn"
+
+import "mem.bsn"
+
+audio_init :: fn () {
+    // call alsa functions
+    // or call windows audio functions
+}
+
+audio_play :: fn (path: string) {
+    // call alsa functions
+    // or call windows audio functions
+
+    temp: string
+    memcpy(temp, path, string.SIZE)
+}

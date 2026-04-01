@@ -1,0 +1,28 @@
+/*
+
+    A file with your application code.
+
+    Our problem is this:
+
+        We have standard library with memcpy function.
+
+        We have standard library with an audio module/package.
+
+*/
+
+
+import "audio.bsn"
+
+import "mem.bsn"
+
+
+
+start_app :: fn () {
+
+    memcpy(ptr, src, 8)
+
+    audio_init()
+
+    audio_play()
+
+}

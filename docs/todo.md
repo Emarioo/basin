@@ -1,4 +1,9 @@
 
+
+- [ ] Figure out importing and linking and declaration files. For example, we compile two basin libraries into .lib. They both use file_read from Basin stdlib. Now when you link with them there will be
+redefined symbol unless we make those file read functions static. This means each lib will have duplicated stdlib code.
+- [ ] Import C headers where you can provide macros like:  `import "Windows.h" with WIN32_MEAN_AND_LEAN`? Or are macros set elsewhere?
+
 # Compile time performance
 
 Our target is: `1 000 000 lines / second`
