@@ -5,6 +5,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
 #if defined(BASIN_DLL) || defined(BASIN_DLL_EXPORT)
     #define BASIN_API extern __attribute__((visibility("default")))
@@ -121,7 +123,7 @@ typedef struct BasinCompileOptions {
     int                library_dirs_len;
 
     const char*        input_text;
-    u32                input_text_len;
+    uint32_t           input_text_len;
     const char*        input_file;
     const char*        output_file;
 
@@ -159,7 +161,7 @@ BASIN_API void basin_free_result(BasinResult* result);
 // Returned pointer is static, do not free it
 BASIN_API const char* basin_version(int out_version[3]);
 BASIN_API const char* basin_commit();
-BASIN_API const char* basin_build_date();
+BASIN_API const char* basin_date();
 
 BASIN_API const char* basin_target_arch_string(BasinTargetArch arch);
 BASIN_API const char* basin_target_os_string(BasinTargetOS os);

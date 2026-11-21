@@ -4,16 +4,26 @@
 #include "basin/logger.h"
 #include "basin/error.h"
 
-#include "util/string.h"
-#include "util/assert.h"
-#include "util/file.h"
+#include "basin/util/string.h"
+#include "basin/util/assert.h"
+#include "basin/util/file.h"
 #include "platform/platform.h"
 
-static const char BASIN_COMPILER_VERSION[] = "0.0.1-dev";
+#include <stdio.h>
 
-// These are defined in 'bin/int/commit_hash.c' which is auto-generated file by build.py
-extern const char* BASIN_COMPILER_COMMIT;
-extern const char* BASIN_COMPILER_BUILD_DATE;
+#ifndef BASIN_VERSION
+#define BASIN_VERSION "dev"
+#endif
+#ifndef BASIN_COMMIT
+#define BASIN_COMMIT "unknown"
+#endif
+#ifndef BASIN_DATE
+#define BASIN_DATE "unknown"
+#endif
+
+const char* g_basin_version = BASIN_VERSION;
+const char* g_basin_commit  = BASIN_COMMIT;
+const char* g_basin_date    = BASIN_DATE;
 
 const char* basin_version(int version[3]) {
     if(version) {
@@ -21,7 +31,7 @@ const char* basin_version(int version[3]) {
         char* end;
         int part;
 
-        start = BASIN_COMPILER_VERSION;
+        start = g_basin_version;
         part = strtol(start, &end, 10);
         version[0] = part;
         
@@ -33,14 +43,16 @@ const char* basin_version(int version[3]) {
         part = strtol(start, &end, 10);
         version[2] = part;
     }
-    return BASIN_COMPILER_VERSION;
+    return g_basin_version;
 }
 
 const char* basin_commit() {
-    return BASIN_COMPILER_COMMIT;
+    // return "unknown";
+    return g_basin_commit;
 }
-const char* basin_build_date() {
-    return BASIN_COMPILER_BUILD_DATE;
+const char* basin_date() {
+    // return "unknown";
+    return g_basin_date;
 }
 
 
@@ -232,7 +244,7 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
             break;
         } else if(!strcmp(arg, "-o")) {
             if (argi >= argc) {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing output path after '%s'\n", arg);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Missing output path after '%s'\n", arg);
                 return result;
             }
             options->output_file = argv[argi];
@@ -241,14 +253,14 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
             options->optimize_flags = BASIN_OPTIMIZE_FLAG_all;
         } else if(!strcmp(arg, "-I")) {
             if (argi >= argc) {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing import directory after '%s'\n", arg);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Missing import directory after '%s'\n", arg);
                 return result;
             }
             log__printf("WARNING: Currently ignoring -I, to be implemented\n");
             argi++;
         } else if(!strcmp(arg, "-L")) {
             if (argi >= argc) {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Missing library directory '%s'\n", arg);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Missing library directory '%s'\n", arg);
                 return result;
             }
             log__printf("WARNING: Currently ignoring -L, to be implemented\n");
@@ -263,22 +275,22 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
                 options->debug_flags = BASIN_DEBUG_FLAG_none;
             } else {
                 // @TODO Print possible values
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown debug option '%s'.\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown debug option '%s'.\n", value);
                 return result;
             }
 
-        DEF_ARG_CHOICE("-dformat", "ERROR: Missing debug format after '%s'. Formats: dwarf,pdb (pdb is not supported yet)\n")
+        DEF_ARG_CHOICE("-dformat", "Missing debug format after '%s'. Formats: dwarf,pdb (pdb is not supported yet)\n")
             
             if (!strcmp(value, "dwarf")) {
-                options->debug_flags = BASIN_DEBUG_FORMAT_dwarf;
+                options->debug_format = BASIN_DEBUG_FORMAT_dwarf;
             } else if (!strcmp(value, "pdb")) {
-                options->debug_flags = BASIN_DEBUG_FORMAT_pdb;
+                options->debug_format = BASIN_DEBUG_FORMAT_pdb;
             } else {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown debug format '%s'. Formats: dwarf,pdb (pdb is not supported yet)\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown debug format '%s'. Formats: dwarf,pdb (pdb is not supported yet)\n", value);
                 return result;
             }
 
-       DEF_ARG_CHOICE("-type", "ERROR: Missing binary type after '%s'. Types: obj,lib,dyn,exe\n")
+       DEF_ARG_CHOICE("-type", "Missing binary type after '%s'. Types: obj,lib,dyn,exe\n")
             
             if (!strcmp(value, "none")) {
                 options->binary_output_type = BASIN_BINARY_none;
@@ -291,46 +303,46 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
                 } else if (!strcmp(value, "exe")) {
                 options->binary_output_type = BASIN_BINARY_executable;
             } else {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown binary type '%s'. Types: obj,lib,dyn,exe\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown binary type '%s'. Types: obj,lib,dyn,exe\n", value);
                 return result;
             }
     
-        DEF_ARG_CHOICE("-mformat", "ERROR: Missing file format after '%s'. Formats: elf,coff\n")
+        DEF_ARG_CHOICE("-mformat", "Missing file format after '%s'. Formats: elf,coff\n")
         
             if (!strcmp(value, "elf")) {
                 options->target_format = BASIN_TARGET_FORMAT_ELF;
             } else if (!strcmp(value, "coff")) {
                 options->target_format = BASIN_TARGET_FORMAT_COFF;
             } else {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown file format '%s'. Formats: elf,coff\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown file format '%s'. Formats: elf,coff\n", value);
                 return result;
             }
 
-        DEF_ARG_CHOICE("-mos", "ERROR: Missing OS after '%s'. OSes: windows,linux\n")
+        DEF_ARG_CHOICE("-mos", "Missing OS after '%s'. OSes: windows,linux\n")
         
             if (!strcmp(value, "windows")) {
                 options->target_os = BASIN_TARGET_OS_windows;
             } else if (!strcmp(value, "linux")) {
                 options->target_os = BASIN_TARGET_OS_linux;
             } else {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown OS '%s'. Formats: windows,linux\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown OS '%s'. Formats: windows,linux\n", value);
                 return result;
             }
   
-        DEF_ARG_CHOICE("-mabi", "ERROR: Missing ABI after '%s'. ABIs: msx64,sysv,eabi\n")
+        DEF_ARG_CHOICE("-mabi", "Missing ABI after '%s'. ABIs: msx64,sysv,eabi\n")
         
             if (!strcmp(value, "msx64")) {
-                options->target_os = BASIN_TARGET_ABI_msx64;
+                options->target_abi = BASIN_TARGET_ABI_msx64;
             } else if (!strcmp(value, "sysv")) {
-                options->target_os = BASIN_TARGET_ABI_sysv;
+                options->target_abi = BASIN_TARGET_ABI_sysv;
             } else if (!strcmp(value, "eabi")) {
-                options->target_os = BASIN_TARGET_ABI_eabi;
+                options->target_abi = BASIN_TARGET_ABI_eabi;
             } else {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown OS '%s'. ABIs: msx64,sysv,eabi\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown OS '%s'. ABIs: msx64,sysv,eabi\n", value);
                 return result;
             }
 
-        DEF_ARG_CHOICE("-march", "ERROR: Missing archtecture after '%s'. Architectures: i386,x86_64,arm,aarch64\n")
+        DEF_ARG_CHOICE("-march", "Missing archtecture after '%s'. Architectures: i386,x86_64,arm,aarch64\n")
         
             if (!strcmp(value, "i386")) {
                 options->target_arch = BASIN_TARGET_ARCH_i386;
@@ -341,7 +353,7 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
             } else if (!strcmp(value, "aarch64")) {
                 options->target_arch = BASIN_TARGET_ARCH_aarch64;
             } else {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown architecture '%s'. Architectures: i386,x86_64,arm,aarch64\n", value);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown architecture '%s'. Architectures: i386,x86_64,arm,aarch64\n", value);
                 return result;
             }
         
@@ -350,11 +362,11 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
         } else if(!strcmp(arg, "-run")) {
             options->run_output = true;
         } else if(arg[0] == '-') {
-            FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Unknown argument '%s'. See --help\n", arg);
+            FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Unknown argument '%s'. See --help\n", arg);
             return result;
         } else {
             if (options->input_file) {
-                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "ERROR: Multiple input files are not allowed, '%s'\n", arg);
+                FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Multiple input files are not allowed, '%s'\n", arg);
                 return result;
             }
             options->input_file = arg;

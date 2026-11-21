@@ -77,7 +77,7 @@ void print_compilation(ObjectContext* context) {
     }
 }
 
-int get_machine_id_from_ir_id(ObjectContext* context, int ir_function_id) {
+int get_machine_id_from_ir_id(ObjectContext* context, IRFunction_id ir_function_id) {
     // @TODO Create a map somewhere
 
     for (int i=0;i<atomic_array_size(&context->machine_program->functions);i++) {
@@ -271,7 +271,7 @@ void generate_coff(ObjectContext* context) {
     int current_function_text_offset = 0;
     for (int fi=0;fi<atomic_array_size(&context->ir_program->functions);fi++) {
         IRFunction* ir_function = atomic_array_getptr(&context->ir_program->functions, fi);
-        int mi = get_machine_id_from_ir_id(context, fi);
+        int mi = get_machine_id_from_ir_id(context, (IRFunction_id)fi);
         MachineFunction* function = NULL;
         if (mi != -1) {
             function = atomic_array_getptr(&context->machine_program->functions, mi);

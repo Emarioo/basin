@@ -3,7 +3,7 @@
 #include "basin/common.h"
 #include "basin/frontend/lexer.h" // SourceLocation
 #include "basin/backend/ir.h"
-#include "util/array.h"
+#include "basin/util/array.h"
 
 #define DEBUG_BUILD
 

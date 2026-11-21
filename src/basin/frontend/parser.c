@@ -19,9 +19,14 @@
 #define peek(N) _peek(context, N)
 #define advance() _advance(context)
 
-#define PROFILE_START() TracyCZone(zone, 1); push_profile_zone(context, zone)
 
-#define PROFILE_END() TracyCZoneEnd(zone); pop_profile_zone(context)
+#ifdef TRACY_ENABLED
+    #define PROFILE_START() TracyCZone(zone, 1); push_profile_zone(context, zone)
+    #define PROFILE_END() TracyCZoneEnd(zone); pop_profile_zone(context)
+#else
+    #define PROFILE_START()
+    #define PROFILE_END()
+#endif
 
 typedef enum {
     COMPTIME_NONE,
@@ -34,7 +39,7 @@ typedef struct {
     Compilation* compilation;
     Driver* driver;
     TokenStream* stream;
-    int head; // token head
+    u32 head; // token head
     
     ASTExpression_Block* previous_block;
     ASTFunction*         current_function;
@@ -164,7 +169,7 @@ void _parse_error(ParserContext* context, const TokenExt* tok, char* fmt, ...) {
 }
 
 static const TokenExt* _peek(ParserContext* context, int n) {
-    int head = context->head;
+    u32 head = context->head;
     const TokenExt* tok = NULL;
     while((n+1)) {
         n--;
@@ -514,8 +519,11 @@ int op_precedence(int op_kind) {
             return 1;
         case EXPR_OP_LOGICAL_OR:
             return 0;
-        default: fprintf(stderr, "Missing operator precedence: %d (operator enum)\n", op_kind); ASSERT(false);
+        default: break;
     }
+    fprintf(stderr, "Missing operator precedence: %d (operator enum)\n", op_kind);
+    ASSERT(false);
+    return 0;
 }
 
 ASTExpression* parse_expression(ParserContext* context) {
@@ -946,7 +954,7 @@ ASTExpression* parse_expression(ParserContext* context) {
                         expr->int_value = strtoul(text.ptr, &endptr, 10);
                     }
                     // We should have parsed text.len characters
-                    ASSERT((int)(endptr - text.ptr) == text.len);
+                    ASSERT((u32)(endptr - text.ptr) == text.len);
 
                     array_push(&exprs, (ASTExpression**)&expr);
                 } else if (tok0->kind == T_LITERAL_FLOAT) {

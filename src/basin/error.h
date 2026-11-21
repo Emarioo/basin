@@ -6,12 +6,12 @@
 
 #pragma once
 
-#include "util/string.h"
+#include "basin/util/string.h"
 
 #define FORMAT_ERROR_MAX_CHARS 512
 
 #define FORMAT_ERROR(RESULT, ERROR, FORMAT, ...) do {                                   \
     (RESULT).error_type = ERROR;                                                          \
     (RESULT).error_message = mem__alloc(FORMAT_ERROR_MAX_CHARS);                          \
-    snprintf((RESULT).error_message, FORMAT_ERROR_MAX_CHARS, FORMAT, __VA_ARGS__);        \
+    snprintf((RESULT).error_message, FORMAT_ERROR_MAX_CHARS, "\033[31mERROR:\033[0m " FORMAT, __VA_ARGS__);        \
     } while (0)

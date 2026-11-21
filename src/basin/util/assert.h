@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "basin/util/types.h"
+
 #define _ASSERT(expression) ((expression) ? true : (fprintf(stderr,"[Assert] %s (%s:%u)\n",#expression,__FILE__,__LINE__), *((char*)0) = 0))
 // #define _ASSERT(expression) ((expression) ? true : (FireAssertHandler(), fprintf(stderr,"[Assert] %s (%s:%u)\n",#expression,__FILE__,__LINE__), *((char*)0) = 0))
 

@@ -2,10 +2,10 @@
 
 #include "basin/basin.h"
 
-#include "util/string.h"
-#include "util/array.h"
-#include "util/bucket_array.h"
-#include "util/atomic_array.h"
+#include "basin/util/string.h"
+#include "basin/util/array.h"
+#include "basin/util/bucket_array.h"
+#include "basin/util/atomic_array.h"
 
 DEF_ARRAY(string)
 
@@ -162,8 +162,8 @@ static inline BasinTargetFormat determine_format(const BasinCompileOptions* opti
 }
 
 static inline BasinTargetArch determine_arch(const BasinCompileOptions* options) {
-    if (options->target_arch != BASIN_TARGET_FORMAT_host)
-        return options->target_format;
+    if (options->target_arch != BASIN_TARGET_ARCH_host)
+        return options->target_arch;
     
     #ifdef ARCH_X86_64
         return BASIN_TARGET_ARCH_x86_64;
@@ -180,7 +180,7 @@ static inline BasinTargetArch determine_arch(const BasinCompileOptions* options)
 }
 
 
-static inline BasinTargetArch determine_os(const BasinCompileOptions* options) {
+static inline BasinTargetOS determine_os(const BasinCompileOptions* options) {
     if (options->target_os != BASIN_TARGET_OS_host)
         return options->target_os;
     

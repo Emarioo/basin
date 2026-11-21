@@ -12,10 +12,13 @@
 #include <stdarg.h>
 
 
-#define PROFILE_START() TracyCZone(zone, 1); push_profile_zone(context, zone)
-
-#define PROFILE_END() TracyCZoneEnd(zone); pop_profile_zone(context)
-
+#ifdef TRACY_ENABLED
+    #define PROFILE_START() TracyCZone(zone, 1); push_profile_zone(context, zone)
+    #define PROFILE_END() TracyCZoneEnd(zone); pop_profile_zone(context)
+#else
+    #define PROFILE_START()
+    #define PROFILE_END()
+#endif
 
 typedef struct {
     Driver* driver;
@@ -176,6 +179,7 @@ void walk(GenIRContext* context, ASTExpression* _expr) {
                 generate_function(context, func);
             }
         }
+        default: break; // @TODO Handle more expression types?
     }
 }
 
@@ -296,8 +300,8 @@ IRValue generate_call(GenIRContext* context, ASTExpression_Call* expr_call) {
     IRType    ir_ret_types[20];
     int arg_count = func->parameters.len;
     int ret_count = func->return_values.len;
-    ASSERT(arg_count <= ARRAY_LENGTH(ir_args));
-    ASSERT(ret_count <= ARRAY_LENGTH(ir_ret_values));
+    ASSERT(arg_count <= (int)ARRAY_LENGTH(ir_args));
+    ASSERT(ret_count <= (int)ARRAY_LENGTH(ir_ret_values));
 
     for (int i=0;i<expr_call->arguments.len;i++) {
         ASTExpression_Call_Argument* arg = &expr_call->arguments.ptr[i];

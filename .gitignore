@@ -1,5 +1,7 @@
 
 int
+bin
+obj
 releases
 
 *.o

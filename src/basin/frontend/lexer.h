@@ -2,7 +2,7 @@
 
 #include "basin/common.h"
 
-#include "util/array.h"
+#include "basin/util/array.h"
 
 #define DEBUG_BUILD
 
@@ -203,7 +203,7 @@ typedef struct {
 typedef struct {
     u16       _reserved;
     ImportID  import_id;
-    int       position;
+    u32       position;
 } SourceLocation;
 
 // #define IS_EXT_TOKEN(K) ((K >= T_IDENTIFIER && K <= T_LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
@@ -227,16 +227,16 @@ typedef struct TokenStream {
     const Import* import;
 
     Token* tokens;
-    int tokens_len, tokens_max;
+    u32 tokens_len, tokens_max;
 
     char* data;
-    int data_len, data_max;
+    u32 data_len, data_max;
 
     Array_int line_positions;
 } TokenStream;
 
 // static const Token EOF_TOKEN = { T_END_OF_FILE, 0, -1, -1 };
-static const TokenExt EOF_TOKEN_EXT = { T_END_OF_FILE, 0, -1, -1, NULL };
+static const TokenExt EOF_TOKEN_EXT = { T_END_OF_FILE, 0, -1, -1, { NULL } };
 
 //###############################
 //       PUBLIC FUNCTIONS

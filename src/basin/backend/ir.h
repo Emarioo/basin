@@ -17,9 +17,9 @@
 
 #pragma once
 
-#include "util/array.h"
-#include "util/atomic_array.h"
-#include "util/string.h"
+#include "basin/util/array.h"
+#include "basin/util/atomic_array.h"
+#include "basin/util/string.h"
 #include "platform/platform.h"
 
 typedef enum {

@@ -3,8 +3,8 @@
 
 #include "platform/platform.h"
 
-#include "util/string.h"
-#include "util/array.h"
+#include "basin/util/string.h"
+#include "basin/util/array.h"
 
 Result tokenize(const Import* import, TokenStream** out_stream) {
     TracyCZone(zone, 1);
@@ -80,7 +80,7 @@ Result tokenize(const Import* import, TokenStream** out_stream) {
     bool had_space   = false;
     bool added_normal_token = false;
     int line = 1;
-    int head = 0;
+    u32 head = 0;
 
     array_push(&stream->line_positions, &head);
 
@@ -584,7 +584,7 @@ void print_token_stream(TokenStream* stream) {
 
     bool less = true;
 
-    int head = 0;
+    u32 head = 0;
     while(head < stream->tokens_len) {
         TokenExt* tok = (TokenExt*)&stream->tokens[head];
         if (IS_KEYWORD(tok->kind)) {
@@ -707,7 +707,7 @@ bool compute_source_info(TokenStream* stream, SourceLocation location, int* out_
     int line = line_index + 1;
     int column = 1;
     int head_at_line_start = stream->line_positions.ptr[line_index];
-    int head = head_at_line_start;
+    u32 head = head_at_line_start;
 
     while(head < text.len) {
         char chr = text.ptr[head];

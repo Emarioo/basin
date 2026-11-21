@@ -1,6 +1,6 @@
 #pragma once
 
-#include "util/assert.h"
+#include "basin/util/assert.h"
 
 typedef struct string {
     // YOU CANNOT REARRANGE THESE FIELDS.
@@ -51,7 +51,7 @@ static inline int hex_to_byte(char letter) {
 #include "platform/platform.h"
 
 bool string_equal_cstr(cstring str, char* ptr) {
-    int len = strlen(ptr);
+    u32 len = strlen(ptr);
     return str.len == len && !memcmp(str.ptr, ptr, len);
 }
 
@@ -75,6 +75,7 @@ int string_rfind(const char* text, int pos, const char* pattern) {
     }
 
     ASSERT(false);
+    return 0;
 }
 
 string string_create(int cap) {
@@ -97,8 +98,9 @@ string string_clone(const char* text, int len) {
     out.len = len;
     out.max = out.len;
     out.ptr = mem__alloc(out.max + 1);
-    if(out.len);
+    if(out.len) {
         memcpy(out.ptr, text, out.len);
+    }
     out.ptr[out.len] = '\0';
     return out;
 }

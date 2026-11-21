@@ -12,8 +12,8 @@
 #include "basin/basin.h"
 
 #include "platform/platform.h"
-#include "util/assert.h"
-#include "util/file.h"
+#include "basin/util/assert.h"
+#include "basin/util/file.h"
 
 
 Driver* driver_create() {
@@ -176,7 +176,7 @@ void driver_run(Driver* driver, u32 thread_count, u32 task_process_limit) {
     
     memset(driver->threads, 0, driver->threads_cap * sizeof(DriverThread));
 
-    for (int i = 1; i<driver->threads_len; i++) {
+    for (u32 i = 1; i<driver->threads_len; i++) {
         driver->threads[i].driver = driver;
         thread__spawn(&driver->threads[i].thread, (u32(*)(void*))driver_thread_run, &driver->threads[i]);
     }
@@ -184,7 +184,7 @@ void driver_run(Driver* driver, u32 thread_count, u32 task_process_limit) {
     driver->threads[0].driver = driver;
     driver_thread_run(&driver->threads[0]);
 
-    for (int i = 1; i < driver->threads_len; i++) {
+    for (u32 i = 1; i < driver->threads_len; i++) {
         thread__join(&driver->threads[i].thread);
     }
     
@@ -231,7 +231,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
     while(true) {
         // NOTE: We only modify and check idle_threads here in the beginning of the loop.
 
-        int prev_value = atomic_add(&driver->idle_threads, 1);
+        u32 prev_value = atomic_add(&driver->idle_threads, 1);
         if(prev_value + 1 == driver->threads_len) {
             // It seems like every thread is idling BUT WE CAN'T NOW FOR SURE because in theory (very unlikely)
             // a thread may be stuck between wait_semapore and atomic_add(idle_threads).
@@ -246,7 +246,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         thread__wait_semaphore(&driver->may_have_task_semaphore);
 
         thread__lock_mutex(&driver->tasks_mutex);
-        int prev_idling_threads = atomic_add(&driver->idle_threads, -1);
+        u32 prev_idling_threads = atomic_add(&driver->idle_threads, -1);
 
         // @TODO Handle task_process_limit
 
@@ -294,7 +294,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                     BasinResult result = {};
                     string text = util_read_whole_file(task.lex_and_parse.import->path.ptr);
                     if(!text.ptr) {
-                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "\033[31mERROR:\033[0m Cannot read '%s'\n", task.lex_and_parse.import->path.ptr);
+                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task.lex_and_parse.import->path.ptr);
                         fprintf(stderr, "%s", result.error_message);
                         break;
                     }
@@ -485,7 +485,7 @@ string comp_resolve_import_path(Compilation* compilation, const Import* origin, 
     return str;
 }
 
-const char* const task_kind_names[TASK_COUNT] = {
+const char* task_kind_names[TASK_COUNT] = {
     "TASK_INVALID",
     "TASK_LEX_AND_PARSE",
     "TASK_GEN_IR",

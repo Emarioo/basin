@@ -21,8 +21,8 @@
 #include "basin/basin.h"
 #include "basin/backend/ir.h"
 
-#include "util/array.h"
-#include "util/bucket_array.h"
+#include "basin/util/array.h"
+#include "basin/util/bucket_array.h"
 #include "platform/platform.h"
 
 typedef struct AST AST;
@@ -35,7 +35,7 @@ typedef enum {
     TASK_GEN_OBJECT,
     TASK_COUNT,
 } TaskKind;
-extern const char* const task_kind_names[TASK_COUNT];
+extern const char* task_kind_names[TASK_COUNT];
 
 // A unit of work to be performed by the driver
 typedef struct Task {

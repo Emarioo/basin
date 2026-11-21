@@ -1,8 +1,10 @@
-#include "util/file.h"
+#include "basin/util/file.h"
 
 #include "platform/platform.h"
 
 string util_read_whole_file(const char* path) {
+    string out = {};
+
     TracyCZone(zone, 1);
     
     FSHandle handle = fs__open(path, FS_READ);
@@ -13,7 +15,7 @@ string util_read_whole_file(const char* path) {
     FSInfo info;
     fs__info(handle, &info);
 
-    string out = string_create(info.file_size + 1);
+    out = string_create(info.file_size + 1);
     
     bool success = fs__read(handle, 0, out.ptr, info.file_size);
     if(!success) {

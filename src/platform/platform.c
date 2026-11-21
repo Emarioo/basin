@@ -1,6 +1,6 @@
 #include "platform/platform.h"
 
-#ifdef OS_WINDOWS
+#ifdef _WIN32
     #define WIN32_MEAN_AND_LEAN
     #include "Windows.h"
     #include <stdarg.h>
@@ -8,8 +8,9 @@
     #include <string.h>
     #include <stdlib.h>
     #include <time.h>
+    #define OS_WINDOWS
 #endif
-#ifdef OS_LINUX
+#ifdef __linux__
     #include <unistd.h>
     #include "sys/mman.h"
     #include "linux/limits.h"
@@ -19,6 +20,7 @@
     #include <stdlib.h>
     #include <time.h>
     #include <errno.h>
+    #define OS_LINUX
 #endif
 
 
@@ -271,17 +273,17 @@ void log__printf(const char* format, ...) {
 
 void thread__spawn(Thread* thread, ThreadRoutine func, void* arg) {
     #ifdef OS_WINDOWS
-        u32 thread_id;
+        uint32_t thread_id;
         // Unsafe casting routine pointer?
         HANDLE handle = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)func, arg, 0, (DWORD*)&thread_id);
 
         ASSERT(handle != INVALID_HANDLE_VALUE);
 
-        thread->handle = (u64)handle;
+        thread->handle = (uint64_t)handle;
         thread->id = thread_id;
     #elif defined(OS_LINUX)
         int res;
-        u64 thread_id;
+        uint64_t thread_id;
         res = pthread_create((pthread_t*)&thread_id, NULL, (void *(*) (void *))func, arg);
 
         ASSERT(res == 0);
@@ -293,10 +295,10 @@ void thread__spawn(Thread* thread, ThreadRoutine func, void* arg) {
 }
 void thread__join(Thread* thread) {
     #ifdef OS_WINDOWS
-        u32 res = WaitForSingleObject((HANDLE)thread->handle, INFINITE);
+        uint32_t res = WaitForSingleObject((HANDLE)thread->handle, INFINITE);
         ASSERT(res != WAIT_FAILED);
         
-        u32 yes = CloseHandle((HANDLE)thread->handle);
+        uint32_t yes = CloseHandle((HANDLE)thread->handle);
         ASSERT(yes);
     #elif defined(OS_LINUX)
         int res;
@@ -307,11 +309,11 @@ void thread__join(Thread* thread) {
 bool thread__joinable(Thread* thread) {
     return thread->id != 0 && thread->id != thread__current_id();
 }
-u64 thread__current_id() {
+uint64_t thread__current_id() {
     #ifdef OS_WINDOWS
-        return (u64)GetCurrentThreadId();
+        return (uint64_t)GetCurrentThreadId();
     #elif defined(OS_LINUX)
-        return (u64)pthread_self();
+        return (uint64_t)pthread_self();
     #endif
 }
 
@@ -326,7 +328,7 @@ void thread__create_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
         HANDLE handle = CreateMutex(NULL, false, NULL);
         ASSERT(handle != INVALID_HANDLE_VALUE);
-        mutex->handle = (u64)handle;
+        mutex->handle = (uint64_t)handle;
     #elif defined(OS_LINUX)
         int res;
         int index;
@@ -342,12 +344,12 @@ void thread__create_mutex(Mutex* mutex) {
         }
         res = pthread_mutex_init(&g_mutex_array[index % MAX_MUTEX], NULL);
         ASSERT(res == 0);
-        mutex->handle = (u64)&g_mutex_array[index % MAX_MUTEX];
+        mutex->handle = (uint64_t)&g_mutex_array[index % MAX_MUTEX];
     #endif
 }
 void thread__lock_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
-        u32 res = WaitForSingleObject((HANDLE)mutex->handle, INFINITE);
+        uint32_t res = WaitForSingleObject((HANDLE)mutex->handle, INFINITE);
         ASSERT(res != WAIT_FAILED);
     #elif defined(OS_LINUX)
         int res;
@@ -357,7 +359,7 @@ void thread__lock_mutex(Mutex* mutex) {
 }
 bool thread__trylock_mutex(Mutex* mutex) {
     #ifdef OS_WINDOWS
-        u32 res = WaitForSingleObject((HANDLE)mutex->handle, 0);
+        uint32_t res = WaitForSingleObject((HANDLE)mutex->handle, 0);
         if (res == WAIT_TIMEOUT)
             return false;
         ASSERT(res != WAIT_FAILED);
@@ -391,7 +393,7 @@ void thread__cleanup_mutex(Mutex* mutex) {
         int res;
         res = pthread_mutex_destroy((pthread_mutex_t*)mutex->handle);
         ASSERT(res == 0);
-        int index = (mutex->handle - (u64)g_mutex_array) / sizeof(*g_mutex_array);
+        int index = (mutex->handle - (uint64_t)g_mutex_array) / sizeof(*g_mutex_array);
         mutex->handle = 0;
         g_mutex_array_used[index] = 0;
     #endif
@@ -406,11 +408,11 @@ void thread__cleanup_mutex(Mutex* mutex) {
 #endif
 
 
-void thread__create_semaphore(Semaphore* semaphore, u32 initial, u32 max_locks) {
+void thread__create_semaphore(Semaphore* semaphore, uint32_t initial, uint32_t max_locks) {
     #ifdef OS_WINDOWS
         HANDLE handle = CreateSemaphore(NULL, initial, max_locks, NULL);
         ASSERT(handle != INVALID_HANDLE_VALUE);
-        semaphore->handle = (u64)handle;
+        semaphore->handle = (uint64_t)handle;
     #elif defined(OS_LINUX)
         int res;
         int index;
@@ -427,12 +429,12 @@ void thread__create_semaphore(Semaphore* semaphore, u32 initial, u32 max_locks) 
         // @TODO max_locks is unused on Linux?
         res = sem_init(&g_semaphore_array[index % MAX_MUTEX], 0, initial);
         ASSERT(res == 0);
-        semaphore->handle = (u64)&g_semaphore_array[index % MAX_MUTEX];
+        semaphore->handle = (uint64_t)&g_semaphore_array[index % MAX_MUTEX];
     #endif
 }
 void thread__wait_semaphore(Semaphore* semaphore) {
     #ifdef OS_WINDOWS
-        u32 res = WaitForSingleObject((HANDLE)semaphore->handle, INFINITE);
+        uint32_t res = WaitForSingleObject((HANDLE)semaphore->handle, INFINITE);
         ASSERT(res != WAIT_FAILED);
     #elif defined(OS_LINUX)
         int res;
@@ -459,14 +461,14 @@ void thread__cleanup_semaphore(Semaphore* semaphore) {
         int res;
         res = sem_destroy((sem_t*)semaphore->handle);
         ASSERT(res == 0);
-        int index = (semaphore->handle - (u64)g_semaphore_array) / sizeof(*g_semaphore_array);
+        int index = (semaphore->handle - (uint64_t)g_semaphore_array) / sizeof(*g_semaphore_array);
         semaphore->handle = 0;
         g_semaphore_array_used[index] = 0;
     #endif
 }
 
 
-void thread__sleep_ns(u64 ns) {
+void thread__sleep_ns(uint64_t ns) {
     #ifdef OS_WINDOWS
         Sleep(ns / 1000000LLU);
     #elif defined(OS_LINUX)
@@ -502,7 +504,7 @@ int sys__cpu_count() {
 //##############################
 
 
-u64 time__now() {
+uint64_t time__now() {
     #ifdef OS_WINDOWS
         LARGE_INTEGER counter, frequency;
         BOOL res = QueryPerformanceCounter(&counter);
@@ -525,21 +527,21 @@ u64 time__now() {
     #elif defined(OS_LINUX)
         struct timespec tm;
         clock_gettime(CLOCK_MONOTONIC, &tm);
-        return (u64)tm.tv_sec * NANOSECOND_PER_SECOND + (u64)tm.tv_nsec;
+        return (uint64_t)tm.tv_sec * NANOSECOND_PER_SECOND + (uint64_t)tm.tv_nsec;
     #endif
 }
 
 
-u64 time__now_utc() {
+uint64_t time__now_utc() {
     #ifdef OS_WINDOWS
         FILETIME fileTime;
         GetSystemTimePreciseAsFileTime(&fileTime);
 
         // 100-nanosecond intervals since January 1, 1601 (UTC)
-        u64 timestamp = ((u64)fileTime.dwLowDateTime) | ((u64)fileTime.dwHighDateTime << 32);
+        uint64_t timestamp = ((uint64_t)fileTime.dwLowDateTime) | ((uint64_t)fileTime.dwHighDateTime << 32);
 
         // seconds between January 1, 1601 (UTC) and January 1, 1970 (UTC)
-        const u64 seconds_between = 11644473600ULL;
+        const uint64_t seconds_between = 11644473600ULL;
 
         // timestamp now in January 1, 1970 (UTC), 100-nanosecond intervals
         timestamp -= seconds_between * 10000000ULL;
@@ -551,6 +553,6 @@ u64 time__now_utc() {
     #elif defined(OS_LINUX)
         struct timespec tm;
         clock_gettime(CLOCK_REALTIME, &tm);
-        return (u64)tm.tv_sec * NANOSECOND_PER_SECOND + (u64)tm.tv_nsec;
+        return (uint64_t)tm.tv_sec * NANOSECOND_PER_SECOND + (uint64_t)tm.tv_nsec;
     #endif
 }

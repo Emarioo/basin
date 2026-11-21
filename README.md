@@ -1,5 +1,15 @@
-Basin compiler
-(based on [BetterThanBatch](https://github.com/Emarioo/BetterThanBatch))
+Basin Compiler
+
+The intention behind the language and compiler is
+- Cross platform
+- Standalone, can be embedded into your OS by adding a new platform layer ([ELOS](https://github.com/Emarioo/ELOS))
+- Very few dependencies (no LLVM).
+
+# Dependencies
+- GNU Make X.X.X
+- Which C Standard? What C compiler? can be compiled on windows/linux for your OS if you don't have a C compiler.
+
+Test system uses python?
 
 # Current state
 
@@ -108,3 +118,7 @@ tests        - Basin tests
 releases     - Built basin packages and releases
 int          - Intermediate object files
 ```
+
+
+# My first attempt
+[BetterThanBatch](https://github.com/Emarioo/BetterThanBatch)

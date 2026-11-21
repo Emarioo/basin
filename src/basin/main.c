@@ -5,7 +5,7 @@
 */
 
 #include "basin/basin.h"
-#include "util/assert.h"
+#include "basin/util/assert.h"
 #include "platform/platform.h"
 
 void print_help();
@@ -13,7 +13,7 @@ void print_help();
 void print_version() {
     printf("basin  \033[32m%s\033[0m\n", basin_version(NULL));
     printf("commit \033[33m%s\033[0m\n", basin_commit());
-    printf("built  \033[34m%s\033[0m\n", basin_build_date());
+    printf("date   \033[34m%s\033[0m\n", basin_date());
 }
 
 int main(int argc, char** argv) {
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     }
 
     for (int i=0;i<argc;i++) {
-        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-help")) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-help") || !strcmp(argv[i], "-h")) {
             print_help();
             return 0;
         } else if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-version")) {
