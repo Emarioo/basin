@@ -9,15 +9,57 @@
 #include "basin/frontend/ast.h"
 
 #include "platform/platform.h"
+#include "basin/common.h"
 
 #include <setjmp.h>
 #include <stdarg.h>
 
-#define match(KIND) ( context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match(context, KIND) )
+#define K_STRUCT   "struct"
+#define K_FN       "fn"
+#define K_ENUM     "enum"
+#define K_GLOBAL   "global"
+#define K_IMPORT   "import"
+#define K_LIBRARY  "library"
+#define K_AS       "as"
+#define K_FROM     "from"
+#define K_CONST    "const"
+#define K_VAR      "var"
+#define K_FOR      "for"
+#define K_WHILE    "while"
+#define K_IF       "if"
+#define K_ELSE     "else"
+#define K_SWITCH   "switch"
+#define K_CASE     "case"
+#define K_DEFAULT  "default"
+#define K_IN       "in"
+#define K_RETURN   "return"
+#define K_YIELD    "yield"
+#define K_CONTINUE "continue"
+#define K_BREAK    "break"
+#define K_DEFER    "defer"
 
-// 0 current token
-#define peek(N) _peek(context, N)
+#define EOF_RUNE 0
+typedef u32 Rune;
+
+
+#define match_rune(RUNE) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_rune(context, RUNE, false))
+#define match_word(WORD) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_word(context, WORD, false))
+#define match_string() (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_string(context, &context->temp_string, false), context->temp_string)
+#define match_int(PTR) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_int(context, PTR, false))
+#define match_float(PTR) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_float(context, PTR, false))
+#define match_id() (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_id(context, &context->temp_cstring, false), context->temp_cstring)
+#define try_match_rune(RUNE) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_rune(context, RUNE, true))
+#define try_match_id(PTR) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_id(context, PTR, true))
+#define try_match_int(PTR) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_int(context, PTR, true))
+#define try_match_float(PTR) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_float(context, PTR, true))
+#define try_match_string(PTR) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_string(context, PTR, true))
+#define try_match_word(WORD) (  context->c_location.path = __FILE__, context->c_location.line = __LINE__, _match_word(context, WORD, true))
+#define peek_rune(N) _peek_rune(context, N)
 #define advance() _advance(context)
+#define srcloc() _srcloc(context)
+#define skip_space() _skip_space(context)
+#define headpos() _headpos(context)
+#define restorepos(POS) context->head = POS;
 
 
 #ifdef TRACY_ENABLED
@@ -38,7 +80,7 @@ typedef enum {
 typedef struct {
     Compilation* compilation;
     Driver* driver;
-    TokenStream* stream;
+    Import* import;
     u32 head; // token head
     
     ASTExpression_Block* previous_block;
@@ -46,8 +88,11 @@ typedef struct {
 
     ComptimeKind comptime_kind;
     
+    cstring temp_cstring;
+    string temp_string;
+
+    SourceLocation bad_location;
     jmp_buf jump_state;
-    TokenExt bad_token; // token causing bad syntax
     CLocation c_location; // token causing bad syntax
     char error_message[512];
 
@@ -79,22 +124,23 @@ static inline void pop_profile_zone(ParserContext* ctx) {
     ctx->zones_len--;
 }
 
-#define CREATE_EXPR(V, T, KIND, TOK)      \
+#define CREATE_EXPR(V, T, KIND, LOC)      \
     T* V = HEAP_ALLOC_OBJECT(T);          \
     V->kind = KIND;                       \
-    V->location = location_from_token(TOK);
+    V->location = LOC;
 
 
-#define SET_EXPR(V, T, KIND, TOK)         \
+#define SET_EXPR(V, T, KIND, LOC)         \
     V = HEAP_ALLOC_OBJECT(T);          \
     V->kind = KIND;                       \
-    V->location = location_from_token(TOK);
+    V->location = LOC;
 
     
 typedef enum {
     IN_FILE_SCOPE   = 0x1,
     IN_CASE_SCOPE = 0x2,
 } ParseBlockFlags;
+
 
 bool parse_type(ParserContext* context, ASTType* typename);
 ASTExpression* parse_expression(ParserContext* context);
@@ -103,111 +149,28 @@ ASTFunction* parse_function(ParserContext* context);
 ASTEnum* parse_enum(ParserContext* context);
 ASTStruct* parse_struct(ParserContext* context);
 
-// ASTExpression* create_expression(ParserContext* context, ExpressionKind kind) {
-//     // @TODO Use linear allocator?
-//     ASTExpression* expr = HEAP_ALLOC_OBJECT(ASTExpression);
-//     return expr;
-// }
 
-Result parse_stream(Compilation* compilation, TokenStream* stream, AST** out_ast) {
-    TracyCZone(zone, 1);
-    // We implement this recursively because it's easier to debug issues
-    Result result = {};
-    result.kind = SUCCESS;
-    result.message.ptr = NULL;
-    result.message.max = 0;
-    result.message.len = 0;
+void _parse_error(ParserContext* context, SourceLocation loc, char* fmt, ...);
+static SourceLocation _srcloc(ParserContext* context);
+static bool _skip_space(ParserContext* context);
+static int _peek_rune(ParserContext* context, int n);
+static u32 _headpos(ParserContext* context);
+static bool _match_rune(ParserContext* context, int rune, bool peek_operation);
+static bool _match_word(ParserContext* context, const char* word, bool peek_operation);
+static bool _match_string(ParserContext* context, string* outstring, bool peek_operation);
+static bool _match_int(ParserContext* context, i64* out_value, bool peek_operation);
+static bool _match_float(ParserContext* context, double* out_value, bool peek_operation);
+static bool _match_id(ParserContext* context, cstring* outstring, bool peek_operation);
+static void _advance(ParserContext* context);
 
-    AST* ast = HEAP_ALLOC_OBJECT(AST);
-    ast->stream = stream;
 
-    ParserContext context = {0};
-    context.stream = stream;
-    context.compilation = compilation;
-    context.driver = compilation->driver;
-    context.head = 0;
-
-    int res = setjmp(context.jump_state);
-
-    if (res == 0) {
-
-        ast->global_block = parse_block_expression(&context, true);
-
-        *out_ast = ast;
-    } else {
-        cleanup_profile_zones(&context);
-
-        int line, column;
-        string code;
-        bool yes = compute_source_info(stream, location_from_token(&context.bad_token), &line, &column, &code);
-
-        char buffer[1024];
-        int len = 0;
-        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;30m%s:%d\033[0m\n", context.c_location.path, context.c_location.line);
-        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;31m%s:%d:%d:\033[0m %s\n%s", stream->import->path.ptr, line, column, context.error_message, code.ptr);
-        result.kind = FAILURE;
-        result.message = string_clone_cptr(buffer);
-    }
-    TracyCZoneEnd(zone);
-    return result;
-}
+void import_init_line_positions(Import* import);
+static int pos_to_line_index(Import* import, int position);
 
 
 #define parse_error(TOK, FMT, ...) do { (context->c_location.path = __FILE__, context->c_location.line = __LINE__, _parse_error(context, TOK, FMT __VA_OPT__(,)  __VA_ARGS__)); } while (0)
 
 #define check_error_ext(T, ...) do { if ((T)->kind == T_END_OF_FILE) parse_error((const TokenExt*)(void*)(T), __VA_ARGS__); } while (0)
-
-void _parse_error(ParserContext* context, const TokenExt* tok, char* fmt, ...) {
-    context->bad_token = *(const TokenExt*)tok;
-
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(context->error_message, sizeof(context->error_message), fmt, ap);
-    va_end(ap);
-
-    longjmp(context->jump_state, 1);
-}
-
-static const TokenExt* _peek(ParserContext* context, int n) {
-    u32 head = context->head;
-    const TokenExt* tok = NULL;
-    while((n+1)) {
-        n--;
-        if (head >= context->stream->tokens_len)
-            return &EOF_TOKEN_EXT;
-        tok = (const TokenExt*)&context->stream->tokens[head];
-        if (IS_EXT_TOKEN(tok->kind))
-            head += TOKEN_PER_EXT_TOKEN;
-        else
-            head+=1;
-    }
-    return tok;
-}
-
-static const TokenExt* _match(ParserContext* context, TokenKind kind) {
-    const TokenExt* tok = _peek(context, 0);
-    if (tok->kind == kind) {
-        context->head += 1 + (TOKEN_PER_EXT_TOKEN - 1) * IS_EXT_TOKEN(kind);
-        return tok;
-    } else {
-        _parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted '%s'", name_from_token(kind));
-        // unreachable
-        return &EOF_TOKEN_EXT;
-    }
-}
-
-
-static const TokenExt* _advance(ParserContext* context) {
-    if (context->head >= context->stream->tokens_len)
-        return &EOF_TOKEN_EXT;
-    const TokenExt* tok;
-    tok = (const TokenExt*)&context->stream->tokens[context->head];
-    if (IS_EXT_TOKEN(tok->kind))
-        context->head += TOKEN_PER_EXT_TOKEN;
-    else
-        context->head += 1;
-    return tok;
-}
 
 void enter_comptime_mode(ParserContext* context, ComptimeKind kind) {
     ASSERT(context->comptime_kind == COMPTIME_NONE);
@@ -221,56 +184,122 @@ void exit_comptime_mode(ParserContext* context) {
 #define IS_COMPTIME() (context->comptime_kind != COMPTIME_NONE)
 
 
+Result parse_import(Compilation* compilation, Import* import, AST** out_ast) {
+    TracyCZone(zone, 1);
+    // We implement this recursively because it's easier to debug issues
+    Result result = {};
+    result.kind = SUCCESS;
+    result.message.ptr = NULL;
+    result.message.max = 0;
+    result.message.len = 0;
+
+    AST* ast = HEAP_ALLOC_OBJECT(AST);
+    ast->import = import;
+
+    ParserContext context = {0};
+    context.import = import;
+    context.compilation = compilation;
+    context.driver = compilation->driver;
+    context.head = 0;
+
+    int res = setjmp(context.jump_state);
+
+    if (res == 0) {
+        string text = import->text;
+
+        if (text.len >= 2 && text.ptr[context.head] == '#' && text.ptr[context.head+1] == '!') {
+            // Skip shebang
+            context.head += 2;
+            while (context.head < text.len) {
+                context.head++;
+                if (text.ptr[context.head-1] == '\n')
+                    break;
+            }
+        }
+
+        ast->global_block = parse_block_expression(&context, true);
+
+        *out_ast = ast;
+    } else {
+        cleanup_profile_zones(&context);
+
+        int line, column;
+        string code;
+        bool yes = compute_source_info(import, context.bad_location, &line, &column, &code);
+
+        char buffer[1024];
+        int len = 0;
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;30m%s:%d\033[0m\n", context.c_location.path, context.c_location.line);
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;31m%s:%d:%d:\033[0m %s\n%s", import->path.ptr, line, column, context.error_message, code.ptr);
+        result.kind = FAILURE;
+        result.message = string_clone_cptr(buffer);
+    }
+    TracyCZoneEnd(zone);
+    return result;
+}
+
 ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFlags block_flags) {
     PROFILE_START();
 
     bool in_file_scope = block_flags & IN_FILE_SCOPE;
     bool in_case_scope = block_flags & IN_CASE_SCOPE;
 
-    const TokenExt* block_tok = peek(0);
+    skip_space();
+
+    // const TokenExt* block_tok = peek(0);
+    SourceLocation block_loc = srcloc();
     if (!in_file_scope && !in_case_scope) {
-        match('{');
+        match_rune('{');
+        skip_space();
     }
     
-    CREATE_EXPR(block_expr, ASTExpression_Block, EXPR_BLOCK, block_tok);
+    CREATE_EXPR(block_expr, ASTExpression_Block, EXPR_BLOCK, block_loc);
     block_expr->parent = context->previous_block;
     context->previous_block = block_expr;
 
     while (true) {
-        const TokenExt* tok  = peek(0);
-        const TokenExt* tok1 = peek(1);
+        SourceLocation tok_loc = srcloc();
+        Rune tok = peek_rune(0);
 
-        if (IS_EOF(tok) && in_file_scope) {
+        if (tok == EOF_RUNE && in_file_scope) {
             break;
         }
 
-        if (tok->kind == '@') {
+        if (tok == '@') {
             advance();
             ASTAnnotation anot = {};
             
-            const TokenExt* tok_ident = match(T_IDENTIFIER);
-            cstring anot_name = DATA_FROM_IDENTIFIER(tok_ident);
+            cstring anot_name = match_id();
             anot.name = string_clone_cstr(anot_name);
 
-            const TokenExt* tok_start = peek(0);
-            const TokenExt* tok_end = &EOF_TOKEN_EXT;
-            if (tok_start->kind == '(') {
+            Rune tok_start = peek_rune(0);
+            u32 tok_start_pos = headpos();
+            u32 tok_end_pos = -1;
+            Rune tok_end = EOF_RUNE;
+            if (tok_start == '(') {
                 advance();
+                int depth = 1;
                 while (true) {
-                    tok_end = peek(0);
-                    if (tok_end->kind == T_END_OF_FILE)
+                    tok_end_pos = headpos();
+                    tok_end = peek_rune(0);
+                    if (tok_end == EOF_RUNE) {
+                        SourceLocation loc = srcloc();
+                        parse_error(loc, "Sudden end of file in annotantion");
                         break;
-                    if (tok_end->kind == ')') {
-                        break;
+                    } else if (tok_end == '(') {
+                        depth++;
+                    } else if (tok_end == ')') {
+                        depth--;
+                        if (depth == 0) {
+                            advance();
+                            break;
+                        }
                     }
                     advance();
                 }
-                match(')');
 
-                int start_pos = tok_start->position+1;
-
-                if (tok_end->position - start_pos > 0) {
-                    anot.content = string_clone(context->stream->import->text.ptr + start_pos, tok_end->position - start_pos);
+                if (tok_end_pos - tok_start_pos > 0) {
+                    anot.content = string_clone(context->import->text.ptr + tok_start_pos, tok_end_pos - tok_start_pos);
                 }
             }
 
@@ -280,21 +309,22 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             continue;
         }
 
-        if(tok->kind == T_IMPORT) {
-            advance();
+        if(try_match_word(K_IMPORT)) {
+            // advance();
+            skip_space();
             
-            const TokenExt* tok = match(T_LITERAL_STRING);
+            SourceLocation path_loc = srcloc();
+            string path = match_string();
+            skip_space();
             
-            cstring path = DATA_FROM_STRING(tok);
-            
-            string resolved_path = comp_resolve_import_path(context->compilation, context->stream->import, path);
+            string resolved_path = comp_resolve_import_path(context->compilation, context->import, cstr(path));
             if (resolved_path.len == 0) {
-                parse_error(tok, "Could not resolve path '%s'. Use 'import \"linux\"' to resolve from import directories, use 'import \"./hello.bsn\"' to resolve from relative directory relative to current source file.", path.ptr);
+                parse_error(path_loc, "Could not resolve path '%s'. Use 'import \"linux\"' to resolve from import directories, use 'import \"./hello.bsn\"' to resolve from relative directory relative to current source file.", path.ptr);
             }
         
             // @TODO Check if import already exists.
             Task task = {};
-            task.kind = TASK_LEX_AND_PARSE;
+            task.kind = TASK_PARSE;
             task.compilation = context->compilation;
             task.lex_and_parse.import = driver_create_import_id(context->driver, cstr(resolved_path));
 
@@ -303,7 +333,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             driver_add_task(context->driver, &task);
 
             ASTImport new_import = {};
-            new_import.location = location_from_token(tok);
+            new_import.location = path_loc;
             new_import.shared = false; // set from annontation @shared
             new_import.import = task.lex_and_parse.import;
             
@@ -315,171 +345,185 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             //     parse_error(tok, "@TODO implement 'import \"main\" from lib'");
             // }
 
-            tok = peek(0);
-            if (tok->kind == T_AS) {
-                advance();
-                tok = match(T_IDENTIFIER);
-                cstring name = DATA_FROM_STRING(tok);
+            if (try_match_word(K_AS)) {
+                skip_space();
+                cstring name = match_id();
                 new_import.name = string_clone_cstr(name);
             }
 
             array_push(&block_expr->imports, &new_import);
 
-            tok = peek(0);
-            if (tok->kind == T_AS) {
-                advance();
-                tok = match(T_IDENTIFIER);
-
-                cstring name = DATA_FROM_STRING(tok);
-                new_import.name = string_clone_cstr(name);
-            }
-
             // @TODO Add import to scope tree
-        } else if(tok->kind == T_LIBRARY) {
-            advance();
+        } else if(try_match_word(K_LIBRARY)) {
+            // advance();
+            skip_space();
             
-            const TokenExt* tok_str = match(T_LITERAL_STRING);
-            cstring path = DATA_FROM_STRING(tok_str);
+            SourceLocation path_loc = srcloc();
+            string path = match_string();
+            skip_space();
 
             ASTLibrary new_library = {};
-            new_library.location = location_from_token(tok);
-            new_library.library_name = string_clone_cstr(path);
+            new_library.location = path_loc;
+            new_library.library_name = path;
 
-            const TokenExt* tok_as = peek(0);
-            if (tok_as->kind == T_AS) {
-                advance();
-                tok_as = match(T_IDENTIFIER);
-                cstring name = DATA_FROM_IDENTIFIER(tok_as);
+            if (try_match_word(K_AS)) {
+                skip_space();
+                cstring name = match_id();
                 new_library.name = string_clone_cstr(name);
             }
             
             array_push(&block_expr->libraries, &new_library);
 
-        } else if (tok->kind == T_GLOBAL) {
-            advance();
+        } else if (try_match_word(K_GLOBAL)) {
+            skip_space();
             
-            const TokenExt* ident_tok = match(T_IDENTIFIER);
-            match(':');
+            SourceLocation name_loc = srcloc();
+            cstring name = match_id();
+            skip_space();
+            
+            match_rune(':');
+            skip_space();
             
             ASTGlobal* data_object = HEAP_ALLOC_OBJECT(ASTGlobal);
-            data_object->location = location_from_token(ident_tok);
-            
-            cstring name = DATA_FROM_TOKEN(ident_tok);
+            data_object->location = name_loc;
             data_object->name = string_clone_cstr(name);
             
-            const TokenExt* equal_tok = peek(0);
 
             bool res = parse_type(context, &data_object->type_name);
             ASSERT(res);
             
-            equal_tok = peek(0);
-            if (equal_tok->kind == '=') {
+            Rune equal_tok = peek_rune(0);
+            if (equal_tok == '=') {
                 advance();
+                skip_space();
                 data_object->value = parse_expression(context);
             }
 
             array_push(&block_expr->globals, &data_object);
-        } else if (tok->kind == T_CONST) {
-            advance();
+        } else if (try_match_word(K_CONST)) {
+            skip_space();
             
-            const TokenExt* ident_tok = match(T_IDENTIFIER);
+            SourceLocation name_loc = srcloc();
+            cstring name = match_id();
+            skip_space();
             
             ASTConstant* data_object = HEAP_ALLOC_OBJECT(ASTConstant);
-            data_object->location = location_from_token(ident_tok);
-            cstring name = DATA_FROM_TOKEN(ident_tok);
+            data_object->location = name_loc;
             data_object->name = string_clone_cstr(name);
 
-            const TokenExt* colon_tok = peek(0);
-            if (colon_tok->kind == ':') {
+            Rune colon_tok = peek_rune(0);
+            if (colon_tok == ':') {
                 advance();
+                skip_space();
                 bool res = parse_type(context, &data_object->type_name);
                 ASSERT(res);
             }
             
-            match('=');
+            match_rune('=');
+                skip_space();
             data_object->value = parse_expression(context);
             
             array_push(&block_expr->constants, &data_object);
-        } else if (tok->kind == T_IDENTIFIER && tok1->kind == ':') {
-            advance();
-            advance();
-            
-            ASTVariable* data_object = HEAP_ALLOC_OBJECT(ASTVariable);
-            data_object->location = location_from_token(tok);
-            
-            cstring name = DATA_FROM_TOKEN(tok);
-            data_object->name = string_clone_cstr(name);
-
-            const TokenExt* equal_tok = peek(0);
-            if (equal_tok->kind != '=') {
-                bool res = parse_type(context, &data_object->type_name);
-                ASSERT(res);
-            }
-            
-            equal_tok = peek(0);
-            if (equal_tok->kind == '=') {
-                advance();
-
-                ASTExpression* rvalue = parse_expression(context);
-
-                CREATE_EXPR(expr_lval, ASTExpression_Identifier, EXPR_IDENTIFIER, tok);
-                expr_lval->name = string_clone_cstr(name);
-
-                CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok);
-                expr_assign->ref = (ASTExpression*) expr_lval;
-                expr_assign->value = rvalue;
-
-                array_push(&block_expr->expressions, (ASTExpression**)&expr_assign);
-            }
-
-            array_push(&block_expr->variables, &data_object);
-
-        } else if (tok->kind == T_ENUM) {
+        } else if (try_match_word(K_ENUM)) {
+            skip_space();
             
             ASTEnum* enu = parse_enum(context);
             array_push(&block_expr->enums, &enu);
 
-        } else if (tok->kind == T_STRUCT) {
+        } else if (try_match_word(K_STRUCT)) {
+            skip_space();
             
             ASTStruct* struc = parse_struct(context);
             array_push(&block_expr->structs, &struc);
 
-        } else if (tok->kind == T_FN) {
+        } else if (try_match_word(K_FN)) {
+            skip_space();
             
             ASTFunction* function = parse_function(context);
             array_push(&block_expr->functions, &function);
 
-        } else if (tok->kind == '}') {
+        } else if (try_match_rune('}')) {
             if (!in_file_scope) {
                 break;
             }
-            parse_error(tok, "Unexpected closing brace. (at file scope)");
-        } else if (tok->kind == T_CASE || tok->kind == T_DEFAULT) {
+            parse_error(tok_loc, "Unexpected closing brace. (at file scope)");
+        } else if (try_match_word(K_CASE) || try_match_word(K_DEFAULT)) {
             if (in_case_scope) {
                 break;
             }
-            parse_error(tok, "'case' and 'default' is only allowed in switch scopes.");
+            parse_error(tok_loc, "'case' and 'default' is only allowed in switch scopes.");
         } else {
-            ASTExpression* expr = parse_expression(context);
+            u32 saved_pos = headpos();
 
-            const TokenExt* equal_tok = peek(0);
-            if (equal_tok->kind == '=') {
-                advance();
-                ASTExpression* rvalue = parse_expression(context);
+            cstring name;
+            bool matched_id = try_match_id(&name);
+            skip_space();
+            if (matched_id && peek_rune(0) == ':') {
+                advance(); // skip :
+                skip_space();
+                
+                ASTVariable* data_object = HEAP_ALLOC_OBJECT(ASTVariable);
+                data_object->location = tok_loc;
+                data_object->name = string_clone_cstr(name);
 
-                CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok);
-                expr_assign->ref = expr;
-                expr_assign->value = rvalue;
+                Rune equal_tok = peek_rune(0);
+                if (equal_tok != '=') {
+                    SourceLocation equal_tok_loc = srcloc();
+                    bool res = parse_type(context, &data_object->type_name);
+                    if (!res) {
+                        // @TODO The parse type function should throw error. No need for this?
+                        parse_error(equal_tok_loc, "Type is bad.");
+                    }
+                    skip_space();
+                }
+                
+                equal_tok = peek_rune(0);
+                SourceLocation equal_tok_loc = srcloc();
+                if (equal_tok == '=') {
+                    advance();
+                    skip_space();
 
-                array_push(&block_expr->expressions, (ASTExpression**)&expr_assign);
+                    ASTExpression* rvalue = parse_expression(context);
+
+                    CREATE_EXPR(expr_lval, ASTExpression_Identifier, EXPR_IDENTIFIER, tok_loc);
+                    expr_lval->name = string_clone_cstr(name);
+
+                    CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok_loc);
+                    expr_assign->ref = (ASTExpression*) expr_lval;
+                    expr_assign->value = rvalue;
+
+                    array_push(&block_expr->expressions, (ASTExpression**)&expr_assign);
+                }
+
+                array_push(&block_expr->variables, &data_object);
             } else {
-                array_push(&block_expr->expressions, &expr);
+                restorepos(saved_pos);
+
+                ASTExpression* expr = parse_expression(context);
+                skip_space();
+                
+                SourceLocation equal_tok_loc = srcloc();
+                Rune equal_tok = peek_rune(0);
+                if (equal_tok == '=') {
+                    advance();
+                    skip_space();
+                    ASTExpression* rvalue = parse_expression(context);
+
+                    CREATE_EXPR(expr_assign, ASTExpression_Assign, EXPR_ASSIGN, equal_tok_loc);
+                    expr_assign->ref = expr;
+                    expr_assign->value = rvalue;
+
+                    array_push(&block_expr->expressions, (ASTExpression**)&expr_assign);
+                } else {
+                    array_push(&block_expr->expressions, &expr);
+                }
             }
         }
     }
 
     if (!in_file_scope && !in_case_scope) {
-        match('}');
+        skip_space();
+        match_rune('}');
     }
 
     context->previous_block = block_expr->parent;
@@ -529,34 +573,42 @@ int op_precedence(int op_kind) {
 ASTExpression* parse_expression(ParserContext* context) {
     PROFILE_START();
 
-    const TokenExt* tok = peek(0);
+    // const TokenExt* tok = peek(0);
 
     // TODO: Parse annotations
 
     ASTExpression* ret_expr;
 
-    if (tok->kind == T_RETURN) {
-        advance();
+    skip_space();
+
+    SourceLocation tok_loc = srcloc();
+    if (try_match_word(K_RETURN)) {
+        skip_space();
 
         ASTExpression_Return* out_expr = HEAP_ALLOC_OBJECT(ASTExpression_Return);
         out_expr->kind                 = EXPR_RETURN;
-        out_expr->location             = location_from_token(tok);
+        out_expr->location             = tok_loc;
 
-        const TokenExt* tok0 = peek(0);
+        SourceLocation tok0_loc = srcloc();
+        Rune tok0 = peek_rune(0);
         ASTExpression* expr = NULL;
-        if ((tok->flags & TF_POST_NEWLINE) || tok0->kind == ';') {
+        // if ((tok->flags & TF_POST_NEWLINE) || tok0->kind == ';') {
+        if (tok0 == ';') {
+            advance();
             // no expression
         } else {
             while (1) {
                 expr = parse_expression(context);
                 if (!expr) {
-                    parse_error(tok0, "Expected an expression (if condition).");
+                    parse_error(tok0_loc, "Expected an expression (if condition).");
                 }
+                skip_space();
 
                 array_push(&out_expr->exprs, &expr);
 
-                tok0 = peek(0);
-                if (tok0->kind == ',') {
+                tok0_loc = srcloc();
+                tok0 = peek_rune(0);
+                if (tok0 == ',') {
                     advance();
                     continue;
                 }
@@ -566,28 +618,33 @@ ASTExpression* parse_expression(ParserContext* context) {
 
         ret_expr = (ASTExpression*)out_expr;
 
-    } else if (tok->kind == T_YIELD) {
-        advance();
+    } else if (try_match_word(K_YIELD)) {
+        skip_space();
 
         ASTExpression_Yield* out_expr = HEAP_ALLOC_OBJECT(ASTExpression_Yield);
         out_expr->kind                = EXPR_YIELD;
-        out_expr->location            = location_from_token(tok);
+        out_expr->location            = tok_loc;
 
-        const TokenExt* tok0 = peek(0);
+        SourceLocation tok0_loc = srcloc();
+        Rune tok0 = peek_rune(0);
         ASTExpression* expr = NULL;
-        if ((tok->flags & TF_POST_NEWLINE) || tok0->kind == ';') {
+        // if ((tok->flags & TF_POST_NEWLINE) || tok0->kind == ';') {
+        if (tok0 == ';') {
+            advance();
             // no expression
         } else {
             while (1) {
                 expr = parse_expression(context);
                 if (!expr) {
-                    parse_error(tok0, "Expected an expression (if condition).");
+                    parse_error(tok0_loc, "Expected an expression (if condition).");
                 }
+                skip_space();
 
                 array_push(&out_expr->exprs, &expr);
 
-                tok0 = peek(0);
-                if (tok0->kind == ',') {
+                tok0_loc = srcloc();
+                tok0 = peek_rune(0);
+                if (tok0 == ',') {
                     advance();
                     continue;
                 }
@@ -597,30 +654,34 @@ ASTExpression* parse_expression(ParserContext* context) {
 
         ret_expr = (ASTExpression*)out_expr;
 
-    } else if (tok->kind == T_IF) {
-        advance();
+    } else if (try_match_word(K_IF)) {
+        skip_space();
 
-        CREATE_EXPR(out_expr, ASTExpression_If, EXPR_IF, tok)
+        CREATE_EXPR(out_expr, ASTExpression_If, EXPR_IF, tok_loc)
 
-        const TokenExt* tok0 = peek(0);
+        SourceLocation tok0_loc = srcloc();
         ASTExpression* expr = parse_expression(context);
         if (!expr)
-            parse_error(tok0, "Expected an expression (if condition).");
+            parse_error(tok0_loc, "Expected an expression (if condition).");
+        skip_space();
 
-        const TokenExt* tok1 = peek(0);
+        SourceLocation tok1_loc = srcloc();
         ASTExpression* body = parse_expression(context);
         if (!body)
-            parse_error(tok1, "Expected an expression (if body).");
-        
+            parse_error(tok1_loc, "Expected an expression (if body).");
+        skip_space();
+
         ASTExpression* else_body = NULL;
 
-        const TokenExt* tok2 = peek(0);
-        if (tok2->kind == T_ELSE) {
-            advance();
-            const TokenExt* else_expr_tok = peek(0);
+        // const TokenExt* tok2 = peek(0);
+        if (try_match_word(K_ELSE)) {
+            skip_space();
+            
+            SourceLocation else_expr_tok_loc = srcloc();
+            // const TokenExt* else_expr_tok = peek(0);
             else_body = parse_expression(context);
             if (!else_body) {
-                parse_error(else_expr_tok, "Expected an expression (else body).");
+                parse_error(else_expr_tok_loc, "Expected an expression (else body).");
             }
         }
         
@@ -630,85 +691,94 @@ ASTExpression* parse_expression(ParserContext* context) {
 
         ret_expr = (ASTExpression*)out_expr;
     
-    } else if (tok->kind == T_SWITCH) {
-        advance();
-
-        const TokenExt* tok0 = peek(0);
+    } else if (try_match_word(K_SWITCH)) {
+        skip_space();
+        
+        SourceLocation tok0_loc = srcloc();
+        // const TokenExt* tok0 = peek(0);
         ASTExpression* expr = parse_expression(context);
         if (!expr)
-            parse_error(tok0, "Expected an expression (if condition).");
+            parse_error(tok0_loc, "Expected an expression (if condition).");
+        skip_space();
         
-        match('{');
+        match_rune('{');
         
-        CREATE_EXPR(out_expr, ASTExpression_Switch, EXPR_SWITCH, tok0)
+        CREATE_EXPR(out_expr, ASTExpression_Switch, EXPR_SWITCH, tok0_loc)
         out_expr->selector = expr;
 
         bool has_default = false;
 
         while (true) {
-            const TokenExt* tok = peek(0);
+            skip_space();
+            SourceLocation tok_loc = srcloc();
+            Rune tok = peek_rune(0);
 
             ASTExpression_Switch_Case switch_case = {};
 
-            if (tok->kind == '}') {
+            if (tok == '}') {
                 advance();
                 break;
 
-            } else if(tok->kind == T_CASE) {
-                advance();
+            } else if(try_match_word(K_CASE)) {
+                skip_space();
                 
                 while (true) {
                     ASTExpression* expr = parse_expression(context);
-
+                    skip_space();
                     array_push(&switch_case.conditions, &expr);
 
-                    const TokenExt* tok = peek(0);
-                    if (tok->kind != ',') {
+                    Rune tok = peek_rune(0);
+                    if (tok != ',') {
                         break;
                     }
                     advance();
                 }
+                skip_space();
                 
-                const TokenExt* tok0 = peek(0);
-                if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
+                u32 saved_pos = headpos();
+                Rune tok0 = peek_rune(0);
+                if (tok0 == '}' || try_match_word(K_CASE) || try_match_word(K_DEFAULT)) {
+                    restorepos(saved_pos);
                     // no body
                 } else {
                     switch_case.body = (ASTExpression*)parse_block_expression(context, IN_CASE_SCOPE);
                 }
 
-            } else if(tok->kind == T_DEFAULT) {
-                advance();
+            } else if(try_match_word(K_DEFAULT)) {
+                skip_space();
                 
                 if (has_default) {
                     // @TODO Show location of previous default case.
-                    parse_error(tok, "Switch may only have one default case.");
+                    parse_error(tok_loc, "Switch may only have one default case.");
                 }
                 has_default = true;
                 
-                const TokenExt* tok0 = peek(0);
-                if (tok0->kind == '}' || tok0->kind == T_CASE || tok0->kind == T_DEFAULT) {
+                u32 saved_pos = headpos();
+                Rune tok0 = peek_rune(0);
+                if (tok0 == '}' || try_match_word(K_CASE) || try_match_word(K_DEFAULT)) {
+                    restorepos(saved_pos);
                     // no body
                 } else {
                     switch_case.body = (ASTExpression*)parse_block_expression(context, IN_CASE_SCOPE);
                 }
                 
             } else {
-                parse_error(tok, "Expected '}' to close switch or 'case' to define a case and some code to run.");
+                parse_error(tok_loc, "Expected '}' to close switch or 'case' to define a case and some code to run.");
             }
             array_push(&out_expr->cases, &switch_case);
         }
 
         ret_expr = (ASTExpression*)out_expr;
 
-    } else if (tok->kind == T_FOR) {
-        advance();
+    } else if (try_match_word(K_FOR)) {
+        skip_space();
 
         // @TODO Reverse annotation
 
-        const TokenExt* tok0 = peek(0);
-        const TokenExt* tok1 = peek(1);
-        const TokenExt* tok2 = peek(2);
-        const TokenExt* tok3 = peek(3);
+        // const TokenExt* tok0 = peek(0);
+        // const TokenExt* tok1 = peek(1);
+        // const TokenExt* tok2 = peek(2);
+        // const TokenExt* tok3 = peek(3);
 
         // for NR,IT in ITEMS BODY
         // for IT in ITEMS BODY
@@ -717,53 +787,80 @@ ASTExpression* parse_expression(ParserContext* context) {
         string index_name = {};
         string item_name = {};
 
-        if (tok0->kind == T_IDENTIFIER && tok1->kind == ',' && tok2->kind == T_IDENTIFIER && tok3->kind == T_IN) {
-            advance();
-            advance();
-            advance();
-            advance();
-            cstring temp = DATA_FROM_IDENTIFIER(tok0);
-            cstring temp2 = DATA_FROM_IDENTIFIER(tok2);
-            item_name = string_clone_cstr(temp);
-            index_name = string_clone_cstr(temp2);
-        } else if (tok0->kind == T_IDENTIFIER && tok1->kind == T_IN) {
-            advance();
-            advance();
+        u32 saved_pos = headpos();
 
-            cstring temp = DATA_FROM_IDENTIFIER(tok0);
-            index_name = string_clone_cptr("nr");
-            item_name = string_clone_cstr(temp);
-        } else {
+        bool succcess = false;
+        cstring name0;
+        bool matched_id = try_match_id(&name0);
+        if (matched_id) {
+            skip_space();
+            Rune comma_tok = peek_rune(0);
+            if (comma_tok == ',') {
+                advance();
+                skip_space();
+                cstring name1;
+                matched_id = try_match_id(&name1);
+                if (matched_id) {
+                    skip_space();
+                    if (try_match_word(K_IN)) {
+                        item_name = string_clone_cstr(name0);
+                        index_name = string_clone_cstr(name1);
+                        succcess = true;
+                    }
+                }
+            }
+        }
+
+        if (!succcess) {
+            restorepos(saved_pos);
+            
+            cstring name0;
+            matched_id = try_match_id(&name0);
+            if (matched_id) {
+                skip_space();
+                if (try_match_word(K_IN)) {
+                    index_name = string_clone_cptr("nr");
+                    item_name = string_clone_cstr(name0);
+                    succcess = true;
+                }
+            }
+        }
+        
+        if (!succcess) {
             index_name = string_clone_cptr("nr");
             item_name = string_clone_cptr("it");
         }
+        skip_space();
 
         ASTExpression* cond = parse_expression(context);
+        skip_space();
+        
         ASTExpression* body = parse_expression(context);
 
-        CREATE_EXPR(expr, ASTExpression_For, EXPR_FOR, tok);
+        CREATE_EXPR(expr, ASTExpression_For, EXPR_FOR, tok_loc);
         expr->index_name        = index_name;
-        expr->item_name         =  item_name;
+        expr->item_name         = item_name;
         expr->condition_expr    = cond;
         expr->body_expr         = body;
 
         ret_expr = (ASTExpression*)expr;
 
-    } else if (tok->kind == T_WHILE) {
-        advance();
+    } else if (try_match_word(K_WHILE)) {
+        skip_space();
         
         ASTExpression* cond = NULL;
         
-        const TokenExt* tok0 = peek(0);
-        if (tok0->kind == '{') {
+        Rune tok0 = peek_rune(0);
+        if (tok0 == '{') {
             // infinite loop, no condition
         } else {
             cond = parse_expression(context);
         }
-        
+        skip_space();
+
         ASTExpression* body = parse_expression(context);
 
-        CREATE_EXPR(expr, ASTExpression_While, EXPR_WHILE, tok);
+        CREATE_EXPR(expr, ASTExpression_While, EXPR_WHILE, tok_loc);
         expr->condition_expr   = cond;
         expr->body_expr        = body;
         
@@ -780,7 +877,7 @@ ASTExpression* parse_expression(ParserContext* context) {
     //     ComptimeKind compttime_kind = COMPTIME_NORMAL;
 
     //     tok = peek(0);
-    //     if (tok->kind == T_IDENTIFIER) {
+    //     if (match_word(K_IDENTIFIER)) {
     //         cstring data = DATA_FROM_TOKEN(tok);
             
     //         if(string_equal_cstr(data, "emit")) {
@@ -799,16 +896,16 @@ ASTExpression* parse_expression(ParserContext* context) {
     //     // Find out from current imports which 
 
     //     // generate code
-    } else if (tok->kind == T_CONTINUE) {
-        advance();
+    } else if (try_match_word(K_CONTINUE)) {
+        // skip_space();
 
-        CREATE_EXPR(expr, ASTExpression_Continue, EXPR_CONTINUE, tok);
+        CREATE_EXPR(expr, ASTExpression_Continue, EXPR_CONTINUE, tok_loc);
         
         ret_expr = (ASTExpression*)expr;
-    } else if (tok->kind == T_BREAK) {
-        advance();
+    } else if (try_match_word(K_BREAK)) {
+        // skip_space();
         
-        CREATE_EXPR(expr, ASTExpression_Break, EXPR_BREAK, tok);
+        CREATE_EXPR(expr, ASTExpression_Break, EXPR_BREAK, tok_loc);
         
         ret_expr = (ASTExpression*)expr;
     } else {
@@ -823,17 +920,23 @@ ASTExpression* parse_expression(ParserContext* context) {
         bool end_of_expression = false;
 
         while (true) {
-            const TokenExt* tok0 = peek(0);
-            const TokenExt* tok1 = peek(1);
+            skip_space();
+            SourceLocation tok0_loc = srcloc();
+            Rune tok0 = peek_rune(0);
+            Rune tok1 = peek_rune(1);
+
+            cstring id_name;
             
             if (expect_value) {
-            
-                if (tok0->kind == T_IDENTIFIER) {
-                    advance();
+                i64 int_value;
+                double float_value;
+                string str_value;
+                if (try_match_id(&id_name)) {
+                    // advance();
 
-                    cstring name = DATA_FROM_IDENTIFIER(tok0);
-                    if (string_equal_cstr(name, "__FUNC__")) {
-                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                    // cstring name = DATA_FROM_IDENTIFIER(tok0);
+                    if (string_equal_cstr(id_name, "__FUNC__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
                         expr->literal_kind = EXPR_LITERAL_STRING;
 
                         if (context->current_function) {
@@ -845,13 +948,13 @@ ASTExpression* parse_expression(ParserContext* context) {
                         }
 
                         array_push(&exprs, (ASTExpression**)&expr);
-                    } else if (string_equal_cstr(name, "__LINE__")) {
-                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                    } else if (string_equal_cstr(id_name, "__LINE__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
                         expr->literal_kind = EXPR_LITERAL_STRING;
 
-                        SourceLocation loc = location_from_token(tok0);
+                        // SourceLocation loc = location_from_token(tok0);
                         int line = 0;
-                        bool res = compute_source_info(context->stream, loc, &line, NULL, NULL);
+                        bool res = compute_source_info(context->import, tok0_loc, &line, NULL, NULL);
                         ASSERT(res);
                         
                         char buffer[13];
@@ -859,13 +962,13 @@ ASTExpression* parse_expression(ParserContext* context) {
                         expr->string_value = string_clone_cptr(buffer);
 
                         array_push(&exprs, (ASTExpression**)&expr);
-                    } else if (string_equal_cstr(name, "__COLUMN__")) {
-                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                    } else if (string_equal_cstr(id_name, "__COLUMN__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
                         expr->literal_kind = EXPR_LITERAL_STRING;
 
-                        SourceLocation loc = location_from_token(tok0);
+                        // SourceLocation loc = location_from_token(tok0);
                         int column = 0;
-                        bool res = compute_source_info(context->stream, loc, NULL, &column, NULL);
+                        bool res = compute_source_info(context->import, tok0_loc, NULL, &column, NULL);
                         ASSERT(res);
 
                         char buffer[13];
@@ -873,128 +976,143 @@ ASTExpression* parse_expression(ParserContext* context) {
                         expr->string_value = string_clone_cptr(buffer);
 
                         array_push(&exprs, (ASTExpression**)&expr);
-                    } else if (string_equal_cstr(name, "__FILE__")) {
-                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
+                    } else if (string_equal_cstr(id_name, "__FILE__")) {
+                        CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
                         expr->literal_kind = EXPR_LITERAL_STRING;
-                        expr->string_value = string_clone_cstr(cstr(context->stream->import->path));
+                        expr->string_value = string_clone_cstr(cstr(context->import->path));
 
                         array_push(&exprs, (ASTExpression**)&expr);
                     } else {
-                        CREATE_EXPR(expr, ASTExpression_Identifier, EXPR_IDENTIFIER, tok0);
-                        expr->name = string_clone_cstr(name);
+                        CREATE_EXPR(expr, ASTExpression_Identifier, EXPR_IDENTIFIER, tok0_loc);
+                        expr->name = string_clone_cstr(id_name);
                         array_push(&exprs, (ASTExpression**)&expr);
                     }
+                } else if (try_match_int(&int_value)) {
+                    // advance();
 
-                } else if (tok0->kind == '[') {
-                    advance();
+                    CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
+                    expr->literal_kind = EXPR_LITERAL_INTEGER;
+                    expr->int_value = int_value;
+
+                    // cstring text = DATA_FROM_TOKEN(tok0);
                     
-                    CREATE_EXPR(expr, ASTExpression_Initializer, EXPR_INITIALIZER, tok0);
+                    // char c = text.ptr[0], c2 = text.len >= 1 ? text.ptr[1] : 0;
+                    // char* endptr;
+                    // if (c == '0' && c2 == 'x') {
+                    //     expr->int_value = strtoul(text.ptr+2, &endptr, 16);
+                    // } else if (c == '0' && c2 == 'o') {
+                    //     expr->int_value = strtoul(text.ptr+2, &endptr, 8);
+                    // } else if (c == '0' && c2 == 'b') {
+                    //     expr->int_value = strtoul(text.ptr+2, &endptr, 2);
+                    // } else {
+                    //     expr->int_value = strtoul(text.ptr, &endptr, 10);
+                    // }
+                    // // We should have parsed text.len characters
+                    // ASSERT((u32)(endptr - text.ptr) == text.len);
+
+                    array_push(&exprs, (ASTExpression**)&expr);
+                } else if (try_match_float(&float_value)) {
+                    // advance();
+                    ASSERT((false,"parse literal float"));
+                } else if (try_match_string(&str_value)) {
+                    // advance();
+                    CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
+                    expr->literal_kind = EXPR_LITERAL_STRING;
+
+                    // cstring text = DATA_FROM_STRING(tok0);
+                    // expr->string_value = string_clone_cstr(text);
+                    expr->string_value = str_value;
+
+                    array_push(&exprs, (ASTExpression**)&expr);
+                } else if (tok0 == '[') {
+                    advance();
+                    skip_space();
+                    
+                    CREATE_EXPR(expr, ASTExpression_Initializer, EXPR_INITIALIZER, tok0_loc);
 
                     while (true) {
-                        const TokenExt* tok = peek(0);
+                        Rune tok = peek_rune(0);
 
-                        if (tok->kind == ']') {
+                        if (tok == ']') {
                             advance();
                             break;
                         }
 
                         ASTExpression_Initializer_Element element = {};
                         
-                        if (tok->kind == T_IDENTIFIER && tok1->kind == '=') {
+                        u32 saved_pos = headpos();
+                        cstring name;
+                        bool matched_id = try_match_id(&name);
+                        skip_space();
+                        Rune tok1 = peek_rune(0);
+                        if (matched_id && tok1 == '=') {
                             advance();
-                            advance();
-                            cstring name = DATA_FROM_IDENTIFIER(tok);
+                            skip_space();
+                            // advance();
+                            // cstring name = DATA_FROM_IDENTIFIER(tok);
                             element.name = string_clone_cstr(name);
+                        } else {
+                            restorepos(saved_pos);
                         }
 
                         element.expr = parse_expression(context);
                         array_push(&expr->elements, &element);
 
-                        tok = peek(0);
-                        if (tok->kind == ']') {
+                        SourceLocation tok_loc = srcloc();
+                        tok = peek_rune(0);
+                        if (tok == ']') {
                             continue;
-                        } else if (tok->kind == ',') {
+                        } else if (tok == ',') {
                             advance();
                             continue;
                         } else {
-                            parse_error(tok, "Expected ',' or ']' to end or continue initializer.");
+                            parse_error(tok_loc, "Expected ',' or ']' to end or continue initializer.");
                         }
                     }
 
                     array_push(&exprs, (ASTExpression**)&expr);
-                } else if (tok0->kind == '{') {
+                } else if (tok0 == '{') {
                     ASTExpression* expr = (ASTExpression*)parse_block_expression(context, false);
 
                     array_push(&exprs, &expr);
-                } else if (tok0->kind == '(') {
+                } else if (tok0 == '(') {
                     advance();
 
                     ASTExpression* expr = parse_expression(context);
 
-                    match(')');
+                    match_rune(')');
 
                     array_push(&exprs, &expr);
-                } else if (tok0->kind == T_LITERAL_INTEGER) {
+                } else if (tok0 == '-') {
                     advance();
 
-                    CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
-                    expr->literal_kind = EXPR_LITERAL_INTEGER;
-
-                    cstring text = DATA_FROM_TOKEN(tok0);
-                    
-                    char c = text.ptr[0], c2 = text.len >= 1 ? text.ptr[1] : 0;
-                    char* endptr;
-                    if (c == '0' && c2 == 'x') {
-                        expr->int_value = strtoul(text.ptr+2, &endptr, 16);
-                    } else if (c == '0' && c2 == 'o') {
-                        expr->int_value = strtoul(text.ptr+2, &endptr, 8);
-                    } else if (c == '0' && c2 == 'b') {
-                        expr->int_value = strtoul(text.ptr+2, &endptr, 2);
-                    } else {
-                        expr->int_value = strtoul(text.ptr, &endptr, 10);
-                    }
-                    // We should have parsed text.len characters
-                    ASSERT((u32)(endptr - text.ptr) == text.len);
-
-                    array_push(&exprs, (ASTExpression**)&expr);
-                } else if (tok0->kind == T_LITERAL_FLOAT) {
-                    advance();
-                    ASSERT((false,"parse literal float"));
-                } else if (tok0->kind == T_LITERAL_STRING) {
-                    advance();
-                    CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0);
-                    expr->literal_kind = EXPR_LITERAL_STRING;
-
-                    cstring text = DATA_FROM_STRING(tok0);
-                    expr->string_value = string_clone_cstr(text);
-
-                    array_push(&exprs, (ASTExpression**)&expr);
-                } else if (tok0->kind == '-') {
-                    advance();
-
-                    CREATE_EXPR(expr, ASTExpression_Unary, EXPR_UNARY, tok0);
+                    CREATE_EXPR(expr, ASTExpression_Unary, EXPR_UNARY, tok0_loc);
                     expr->op_kind = EXPR_OP_SUB;
 
                     array_push(&ops, (ASTExpression**)&expr);
                     continue;
                 } else {
-                    parse_error(tok0, "Not a valid token for expression (primary value)");
+                    parse_error(tok0_loc, "Not a valid token for expression (primary value)");
                 }
                 expect_value = false;
                 continue;
             } else {
                 ASTExpression_Unary* unary_op = NULL;
-                if (tok0->kind == '&' && !HAS_PRE_WHITESPACE(tok0)) {
-                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0);
+                // @TODO Check if token has whitespace before it.
+
+                if (tok0 == '&') {
+                // if (tok0 == '&' && !HAS_PRE_WHITESPACE(tok0)) {
+                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0_loc);
                     unary_op->op_kind = EXPR_OP_ADDRESS_OF;
-                } else if (tok0->kind == '^' && !HAS_PRE_WHITESPACE(tok0)) {
-                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0);
+                // } else if (tok0 == '^' && !HAS_PRE_WHITESPACE(tok0)) {
+                } else if (tok0 == '^') {
+                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0_loc);
                     unary_op->op_kind = EXPR_OP_DEREF;
-                } else if (tok0->kind == '~') {
-                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0);
+                } else if (tok0 == '~') {
+                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0_loc);
                     unary_op->op_kind = EXPR_OP_BITWISE_NEGATE;
-                } else if (tok0->kind == '!') {
-                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0);
+                } else if (tok0 == '!') {
+                    SET_EXPR(unary_op, ASTExpression_Unary, EXPR_UNARY, tok0_loc);
                     unary_op->op_kind = EXPR_OP_LOGICAL_NOT;
                 }
                 if (unary_op) {
@@ -1006,83 +1124,84 @@ ASTExpression* parse_expression(ParserContext* context) {
 
                 ASTExpression_Binary* operation = NULL;
                 
-                if (tok0->kind == '+') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                if (tok0 == '+') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_ADD;
-                } else if (tok0->kind == '-') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '-') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_SUB;
-                } else if (tok0->kind == '*') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '*') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_MUL;
-                } else if (tok0->kind == '/') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '/') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_DIV;
-                } else if (tok0->kind == '%') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '%') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_MODULO;
-                } else if (tok0->kind == '&' && tok1->kind == '&') {
+                } else if (tok0 == '&' && tok1 == '&') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_LOGICAL_AND;
-                } else if (tok0->kind == '|' && tok1->kind == '|') {
+                } else if (tok0 == '|' && tok1 == '|') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_LOGICAL_OR;
-                } else if (tok0->kind == '=' && tok1->kind == '=') {
+                } else if (tok0 == '=' && tok1 == '=') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_EQUAL;
-                } else if (tok0->kind == '!' && tok1->kind == '=') {
+                } else if (tok0 == '!' && tok1 == '=') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_NOT_EQUAL;
-                } else if (tok0->kind == '<' && tok1->kind == '=') {
+                } else if (tok0 == '<' && tok1 == '=') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_LESS_EQUAL;
-                } else if (tok0->kind == '>' && tok1->kind == '=') {
+                } else if (tok0 == '>' && tok1 == '=') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_GREATER_EQUAL;
-                } else if (tok0->kind == '<' && tok1->kind == '<') {
+                } else if (tok0 == '<' && tok1 == '<') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_BITWISE_LSHIFT;
-                } else if (tok0->kind == '>' && tok1->kind == '>') {
+                } else if (tok0 == '>' && tok1 == '>') {
                     advance();
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_BITWISE_RSHIFT;
-                } else if (tok0->kind == '<') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '<') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_LESS;
-                } else if (tok0->kind == '>') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '>') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_GREATER;
-                } else if (tok0->kind == '^') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '^') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_BITWISE_XOR;
-                } else if (tok0->kind == '&') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '&') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_BITWISE_AND;
-                } else if (tok0->kind == '|') {
-                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0);
+                } else if (tok0 == '|') {
+                    SET_EXPR(operation, ASTExpression_Binary, EXPR_BINARY, tok0_loc);
                     operation->op_kind = EXPR_OP_BITWISE_OR;
-                } else if (tok0->kind == '.') {
+                } else if (tok0 == '.') {
                     advance();
-                    const TokenExt* tok = match(T_IDENTIFIER);
+                    skip_space();
+                    cstring name = match_id();
 
-                    cstring name = DATA_FROM_IDENTIFIER(tok);
-                    CREATE_EXPR(expr, ASTExpression_Member, EXPR_MEMBER, tok0);
+                    CREATE_EXPR(expr, ASTExpression_Member, EXPR_MEMBER, tok0_loc);
                     expr->name = string_clone_cstr(name);
 
                     ASTExpression* last_expr = array_last(&exprs);
                     expr->expr = last_expr;
                     exprs.ptr[exprs.len-1] = (ASTExpression*)expr;
                     continue;
-                } else if (tok0->kind == ':') {
+                } else if (tok0 == ':') {
                     advance();
-                    CREATE_EXPR(expr, ASTExpression_Cast, EXPR_CAST, tok0);
+                    skip_space();
+                    CREATE_EXPR(expr, ASTExpression_Cast, EXPR_CAST, tok0_loc);
                     
                     // @TODO Provide good error message.
                     //   "ERROR: Expected type" is terrible.
@@ -1098,70 +1217,88 @@ ASTExpression* parse_expression(ParserContext* context) {
                     Array_ASTExpression_Call_PolyArgument polyargs = {};
                     
                     bool parsed_poly_args = false;
-                    if (tok0->kind == '<' && !HAS_PRE_WHITESPACE(tok0)) {
+                    // @TODO Check white for polymorphic functions?
+                    if (tok0 == '<') {
+                    // if (tok0 == '<' && !HAS_PRE_WHITESPACE(tok0)) {
                         advance();
                         parsed_poly_args = true;
                         
                         while (true) {
-                            const TokenExt* tok = peek(0);
-                            if (tok->kind == '>') {
+                            skip_space();
+                            Rune tok = peek_rune(0);
+                            if (tok == '>') {
                                 advance();
                                 break;
                             }
                             ASTExpression_Call_PolyArgument arg = {};
                             arg.expr = parse_expression(context);
                             array_push(&polyargs, &arg);
+                            skip_space();
 
-                            tok = peek(0);
+                            SourceLocation tok_loc = srcloc();
+                            tok = peek_rune(0);
 
-                            if (tok->kind == '>') {
+                            if (tok == '>') {
                                 continue;
-                            } else if (tok->kind == ',') {
+                            } else if (tok == ',') {
                                 advance();
                                 continue;
                             } else {
-                                parse_error(tok, "Expected '>' or ',' to continue or end polymorphic arguments.");
+                                parse_error(tok_loc, "Expected '>' or ',' to continue or end polymorphic arguments.");
                             }
                         }
                     }
+                    skip_space();
 
-                    if (tok0->kind == '(' || parsed_poly_args) {
-                        match('(');
-                        CREATE_EXPR(expr, ASTExpression_Call, EXPR_CALL, tok0);
+                    if (tok0 == '(' || parsed_poly_args) {
+                        match_rune('(');
+                        
+                        CREATE_EXPR(expr, ASTExpression_Call, EXPR_CALL, tok0_loc);
                         expr->polymorphic_args = polyargs;
                         
                         while (true) {
-                            const TokenExt* tok = peek(0);
-                            if (tok->kind == ')') {
+                            skip_space();
+                            SourceLocation tok_loc = srcloc();
+                            Rune tok = peek_rune(0);
+                            if (tok == ')') {
                                 advance();
                                 break;
                             }
                             
                             ASTExpression_Call_Argument arg = {};
-                            arg.location = location_from_token(tok);
+                            arg.location = tok_loc;
 
-                            const TokenExt* tok1 = peek(1);
 
-                            if (tok->kind == T_IDENTIFIER && tok1->kind == '=') {
+                            u32 saved_pos = headpos();
+                            SourceLocation name_loc = srcloc();
+                            cstring name;
+                            bool matched_id = try_match_id(&name);
+                            skip_space();
+                            Rune tok1 = peek_rune(1);
+
+                            if (name.len > 0 && tok1 == '=') {
                                 advance();
-                                advance();
-                                cstring name = DATA_FROM_IDENTIFIER(tok);
+                                skip_space();
                                 arg.name = string_clone_cstr(name);
-                                arg.location = location_from_token(tok);
+                                arg.location = name_loc;
+                            } else {
+                                restorepos(saved_pos);
                             }
 
                             arg.expr = parse_expression(context);
                             array_push(&expr->arguments, &arg);
-                            
-                            tok = peek(0);
+                            skip_space();
 
-                            if (tok->kind == ')') {
+                            tok_loc = srcloc();
+                            tok = peek_rune(0);
+
+                            if (tok == ')') {
                                 continue;
-                            } else if (tok->kind == ',') {
+                            } else if (tok == ',') {
                                 advance();
                                 continue;
                             } else {
-                                parse_error(tok, "Expected ')' or ',' to continue or end function arguments.");
+                                parse_error(tok_loc, "Expected ')' or ',' to continue or end function arguments.");
                             }
                         }
 
@@ -1248,99 +1385,115 @@ ASTExpression* parse_expression(ParserContext* context) {
 ASTFunction* parse_function(ParserContext* context) {
     PROFILE_START();
 
-    match(T_FN);
+    // match_word(K_FN);
 
-    const TokenExt* tok = match(T_IDENTIFIER);
-    check_error_ext(tok, "Expected an identifier.");
-        
-    cstring name = DATA_FROM_IDENTIFIER(tok);
+    SourceLocation name_loc = srcloc();
+    cstring name = match_id();
+    // check_error_ext(tok, "Expected an identifier.");
+    
+    skip_space();
 
     ASTFunction* out_function = HEAP_ALLOC_OBJECT(ASTFunction);
     out_function->name      = string_clone_cstr(name);
-    out_function->location  = location_from_token(tok);
+    out_function->location  = name_loc;
 
-    match('(');
+    match_rune('(');
 
     ASTFunction* prev_func = context->current_function;
     context->current_function = out_function;
 
     // Parse arguments
     while (true) {
-
-        const TokenExt* tok_ident = peek(0);
-        if (tok_ident->kind == ')') {
-            advance();
+        skip_space();
+        // const TokenExt* tok_ident = peek(0);
+        if (try_match_rune(')')) {
+            // advance();
             break;
         }
 
-        if (tok_ident->kind == T_IDENTIFIER) {
-            advance();
-
-            match(':');
+        SourceLocation field_name_loc = srcloc();
+        cstring field_name;
+        bool matched_id = try_match_id(&field_name);
+        if (matched_id) {
+            skip_space();
+            match_rune(':');
+            skip_space();
 
             ASTType type_name = {};
             bool res = parse_type(context, &type_name);
             ASSERT(res);
+            skip_space();
 
-            const TokenExt* tok = peek(0);
-            if (tok->kind == ';') {
+            Rune tok = peek_rune(0);
+            if (tok == ';') {
                 advance();
             }
+            skip_space();
             ASTFunction_Parameter parameter;
-            cstring field_name      = DATA_FROM_IDENTIFIER(tok_ident);
+            // cstring field_name      = DATA_FROM_IDENTIFIER(tok_ident);
             parameter.name          = string_clone_cstr(field_name);
-            parameter.location      = location_from_token(tok);
+            parameter.location      = field_name_loc;
             parameter.default_value = NULL;
             parameter.type_name     = type_name;
 
             array_push(&out_function->parameters, &parameter);
         } else {
-            parse_error(tok_ident, "Expected a parameter, 'item : i32;'");
+            parse_error(field_name_loc, "Expected a parameter, 'item : i32;'");
         }
-        const TokenExt* tok = peek(0);
-        if (tok->kind == ',') {
+
+        Rune tok = peek_rune(0);
+        if (tok == ',') {
             advance();
             continue;
-        } else if(tok->kind == ')') {
+        } else if(tok == ')') {
             continue;
         } else {
-            parse_error(tok, "Expected a ')' or ','");
+            SourceLocation tok_loc = srcloc();
+            parse_error(tok_loc, "Expected a ')' or ','");
         }
     }
 
     // Parse return values
-    const TokenExt* tok0 = peek(0);
-    const TokenExt* tok1 = peek(1);
-    if (tok0->kind == '-' && tok1->kind == '>') {
+    Rune tok0 = peek_rune(0);
+    Rune tok1 = peek_rune(1);
+    if (tok0 == '-' && tok1 == '>') {
         advance();
         advance();
         while (true) {
-
-            const TokenExt* tok0 = peek(0);
-            const TokenExt* tok1 = peek(1);
+            skip_space();
+            SourceLocation tok0_loc = srcloc();
+            // const TokenExt* tok0 = peek(0);
+            // const TokenExt* tok1 = peek(1);
 
             ASTFunction_Parameter parameter = {};
-            parameter.location = location_from_token(tok0);
+            parameter.location = tok0_loc;
 
-            if (tok0->kind == T_IDENTIFIER && tok1->kind == ':') {
-                advance();
-                advance();
+            u32 saved_pos = headpos();
 
-                cstring field_name     = DATA_FROM_IDENTIFIER(tok0);
+            cstring field_name;
+            bool matched_id = try_match_id(&field_name);
+            skip_space();
+            if (matched_id && try_match_rune(':')) {
+                // cstring field_name     = DATA_FROM_IDENTIFIER(tok0);
                 parameter.name         = string_clone_cstr(field_name);
+                skip_space();
+            } else {
+                restorepos(saved_pos);
             }
             
             bool res = parse_type(context, &parameter.type_name);
             ASSERT(res);
+            skip_space();
 
             array_push(&out_function->return_values, &parameter);
             
-            if (tok->kind == ';') {
+            Rune tok = peek_rune(0);
+            if (tok == ';') {
                 advance();
                 break;
-            } else if (tok->kind == '{') {
+            } else if (tok == '{') {
                 break;
-            } else if (tok->kind == ',') {
+            } else if (tok == ',') {
                 advance();
                 continue;
             } else {
@@ -1375,9 +1528,10 @@ ASTFunction* parse_function(ParserContext* context) {
             }
         }
     }
+    skip_space();
 
-    const TokenExt* tok_body = peek(0);
-    if (tok_body->kind == '{') {
+    Rune tok_body = peek_rune(0);
+    if (tok_body == '{') {
         ASTExpression* body = (ASTExpression*)parse_block_expression(context, false);
         out_function->body = body;
     }
@@ -1399,58 +1553,66 @@ ASTFunction* parse_function(ParserContext* context) {
 
 ASTEnum* parse_enum(ParserContext* context) {
     PROFILE_START();
-    match(T_ENUM);
+    // match_word(T_ENUM);
 
-    advance();
+    // advance();
 
-    const TokenExt* tok = match(T_IDENTIFIER);
-    check_error_ext(tok, "Expected an identifier.");
+    SourceLocation name_loc = srcloc();
+    cstring name = match_id();
+    skip_space();
+    // check_error_ext(tok, "Expected an identifier.");
     
-    cstring name = DATA_FROM_IDENTIFIER(tok);
+    // cstring name = DATA_FROM_IDENTIFIER(tok);
     
     ASTEnum* out_enum = HEAP_ALLOC_OBJECT(ASTEnum);
     out_enum->name      = string_clone_cstr(name);
-    out_enum->location  = location_from_token(tok);
+    out_enum->location  = name_loc;
 
-    tok = peek(0);
-    if (tok->kind == ':') {
+    Rune tok = peek_rune(0);
+    if (tok == ':') {
         advance();
+        skip_space();
         bool res = parse_type(context, &out_enum->type_name);
         ASSERT(res);
+        skip_space();
     }
 
-    match('{');
+    match_rune('{');
 
     while (true) {
+        skip_space();
+        SourceLocation tok_loc = srcloc();
+        Rune tok = peek_rune(0);
 
-        const TokenExt* tok = peek(0);
-
-        if (tok->kind == T_IDENTIFIER) {
-            advance();
+        cstring member_name;
+        bool matched_id = try_match_id(&member_name);
+        if (matched_id) {
+            skip_space();
 
             ASTEnum_Member member = {};
 
-            cstring member_name  = DATA_FROM_IDENTIFIER(tok);
             member.name          = string_clone_cstr(member_name);
-            member.location      = location_from_token(tok);
+            member.location      = tok_loc;
             
-            const TokenExt* tok = peek(0);
-            if (tok->kind == '=') {
+            Rune tok = peek_rune(0);
+            if (tok == '=') {
                 advance();
+                skip_space();
                 member.default_value = parse_expression(context);
+                skip_space();
             }
 
-            tok = peek(0);
-            if (tok->kind == ',') {
+            tok = peek_rune(0);
+            if (tok == ',') {
                 advance();
             }
 
             array_push(&out_enum->members, &member);
-        } else if (tok->kind == '}') {
+        } else if (tok == '}') {
             advance();
             break;
         } else {
-            parse_error(tok, "Expected a field, 'item = 5,'");
+            parse_error(tok_loc, "Expected a field, 'item = 5,'");
         }
     }
     PROFILE_END();
@@ -1460,49 +1622,54 @@ ASTEnum* parse_enum(ParserContext* context) {
 
 ASTStruct* parse_struct(ParserContext* context) {
     PROFILE_START();
-    match(T_STRUCT);
+    // match(T_STRUCT);
 
-    advance();
-
-    const TokenExt* tok = match(T_IDENTIFIER);
-    check_error_ext(tok, "Expected an identifier.");
-        
-    cstring name = DATA_FROM_IDENTIFIER(tok);
+    SourceLocation name_loc = srcloc();
+    cstring name = match_id();
+    skip_space();
 
     ASTStruct* out_struct = HEAP_ALLOC_OBJECT(ASTStruct);
     out_struct->name      = string_clone_cstr(name);
-    out_struct->location  = location_from_token(tok);
+    out_struct->location  = name_loc;
 
-    match('{');
+    match_rune('{');
 
     while (true) {
+        skip_space();
+        // const TokenExt* tok = peek(0);
 
-        const TokenExt* tok = peek(0);
+        SourceLocation tok_loc = srcloc();
+        Rune tok = peek_rune(0);
 
-        if (tok->kind == T_IDENTIFIER) {
-            advance();
+        cstring field_name;
+        bool matched_id = try_match_id(&field_name);
 
-            match(':');
+        if (matched_id) {
+            // advance();
+            skip_space();
+            match_rune(':');
+            skip_space();
 
             ASTStruct_Field field = {};
-            cstring field_name = DATA_FROM_IDENTIFIER(tok);
+            // cstring field_name = DATA_FROM_IDENTIFIER(tok);
             field.name         = string_clone_cstr(field_name);
-            field.location     = location_from_token(tok);
-            bool res = parse_type(context, &field.type_name);
-            ASSERT(res);
+            field.location     = tok_loc;
+            parse_type(context, &field.type_name);
+            
+            skip_space();
 
             array_push(&out_struct->fields, &field);
 
-            const TokenExt* tok = peek(0);
-            if (tok->kind == ';') {
+            Rune tok = peek_rune(0);
+            if (tok == ';') {
                 advance();
             }
 
-        } else if (tok->kind == '}') {
+        } else if (tok == '}') {
             advance();
             break;
         } else {
-            parse_error(tok, "Expected a field, 'item : i32;'");
+            parse_error(tok_loc, "Expected a field, 'item : i32;'");
         }
         // @TODO Parse function
     }
@@ -1516,24 +1683,30 @@ bool parse_type(ParserContext* context, ASTType* typename) {
     string acc = {};
     // @TODO Disallow 'text: char*int'
     while (true) {
-        const TokenExt* tok = peek(0);
-        if (tok->kind == T_IDENTIFIER) {
+        skip_space();
+        SourceLocation tok_loc = srcloc();
+        Rune tok = peek_rune(0);
+        
+        cstring type_name;
+        bool matched_id = try_match_id(&type_name);
+        if (matched_id) {
+            // advance();
+            // cstring str = DATA_FROM_IDENTIFIER(tok);
+            string_append_cstr(&acc, type_name);
+        } else if (tok == '*') {
             advance();
-            cstring str = DATA_FROM_IDENTIFIER(tok);
-            string_append_cstr(&acc, str);
-        } else if (tok->kind == '*') {
-            advance();
-            string_append_char(&acc, tok->kind);
-        } else if (tok->kind == '[') {
-            const TokenExt* tok1 = peek(1);
-            if (tok1->kind == ']') {
+            string_append_char(&acc, '*');
+        } else if (tok == '[') {
+            Rune tok1 = peek_rune(1);
+            if (tok1 == ']') {
                 advance();
                 advance();
                 string_append_cstr(&acc, cstr_cptr("[]"));
             }
+            // @TODO not complete here.
         } else {
             if (acc.len == 0)
-                parse_error(tok, "Invalid type.");
+                parse_error(tok_loc, "Invalid type.");
             break;
         }
     }
@@ -1541,3 +1714,672 @@ bool parse_type(ParserContext* context, ASTType* typename) {
     PROFILE_END();
     return true;
 }
+
+
+
+
+void import_init_line_positions(Import* import) {
+    u32 head = 0;
+
+    array_init(&import->line_positions, import->text.len / 40);
+
+    array_push(&import->line_positions, &head);
+    
+    while(head < import->text.len) {
+        int cur_head = head;
+        char chr = import->text.ptr[head];
+        head++;
+
+        if(chr == '\n') {
+            array_push(&import->line_positions, &head);
+        }
+    }
+}
+
+static int pos_to_line_index(Import* import, int position) {
+    TracyCZone(zone, 1);
+    int* data = import->line_positions.ptr;
+    int  len  = import->line_positions.len;
+    int  high = len-1;
+    int  low  = 0;
+    int  mid, val;
+
+    while (true) {
+        mid = (high+low)/2;
+        val = data[mid];
+        if (position < val) {
+            high = mid-1;
+            if (position >= data[mid-1]) {
+                mid = mid-1;
+                break;
+            }
+        } else if(position > val) {
+            low = mid+1;
+            if (position < data[mid+1]) {
+                break;
+            }
+        } else if (high == low || position == val) {
+            break;
+        }
+    }
+    TracyCZoneEnd(zone);
+    return mid;
+}
+
+bool compute_source_info(Import* import, SourceLocation location, int* out_line, int* out_column, string* out_code) {
+    TracyCZone(zone, 1);
+
+    bool result = false;
+
+    if(out_line) {
+        *out_line = 0;
+    }
+    if(out_column) {
+        *out_column = 0;
+    }
+    if(out_code) {
+        out_code->ptr = NULL;
+        out_code->len = 0;
+        out_code->max = 0;
+    }
+    if(location.import_id == INVALID_IMPORT_ID) {
+        goto end;
+    }
+    
+    string text = {};
+    text.ptr = import->text.ptr;
+    text.len = import->text.len;
+
+    if(!text.ptr) {
+        goto end;
+    }
+
+    int nr_tabs = 0;
+    int line_index = pos_to_line_index(import, location.position);
+    int line = line_index + 1;
+    int column = 1;
+    int head_at_line_start = import->line_positions.ptr[line_index];
+    u32 head = head_at_line_start;
+
+    while(head < text.len) {
+        char chr = text.ptr[head];
+        head++;
+
+        if(chr == '\n') {
+            head--;
+            break;
+        }
+        if(head <= location.position) {
+            column+=1;
+            if(chr == '\t') {
+                nr_tabs++;
+            }
+        }
+    }
+    
+    if(out_line) {
+        *out_line = line;
+    }
+    if(out_column) {
+        *out_column = column;
+    }
+    if(out_code) {
+        char* code = text.ptr + head_at_line_start;
+        int len = head - head_at_line_start;
+        // Create code string like this:
+        //     value = call_func(1, x, 5)
+        //             ^
+
+        out_code->len = len + 1 // length of characters on the line + newline
+            + (column-1) + 1 + 1; // amount of spaces + arrow + newline
+        out_code->max = out_code->len;
+        out_code->ptr = mem__alloc(out_code->max + 1); // +1 for null character
+        memcpy(out_code->ptr, code, len);
+        out_code->ptr[len] = '\n';
+        out_code->ptr[out_code->len] = '\0';
+
+        char* arrow_code = out_code->ptr + len + 1;
+
+        int arrow_head = 0;
+        while(arrow_head < nr_tabs) {
+            arrow_code[arrow_head++] = '\t';
+        }
+        while(arrow_head < column-1) {
+            arrow_code[arrow_head++] = ' ';
+        }
+        arrow_code[arrow_head] = '^';
+        arrow_code[arrow_head+1] = '\n';
+    }
+
+    result = true;
+
+end:
+    TracyCZoneEnd(zone);
+    return result;
+}
+
+
+void _parse_error(ParserContext* context, SourceLocation loc, char* fmt, ...) {
+    context->bad_location = loc;
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(context->error_message, sizeof(context->error_message), fmt, ap);
+    va_end(ap);
+
+    longjmp(context->jump_state, 1);
+}
+
+static SourceLocation _srcloc(ParserContext* context) {
+    // @TODO Handle out of bounds
+    SourceLocation loc;
+    loc.import_id = context->import->import_id;
+    loc.position = context->head;
+    return loc;
+}
+
+static bool _skip_space(ParserContext* context) {
+    u32 head_start = context->head;
+    while (context->head < context->import->text.len) {
+        char rune = context->import->text.ptr[context->head];
+        char rune2 = 0;
+        if (context->head+1 < context->import->text.len) {
+            rune2 = context->import->text.ptr[context->head+1];
+        }
+        if (rune == '/' && rune2 == '/') {
+            context->head += 2;
+            while(context->head < context->import->text.len) {
+                char rune = context->import->text.ptr[context->head];
+                context->head += 1;
+                if(rune == '\n') {
+                    break;
+                }
+            }
+        } else if (rune == '/' && rune2 == '*') {
+            context->head += 2;
+            u32 depth = 1;
+            while(context->head < context->import->text.len) {
+                char rune = context->import->text.ptr[context->head];
+                char rune2 = 0;
+                if (context->head + 1 < context->import->text.len) {
+                    rune2 = context->import->text.ptr[context->head+1];
+                }
+                context->head += 1;
+                if(rune == '/' && rune2 == '*') {
+                    context->head += 1;
+                    depth++;
+                    continue;
+                }
+                if(rune == '*' && rune2 == '/') {
+                    context->head += 1;
+                    depth--;
+                    if(depth == 0)
+                        break;
+                }
+            }
+        } else if (rune == '\t' || rune == ' ' || rune == '\n' || rune == '\f') {
+            context->head++;
+        } else {
+            break;
+        }
+    }
+
+    return head_start != context->head;
+}
+
+static int _peek_rune(ParserContext* context, int n) {
+    if (context->head >= context->import->text.len) {
+        // _parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted '%s'", name_from_token(kind));
+        return EOF_RUNE;
+    }
+    // @TODO Handle out of bounds
+    char current_rune = context->import->text.ptr[context->head];
+    return current_rune;
+}
+
+static u32 _headpos(ParserContext* context) {
+    if (context->head >= context->import->text.len) {
+        SourceLocation loc = srcloc();
+        // @TODO Fix this. does it happen?
+        _parse_error(context, loc, "End of file, internal failure.");
+        return -1;
+    }
+    return context->head;
+}
+
+static bool _match_rune(ParserContext* context, int rune, bool peek_operation) {
+    if (context->head >= context->import->text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected end of file, wanted '%c'", rune);
+        }
+        return false;
+    }
+    char current_rune = context->import->text.ptr[context->head];
+    if (current_rune != rune) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected token, wanted '%c'", rune);
+        }
+        return false;
+    }
+    return true;
+}
+
+static bool _match_word(ParserContext* context, const char* word, bool peek_operation) {
+    if (context->head >= context->import->text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected end of file, wanted '%s'", word);
+        }
+        return false;
+    }
+
+    u32 word_len = strlen(word);
+    u32 index = 0;
+    while (index < context->import->text.len) {
+        char chr = context->import->text.ptr[context->head + index];
+        if (chr != word[index]) {
+            if (!peek_operation) {
+                SourceLocation loc = srcloc();
+                _parse_error(context, loc, "Unexpected token, wanted '%s'", word);
+            }
+            return false;
+        }
+        index++;
+        if (index == word_len) {
+            break;
+        }
+    }
+
+    context->head += index;
+
+    return true;
+}
+
+static bool _match_string(ParserContext* context, string* outstring, bool peek_operation) {
+    if (context->head >= context->import->text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected token, wanted literal string.");
+        }
+        return false;
+    }
+
+    char rune = context->import->text.ptr[context->head];
+    if (rune != '"') {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected token, wanted literal string.");
+        }
+        return false;
+    }
+    u32 head = context->head + 1;
+
+    string text = context->import->text;
+    
+    u32 head_start = head;
+    while(head < text.len) {
+        // Handle UTF-8 encoding here? or maybe nothing special is needed?
+        char chr = text.ptr[head];
+        if(chr == '"' && text.ptr[head-1] != '\\') {
+            break;
+        }
+        head++;
+    }
+    u32 head_end = head - 1;
+
+    u32 str_length = head_end - head_start;
+    string outstr = string_create(str_length);
+
+    char* ptr = outstr.ptr;
+    u32 index = 0;
+    int real_count = 0;
+    while (index < str_length) {
+        char chr = text.ptr[head_start + index];
+        index++;
+        if (chr == '\\') {
+            if (index < str_length) {
+                char chr2 = text.ptr[head_start + index];
+                if (chr2 == 'n') {
+                    index++;
+                    ptr[real_count] = '\n';
+                    real_count++;
+                    continue;
+                } else if (chr2 == 't') {
+                    index++;
+                    ptr[real_count] = '\t';
+                    real_count++;
+                    continue;
+                } else if (chr2 == 'r') {
+                    index++;
+                    ptr[real_count] = '\r';
+                    real_count++;
+                    continue;
+                } else if (chr2 == 'e') {
+                    index++;
+                    ptr[real_count] = '\033';
+                    real_count++;
+                    continue;
+                }  else if (chr2 == '"') {
+                    index++;
+                    ptr[real_count] = '"';
+                    real_count++;
+                    continue;
+                }  else if (chr2 == '\'') {
+                    index++;
+                    ptr[real_count] = '\'';
+                    real_count++;
+                    continue;
+                } else if (chr2 == '0') {
+                    index++;
+                    ptr[real_count] = '\0';
+                    real_count++;
+                    continue;
+                } else if (chr2 == '\\') {
+                    index++;
+                    ptr[real_count] = '\\';
+                    real_count++;
+                    continue;
+                } else if (chr2 == 'x') {
+                    index++;
+                    char c0 = text.ptr[head_start + index];
+                    char c1 = text.ptr[head_start + index+1];
+                    index+=2;
+                    if (!is_hex(c0) || !is_hex(c1)) {
+                        char* bad_text     = text.ptr + head_start + index - 4;
+                        int   bad_text_len = (index) - (index - 4);
+                        // @TODO Add location of error.
+                        fprintf(stderr, "ERROR: Invalid escape sequence '%.*s'. (\\xXX)\n", bad_text_len, bad_text);
+                        ASSERT(false);
+                    }
+                    ptr[real_count] = (hex_to_byte(c0) << 4) | hex_to_byte(c1);
+                    real_count++;
+                    continue;
+                } else {
+                    u32 codepoint;
+                    if (chr2 == 'u') {
+                        index++;
+                        char c0 = text.ptr[head_start + index];
+                        char c1 = text.ptr[head_start + index+1];
+                        char c2 = text.ptr[head_start + index+2];
+                        char c3 = text.ptr[head_start + index+3];
+                        index += 4;
+                        if (!is_hex(c0) || !is_hex(c1)|| !is_hex(c2) || !is_hex(c3)) {
+                            char* bad_text     = text.ptr + head_start + index - 6;
+                            int   bad_text_len = (index) - (index - 6);
+                            // @TODO Add location of error.
+                            fprintf(stderr, "ERROR: Invalid escape sequence '%.*s'. (\\uXXXX)\n", bad_text_len, bad_text);
+                            ASSERT(false);
+                        }
+                        // @TODO Error check, c0,c1,c2,c3 should be [0-9a-fA-F]
+                        codepoint = (hex_to_byte(c0) << 12) | (hex_to_byte(c1) << 8) | (hex_to_byte(c2) << 4) | (hex_to_byte(c3));
+                        goto emit_codepoint;
+                    } else if (chr2 == 'U') {
+                        index++;
+                        char c0 = text.ptr[head_start + index];
+                        char c1 = text.ptr[head_start + index+1];
+                        char c2 = text.ptr[head_start + index+2];
+                        char c3 = text.ptr[head_start + index+3];
+                        char c4 = text.ptr[head_start + index+4];
+                        char c5 = text.ptr[head_start + index+5];
+                        char c6 = text.ptr[head_start + index+6];
+                        char c7 = text.ptr[head_start + index+7];
+                        index += 8;
+                        if (!is_hex(c0) || !is_hex(c1)|| !is_hex(c2) || !is_hex(c3)||
+                        !is_hex(c4) || !is_hex(c5)|| !is_hex(c6) || !is_hex(c7)) {
+                            char* bad_text     = text.ptr + head_start + index - 10;
+                            int   bad_text_len = (index) - (index - 10);
+                            // @TODO Add location of error.
+                            fprintf(stderr, "ERROR: Invalid escape sequence '%.*s'. (\\uXXXX)\n", bad_text_len, bad_text);
+                            ASSERT(false);
+                        }
+                        goto emit_codepoint;
+                    }
+                    if (false) {
+                    emit_codepoint:
+                        if (codepoint <= 0x7F) {
+                            ptr[real_count] = codepoint;
+                            real_count+=1;
+                        } else if (codepoint <= 0x7FF) {
+                            ptr[real_count]   = 0b11000000 | (codepoint >> 6);
+                            ptr[real_count+1] = 0b10000000 | (codepoint & 0b111111);
+                            real_count+=2;
+                        } else if (codepoint <= 0xFFFF) {
+                            ptr[real_count]   = 0b11100000 | (codepoint >> 12);
+                            ptr[real_count+1] = 0b10000000 | ((codepoint >> 6) & 0b111111);
+                            ptr[real_count+2] = 0b10000000 | (codepoint & 0b111111);
+                            real_count+=3;
+                        } else if (codepoint <= 0x10FFFF) {
+                            ptr[real_count]   = 0b11100000 | (codepoint >> 18);
+                            ptr[real_count+1] = 0b10000000 | ((codepoint >> 12) & 0b111111);
+                            ptr[real_count+2] = 0b10000000 | ((codepoint >> 6) & 0b111111);
+                            ptr[real_count+3] = 0b10000000 | (codepoint & 0b111111);
+                            real_count+=4;
+                        }
+                        continue;
+                    }
+                }
+            } else {
+                fprintf(stderr, "ERROR: Strings cannot be larger than 65536 characters (token was %d chars.)\n", head_start);
+                ASSERT(false);
+            }
+        }
+        ptr[real_count] = chr;
+        real_count++;
+    }
+    // @TODO Detect missing ending quote
+    outstr.len = str_length;
+    context->head = head;
+    *outstring = outstr;
+    return true;
+}
+
+static bool _match_int(ParserContext* context, i64* out_value, bool peek_operation) {
+    if (context->head >= context->import->text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected end of file, wanted literal int");
+        }
+        return false;
+    }
+
+    // @TODO match keyword
+    
+    string text = context->import->text;
+    i64 accumulator = 0;
+    u32 head = context->head;
+
+    char rune = text.ptr[head];
+    char rune2 = 0;
+    if (head + 1 < text.len) {
+        rune2 = text.ptr[head+1];
+    }
+    if (rune == '0' && rune2 == 'x') {
+        head += 2;
+        while(head < text.len) {
+            char chr = text.ptr[head];
+            if((chr < '0' || chr > '9')) {
+                // @TODO Error for overflow
+                accumulator = accumulator * 16 + chr - '0';
+            } else if ((chr|32) < 'a' || (chr|32) > 'f') {
+                accumulator = accumulator * 16 + (chr|32) - 'a' + 10;
+            } else if (chr == '_') {
+                // skip, _ is used for nice formatting in big numbers
+            }
+            head++;
+        }
+    } else if (rune == '0' && rune2 == 'o') {
+        head += 2;
+        while(head < text.len) {
+            char chr = text.ptr[head];
+            if(chr < '0' || chr > '7') {
+                accumulator = accumulator * 8 + chr - '0';
+            } else if (chr == '_') {
+                // skip
+            }
+            head++;
+        }
+    } else if (rune == '0' && rune2 == 'b') {
+        head += 2;
+        while(head < text.len) {
+            char chr = text.ptr[head];
+            if(chr < '0' || chr > '1') {
+                accumulator = accumulator * 2 + chr - '0';
+            } else if (chr == '_') {
+                // skip
+            }
+            head++;
+        }
+    } else if(rune < '0' || rune > '9') {
+        while(head < text.len) {
+            char chr = text.ptr[head];
+            if(chr < '0' || chr > '9') {
+                accumulator = accumulator * 10 + chr - '0';
+            } else if (chr == '_') {
+                // skip
+            }
+            head++;
+        }
+    } else {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected token, wanted literal integer.");
+        }
+        return false;
+    }
+
+    context->head = head;
+    *out_value = accumulator;
+    return true;
+}
+
+static bool _match_float(ParserContext* context, double* out_value, bool peek_operation) {
+    if (context->head >= context->import->text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected token, wanted literal float.");
+        }
+        return false;
+    }
+
+    // // @TODO match keyword
+    
+    // string text = context->import->text;
+    // i64 accumulator = 0;
+    // u32 head = context->head;
+
+    // char rune = text.ptr[head];
+    // char rune2 = 0;
+    // if (head + 1 < text.len) {
+    //     rune2 = text.ptr[head+1];
+    // }
+    // if (rune == '0' && rune2 == 'x') {
+    //     head += 2;
+    //     while(head < text.len) {
+    //         char chr = text.ptr[head];
+    //         if((chr < '0' || chr > '9')) {
+    //             // @TODO Error for overflow
+    //             accumulator = accumulator * 16 + chr - '0';
+    //         } else if ((chr|32) < 'a' || (chr|32) > 'f') {
+    //             accumulator = accumulator * 16 + (chr|32) - 'a' + 10;
+    //         } else if (chr == '_') {
+    //             // skip, _ is used for nice formatting in big numbers
+    //         }
+    //         head++;
+    //     }
+    // } else if (rune == '0' && rune2 == 'o') {
+    //     head += 2;
+    //     while(head < text.len) {
+    //         char chr = text.ptr[head];
+    //         if(chr < '0' || chr > '7') {
+    //             accumulator = accumulator * 8 + chr - '0';
+    //         } else if (chr == '_') {
+    //             // skip
+    //         }
+    //         head++;
+    //     }
+    // } else if (rune == '0' && rune2 == 'b') {
+    //     head += 2;
+    //     while(head < text.len) {
+    //         char chr = text.ptr[head];
+    //         if(chr < '0' || chr > '1') {
+    //             accumulator = accumulator * 2 + chr - '0';
+    //         } else if (chr == '_') {
+    //             // skip
+    //         }
+    //         head++;
+    //     }
+    // } else if(rune < '0' || rune > '9') {
+    //     while(head < text.len) {
+    //         char chr = text.ptr[head];
+    //         if(chr < '0' || chr > '9') {
+    //             accumulator = accumulator * 10 + chr - '0';
+    //         } else if (chr == '_') {
+    //             // skip
+    //         }
+    //         head++;
+    //     }
+    // } else {
+    //     SourceLocation loc = srcloc();
+    //     _parse_error(context, loc, "Unexpected token, wanted '%s'", name_from_token(T_LITERAL_INTEGER));
+    //     return false;
+    // }
+
+    // context->head = head;
+    // return accumulator;
+    return false;
+}
+
+static bool _match_id(ParserContext* context, cstring* outstring, bool peek_operation) {
+    if (context->head >= context->import->text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "EOF, wanted identifier");
+        }
+        return false;
+    }
+  
+    string text = context->import->text;
+    u32 head_start = context->head;
+    u32 head = context->head;
+
+    char rune = text.ptr[head];
+    if(! (((rune|32) >= 'a' && (rune|32) <= 'z') || (unsigned)rune > 128)) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected token, wanted identifier.");
+        }
+        return false;
+    }
+
+    cstring outstr = {};
+    outstr.ptr = text.ptr + head_start;
+
+    while(head < text.len) {
+        char rune = text.ptr[head];
+        if(((rune|32) >= 'a' && (rune|32) <= 'z') || rune == '_' || (rune >= '0' && rune <= '9') || (unsigned)rune > 128) {
+            head++;
+        } else {
+            break;
+        }
+    }
+    outstr.len = head - head_start;
+    context->head = head;
+
+    *outstring = outstr;
+    return true;
+}
+
+
+static void _advance(ParserContext* context) {
+    if (context->head >= context->import->text.len)
+        return;
+    // @TODO Advance more than one byte if unicode character.
+    context->head += 1;
+}
+
+
+
+
+

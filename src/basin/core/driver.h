@@ -17,7 +17,7 @@
 #pragma once
 
 #include "basin/common.h"
-#include "basin/frontend/lexer.h"
+// #include "basin/frontend/lexer.h"
 #include "basin/basin.h"
 #include "basin/backend/ir.h"
 
@@ -29,7 +29,7 @@ typedef struct AST AST;
 
 typedef enum {
     TASK_INVALID,
-    TASK_LEX_AND_PARSE,
+    TASK_PARSE,
     TASK_GEN_IR,
     TASK_GEN_MACHINE,
     TASK_GEN_OBJECT,

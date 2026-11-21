@@ -79,26 +79,28 @@ Success (no object file is generated, IR and x86 machine code is flawed)
 (Same for Windows and Linux)
 
 **Dependencies**
-- Python 3.11 (3.9 probably works too)
-- GCC
+- GNU Make
+- GCC (or MSVC, or Clang, or TinyCC)
+
+(only GCC and Mingw GCC has been tested)
 
 **Compiling**
 ```bash
 git clone https://github.com/Emarioo/basin
 cd basin
-python3 build.py
+make -j
 ```
 **Usage**
 ```bash
 # Linux
 source env.sh
 which basin
-/mnt/d/dev/basin/releases/basin-0.0.1-linux-x86_64/bin/basin
+/mnt/d/dev/basin/bin/basin
 
 # Windows
 env.bat
 where basin
-D:\dev\basin\releases\basin-0.0.1-windows-x86_64\bin\basin.exe
+D:\dev\basin\bin\basin.exe
 
 # Dev example (latest feature being worked on)
 basin dev.bsn

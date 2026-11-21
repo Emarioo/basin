@@ -1,7 +1,7 @@
 #include "basin/core/driver.h"
 
 #include "basin/logger.h"
-#include "basin/frontend/lexer.h"
+// #include "basin/frontend/lexer.h"
 #include "basin/frontend/parser.h"
 #include "basin/backend/gen_ir.h"
 #include "basin/backend/ir.h"
@@ -217,6 +217,7 @@ void driver_cleanup(Driver* driver) {
     TracyCZoneEnd(zone);
 }
 
+
 u32 driver_thread_run(DriverThread* thread_driver) {
     TracyCZone(zone, 1);
 
@@ -289,7 +290,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
         // Perform task
         switch(task.kind) {
-            case TASK_LEX_AND_PARSE: {
+            case TASK_PARSE: {
                 if (!task.lex_and_parse.import->text.ptr) {
                     BasinResult result = {};
                     string text = util_read_whole_file(task.lex_and_parse.import->path.ptr);
@@ -299,17 +300,18 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                         break;
                     }
                     task.lex_and_parse.import->text = text;
+                    import_init_line_positions(task.lex_and_parse.import);
                 }
-                TokenStream* stream = NULL;
-                Result result = tokenize(task.lex_and_parse.import, &stream);
-                if(result.kind != SUCCESS) {
-                    // Print message. We are done with this series of tasks
-                    fprintf(stderr, "%s", result.message.ptr);
-                    break;
-                }
+                // TokenStream* stream = NULL;
+                // Result result = tokenize(task.lex_and_parse.import, &stream);
+                // if(result.kind != SUCCESS) {
+                //     // Print message. We are done with this series of tasks
+                //     fprintf(stderr, "%s", result.message.ptr);
+                //     break;
+                // }
 
                 AST* ast = NULL;
-                result = parse_stream(task.compilation, stream, &ast);
+                Result result = parse_import(task.compilation, task.lex_and_parse.import, &ast);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
@@ -487,7 +489,7 @@ string comp_resolve_import_path(Compilation* compilation, const Import* origin, 
 
 const char* task_kind_names[TASK_COUNT] = {
     "TASK_INVALID",
-    "TASK_LEX_AND_PARSE",
+    "TASK_PARSE",
     "TASK_GEN_IR",
     "TASK_GEN_MACHINE",
     "TASK_GEN_OBJECT",

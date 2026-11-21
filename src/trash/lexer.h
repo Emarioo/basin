@@ -200,11 +200,6 @@ typedef struct {
     };
 } TokenExt;
 
-typedef struct {
-    u16       _reserved;
-    ImportID  import_id;
-    u32       position;
-} SourceLocation;
 
 // #define IS_EXT_TOKEN(K) ((K >= T_IDENTIFIER && K <= T_LITERAL_STRING) || K == '{' || K == '}' || K == '(' || K == ')' )
 #define IS_EXT_TOKEN(K) (K >= T_IDENTIFIER && K <= T_LITERAL_STRING)

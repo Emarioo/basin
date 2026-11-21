@@ -74,7 +74,7 @@ BasinResult basin_compile(const BasinCompileOptions* options) {
 
     Task task = {};
     task.compilation = comp;
-    task.kind = TASK_LEX_AND_PARSE;
+    task.kind = TASK_PARSE;
     task.lex_and_parse.import = driver_create_import_id(driver, c_path);
 
     if (options->input_text) {

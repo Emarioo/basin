@@ -2,6 +2,7 @@
 #include "basin/backend/gen_ir.h"
 
 #include "basin/core/driver.h"
+#include "basin/frontend/parser.h"
 #include "basin/frontend/ast.h"
 #include "basin/backend/ir.h"
 
@@ -149,12 +150,12 @@ Result generate_ir(Compilation* compilation, AST* ast, IRProgram* program) {
     } else {
         int line, column;
         string code;
-        bool yes = compute_source_info(ast->stream, context.bad_location, &line, &column, &code);
+        bool yes = compute_source_info(ast->import, context.bad_location, &line, &column, &code);
 
         char buffer[1024];
         int len = 0;
         len += snprintf(buffer + len, sizeof(buffer) - len, "\033[0;30m%s:%d\033[0m\n", context.c_location.path, context.c_location.line);
-        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[31m%s:%d:%d:\033[0m %s\n%s", ast->stream->import->path.ptr, line, column, context.error_message, code.ptr);
+        len += snprintf(buffer + len, sizeof(buffer) - len, "\033[31m%s:%d:%d:\033[0m %s\n%s", ast->import->path.ptr, line, column, context.error_message, code.ptr);
         result.kind = FAILURE;
         result.message = string_clone_cptr(buffer);
     }

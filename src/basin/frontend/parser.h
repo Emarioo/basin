@@ -22,7 +22,9 @@
 
 typedef struct Driver Driver;
 typedef struct AST AST;
-typedef struct TokenStream TokenStream;
 
-Result parse_stream(Compilation* compilation, TokenStream* stream, AST** out_ast);
+Result parse_import(Compilation* compilation, Import* import, AST** out_ast);
 void print_ast(AST* ast);
+
+bool compute_source_info(Import* import, SourceLocation location, int* out_line, int* out_column, string* out_code);
+void import_init_line_positions(Import* import);

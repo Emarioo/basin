@@ -1,7 +1,7 @@
 #pragma once
 
 #include "basin/common.h"
-#include "basin/frontend/lexer.h" // SourceLocation
+// #include "basin/frontend/lexer.h" // SourceLocation
 #include "basin/backend/ir.h"
 #include "basin/util/array.h"
 
@@ -178,7 +178,8 @@ typedef struct ASTExpression_Block ASTExpression_Block;
 
 // Memory owner
 typedef struct AST {
-    TokenStream* stream;
+    // TokenStream* stream;
+    Import* import;
     ASTExpression_Block* global_block;
 } AST;
 

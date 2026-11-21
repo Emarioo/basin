@@ -14,6 +14,7 @@ typedef u16 ImportID;
 #define INVALID_IMPORT_ID 0xFFFFu
 
 
+typedef struct TextStream TextStream;
 typedef struct TokenStream TokenStream;
 typedef struct AST AST;
 
@@ -68,10 +69,18 @@ typedef struct {
     ImportID import_id;
     string path; // sometimes we don't have path, for small code created through metaprogramming for example.
     string text; // text may be empty, in this case the driver needs to look at path and read the file
-    TokenStream* stream;
+    // TokenStream* stream;
     AST* ast;
+    
+    Array_int line_positions;
 } Import;
 
+
+typedef struct {
+    u16       _reserved;
+    ImportID  import_id;
+    u32       position;
+} SourceLocation;
 
 DEF_BUCKET_ARRAY(Import)
 

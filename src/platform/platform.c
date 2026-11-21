@@ -11,6 +11,7 @@
     #define OS_WINDOWS
 #endif
 #ifdef __linux__
+    #define _GNU_SOURCE
     #include <unistd.h>
     #include "sys/mman.h"
     #include "linux/limits.h"
@@ -120,7 +121,7 @@ void fs__abspath(const char* path, int out_path_cap, char* out_path) {
             out_path[0] = '\0';
             return;
         }
-        for (int i=0;i<length;i++) {
+        for (uint32_t i=0;i<length;i++) {
             if (out_path[i] == '\\') {
                 out_path[i] = '/';
             }
@@ -148,7 +149,7 @@ void fs__exepath(int out_path_cap, char* out_path) {
             out_path[0] = '\0';
             return;
         }
-        for (int i=0;i<length;i++) {
+        for (uint32_t i=0;i<length;i++) {
             if (out_path[i] == '\\') {
                 out_path[i] = '/';
             }
