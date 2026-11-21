@@ -1,19 +1,29 @@
 
-# @TODO Makefile compatible with Windows
-
 # @TODO Compilers to support gcc, clang, MSVC, TinyCC
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-OUTPUT_EXE ?= $(ROOT)/bin/basin
-OUTPUT_LIB ?= $(ROOT)/bin/libbasin.a
-OUTPUT_DYN ?= $(ROOT)/bin/libbasin.so
+ifeq ($(OS),Windows_NT)
+  SHELL := cmd.exe
+  .SHELLFLAGS := /C
+endif
 
+ifeq ($(OS),Windows_NT)
+  OUTPUT_EXE ?= $(ROOT)/bin/basin.exe
+  OUTPUT_LIB ?= $(ROOT)/bin/basin.lib
+  OUTPUT_DYN ?= $(ROOT)/bin/basin.dll
+  
+else
+  OUTPUT_EXE ?= $(ROOT)/bin/basin
+  OUTPUT_LIB ?= $(ROOT)/bin/libbasin.a
+  OUTPUT_DYN ?= $(ROOT)/bin/libbasin.so
+endif
 
 BINDIR        ?= bin
 CC            ?= gcc
+CXX           ?= g++
 AR            ?= ar
-SILENT        ?= @
+SILENT        ?=
 ENABLE_TRACY  ?= 1
 
 # obj/linux or obj/windows
@@ -56,42 +66,68 @@ endif
 
 OBJFILES := $(patsubst $(ROOT)/src/%.c,$(OBJDIR)/%.o,$(SRCFILES))
 OBJFILES := $(patsubst $(ROOT)/src/%.cpp,$(OBJDIR)/%.o,$(OBJFILES))
+DEPFILES := $(patsubst %.o,%.d,$(OBJFILES))
 
 .PHONY: all
-all: $(OUTPUT_EXE) $(OUTPUT_LIB) $(OUTPUT_DYN)
+# @TODO Compile libs again (for now it's unnecessary, i don't use them).
+# all: $(OUTPUT_EXE) $(OUTPUT_LIB) $(OUTPUT_DYN)
+all: $(OUTPUT_EXE)
 
-$(OBJDIR):
-	$(SILENT) mkdir -p $@
+ifeq (0, $(words $(findstring $(MAKECMDGOALS), clean)))
+    -include $(DEP_FILES)
+endif
 
-$(BINDIR):
-	$(SILENT) mkdir -p $@
+ifeq ($(OS),Windows_NT)
+  define makedirs =
+    mkdir $(subst /,\,$(1)) 2>nul || exit /b 0
+  endef
+else
+  define makedirs =
+    mkdir -p $(1)
+  endef
+endif
+
+
+$(OBJDIR) $(BINDIR):
+	$(SILENT) $(call makedirs,$@)
 
 VERSION    := 0.0.1-dev
 CFLAGS += "-DBASIN_VERSION=\"$(VERSION)\""
 
-# @TODO Only add these if windows or linux
-GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)
-BUILD_DATE := $(shell date '+%Y-%m-%d %H:%M:%S')
-CFLAGS += "-DBASIN_COMMIT=\"$(GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BUILD_DATE)\""
+
+ifeq ($(OS),Windows_NT)
+  GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>nul || echo unknown)
+  BUILD_DATE := $(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'")
+  CFLAGS += "-DBASIN_COMMIT=\"$(GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BUILD_DATE)\""
+else
+  GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)
+  BUILD_DATE := $(shell date '+%Y-%m-%d %H:%M:%S')
+  CFLAGS += "-DBASIN_COMMIT=\"$(GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BUILD_DATE)\""
+endif
 
 $(OBJDIR)/%.o: $(ROOT)/src/%.c | $(OBJDIR)
-	$(SILENT) mkdir -p $(@D)
+	$(SILENT) $(call makedirs,$(@D))
 	$(SILENT) $(CC) -c -MD $(CFLAGS) -o $@ $<
 
 $(OBJDIR)/%.o: $(ROOT)/src/%.cpp | $(OBJDIR)
-	$(SILENT) mkdir -p $(@D)
+	$(SILENT) $(call makedirs,$(@D))
 	$(SILENT) $(CXX) -c -MD $(CFLAGS) -o $@ $<
 
-$(OUTPUT_LIB): $(OBJFILES) | $(BINDIR)
-	$(SILENT) $(AR) rcs $@ $^
+# @TODO For libraries we don't want to include main.o
+# $(OUTPUT_LIB): $(OBJFILES) | $(BINDIR)
+# 	$(SILENT) $(AR) rcs $@ $^
 
 $(OUTPUT_EXE): $(OBJFILES) | $(BINDIR)
-	$(SILENT) $(CC) $(LFLAGS) -o $@ $^
+	$(SILENT) $(CXX) $(LFLAGS) -o $@ $^
 
-$(OUTPUT_DYN): $(OBJFILES) | $(BINDIR)
-	$(SILENT) $(CC) $(LFLAGS) -shared -o $@ $^
+# $(OUTPUT_DYN): $(OBJFILES) | $(BINDIR)
+# 	$(SILENT) $(CXX) $(LFLAGS) -shared -o $@ $^
 
 
 .PHONY: clean
 clean:
+ifeq ($(OS),Windows_NT)
+	rd /S /Q obj bin 2>nul || exit /b 0
+else
 	rm -rf obj bin
+endif
