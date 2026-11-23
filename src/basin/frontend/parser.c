@@ -258,6 +258,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
     context->previous_block = block_expr;
 
     while (true) {
+        skip_space();
         SourceLocation tok_loc = srcloc();
         Rune tok = peek_rune(0);
 
@@ -273,11 +274,11 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             anot.name = string_clone_cstr(anot_name);
 
             Rune tok_start = peek_rune(0);
-            u32 tok_start_pos = headpos();
-            u32 tok_end_pos = -1;
-            Rune tok_end = EOF_RUNE;
             if (tok_start == '(') {
                 advance();
+                u32 tok_start_pos = headpos();
+                u32 tok_end_pos = -1;
+                Rune tok_end = EOF_RUNE;
                 int depth = 1;
                 while (true) {
                     tok_end_pos = headpos();
@@ -420,7 +421,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
             }
             
             match_rune('=');
-                skip_space();
+            skip_space();
             data_object->value = parse_expression(context);
             
             array_push(&block_expr->constants, &data_object);
@@ -523,7 +524,7 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
 
     if (!in_file_scope && !in_case_scope) {
         skip_space();
-        match_rune('}');
+        // match_rune('}');
     }
 
     context->previous_block = block_expr->parent;
@@ -987,35 +988,20 @@ ASTExpression* parse_expression(ParserContext* context) {
                         expr->name = string_clone_cstr(id_name);
                         array_push(&exprs, (ASTExpression**)&expr);
                     }
+                } else if (try_match_float(&float_value)) {
+                    CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
+                    expr->literal_kind = EXPR_LITERAL_FLOAT;
+                    expr->float_value = float_value;
+
+                    array_push(&exprs, (ASTExpression**)&expr);
                 } else if (try_match_int(&int_value)) {
-                    // advance();
 
                     CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
                     expr->literal_kind = EXPR_LITERAL_INTEGER;
                     expr->int_value = int_value;
 
-                    // cstring text = DATA_FROM_TOKEN(tok0);
-                    
-                    // char c = text.ptr[0], c2 = text.len >= 1 ? text.ptr[1] : 0;
-                    // char* endptr;
-                    // if (c == '0' && c2 == 'x') {
-                    //     expr->int_value = strtoul(text.ptr+2, &endptr, 16);
-                    // } else if (c == '0' && c2 == 'o') {
-                    //     expr->int_value = strtoul(text.ptr+2, &endptr, 8);
-                    // } else if (c == '0' && c2 == 'b') {
-                    //     expr->int_value = strtoul(text.ptr+2, &endptr, 2);
-                    // } else {
-                    //     expr->int_value = strtoul(text.ptr, &endptr, 10);
-                    // }
-                    // // We should have parsed text.len characters
-                    // ASSERT((u32)(endptr - text.ptr) == text.len);
-
                     array_push(&exprs, (ASTExpression**)&expr);
-                } else if (try_match_float(&float_value)) {
-                    // advance();
-                    ASSERT((false,"parse literal float"));
                 } else if (try_match_string(&str_value)) {
-                    // advance();
                     CREATE_EXPR(expr, ASTExpression_Literal, EXPR_LITERAL, tok0_loc);
                     expr->literal_kind = EXPR_LITERAL_STRING;
 
@@ -1452,6 +1438,7 @@ ASTFunction* parse_function(ParserContext* context) {
             parse_error(tok_loc, "Expected a ')' or ','");
         }
     }
+    skip_space();
 
     // Parse return values
     Rune tok0 = peek_rune(0);
@@ -1683,10 +1670,10 @@ bool parse_type(ParserContext* context, ASTType* typename) {
     string acc = {};
     // @TODO Disallow 'text: char*int'
     while (true) {
-        skip_space();
+        // skip_space();
         SourceLocation tok_loc = srcloc();
         Rune tok = peek_rune(0);
-        
+
         cstring type_name;
         bool matched_id = try_match_id(&type_name);
         if (matched_id) {
@@ -1917,7 +1904,7 @@ static bool _skip_space(ParserContext* context) {
                         break;
                 }
             }
-        } else if (rune == '\t' || rune == ' ' || rune == '\n' || rune == '\f') {
+        } else if (rune == '\t' || rune == ' ' || rune == '\n' || rune == '\r' || rune == '\f') {
             context->head++;
         } else {
             break;
@@ -1928,12 +1915,12 @@ static bool _skip_space(ParserContext* context) {
 }
 
 static int _peek_rune(ParserContext* context, int n) {
-    if (context->head >= context->import->text.len) {
+    if (context->head + n >= context->import->text.len) {
         // _parse_error(context, (const TokenExt*)&context->stream->tokens[context->head], "Unexpected token, wanted '%s'", name_from_token(kind));
         return EOF_RUNE;
     }
     // @TODO Handle out of bounds
-    char current_rune = context->import->text.ptr[context->head];
+    char current_rune = context->import->text.ptr[context->head + n];
     return current_rune;
 }
 
@@ -1963,6 +1950,7 @@ static bool _match_rune(ParserContext* context, int rune, bool peek_operation) {
         }
         return false;
     }
+    context->head++;
     return true;
 }
 
@@ -2022,11 +2010,12 @@ static bool _match_string(ParserContext* context, string* outstring, bool peek_o
     while(head < text.len) {
         // Handle UTF-8 encoding here? or maybe nothing special is needed?
         char chr = text.ptr[head];
-        if(chr == '"' && text.ptr[head-1] != '\\') {
+        head++;
+        if(chr == '"' && text.ptr[head-2] != '\\') {
             break;
         }
-        head++;
     }
+    // @TODO Handle if we broke out of loop because of EOF without ending quote.
     u32 head_end = head - 1;
 
     u32 str_length = head_end - head_start;
@@ -2169,7 +2158,8 @@ static bool _match_string(ParserContext* context, string* outstring, bool peek_o
         real_count++;
     }
     // @TODO Detect missing ending quote
-    outstr.len = str_length;
+    outstr.len = real_count;
+    outstr.ptr[outstr.len] = '\0';
     context->head = head;
     *outstring = outstr;
     return true;
@@ -2199,13 +2189,15 @@ static bool _match_int(ParserContext* context, i64* out_value, bool peek_operati
         head += 2;
         while(head < text.len) {
             char chr = text.ptr[head];
-            if((chr < '0' || chr > '9')) {
+            if((chr >= '0' && chr <= '9')) {
                 // @TODO Error for overflow
                 accumulator = accumulator * 16 + chr - '0';
-            } else if ((chr|32) < 'a' || (chr|32) > 'f') {
+            } else if ((chr|32) >= 'a' && (chr|32) <= 'f') {
                 accumulator = accumulator * 16 + (chr|32) - 'a' + 10;
             } else if (chr == '_') {
                 // skip, _ is used for nice formatting in big numbers
+            } else {
+                break;
             }
             head++;
         }
@@ -2213,10 +2205,12 @@ static bool _match_int(ParserContext* context, i64* out_value, bool peek_operati
         head += 2;
         while(head < text.len) {
             char chr = text.ptr[head];
-            if(chr < '0' || chr > '7') {
+            if(chr >= '0' && chr <= '7') {
                 accumulator = accumulator * 8 + chr - '0';
             } else if (chr == '_') {
                 // skip
+            } else {
+                break;
             }
             head++;
         }
@@ -2224,20 +2218,24 @@ static bool _match_int(ParserContext* context, i64* out_value, bool peek_operati
         head += 2;
         while(head < text.len) {
             char chr = text.ptr[head];
-            if(chr < '0' || chr > '1') {
+            if(chr >= '0' && chr <= '1') {
                 accumulator = accumulator * 2 + chr - '0';
             } else if (chr == '_') {
                 // skip
+            } else {
+                break;
             }
             head++;
         }
-    } else if(rune < '0' || rune > '9') {
+    } else if(rune >= '0' && rune <= '9') {
         while(head < text.len) {
             char chr = text.ptr[head];
-            if(chr < '0' || chr > '9') {
+            if(chr >= '0' && chr <= '9') {
                 accumulator = accumulator * 10 + chr - '0';
             } else if (chr == '_') {
                 // skip
+            } else {
+                break;
             }
             head++;
         }
@@ -2254,8 +2252,75 @@ static bool _match_int(ParserContext* context, i64* out_value, bool peek_operati
     return true;
 }
 
-static bool _match_float(ParserContext* context, double* out_value, bool peek_operation) {
-    if (context->head >= context->import->text.len) {
+
+static bool _consume_float_digits(
+    string text,
+    u32* head,
+    double* value,
+    bool fractional,
+    u32* out_count
+) {
+    u32 count = 0;
+    double place = 0.1;
+
+    while (*head < text.len) {
+        char chr = text.ptr[*head];
+
+        if (chr >= '0' && chr <= '9') {
+            i32 digit = chr - '0';
+
+            if (fractional) {
+                *value += digit * place;
+                place *= 0.1;
+            } else {
+                *value = *value * 10.0 + digit;
+            }
+
+            count++;
+            (*head)++;
+        } else if (chr == '_') {
+            // Underscores must separate digits.
+            if (count == 0 ||
+                *head + 1 >= text.len ||
+                text.ptr[*head + 1] < '0' ||
+                text.ptr[*head + 1] > '9') {
+                return false;
+            }
+
+            (*head)++;
+        } else {
+            break;
+        }
+    }
+
+    *out_count = count;
+    return count > 0;
+}
+
+
+static bool _match_float(
+    ParserContext* context,
+    double* out_value,
+    bool peek_operation
+) {
+    string text = context->import->text;
+
+    // @TODO There may be rounding issues if we want to follow IEEE-754.
+
+    if (context->head >= text.len) {
+        if (!peek_operation) {
+            SourceLocation loc = srcloc();
+            _parse_error(context, loc, "Unexpected end of file, wanted literal float.");
+        }
+        return false;
+    }
+
+    u32 head = context->head;
+    double value = 0.0;
+    u32 count = 0;
+
+    // Integer part.
+    if (!_consume_float_digits(text, &head, &value, false, &count)) {
         if (!peek_operation) {
             SourceLocation loc = srcloc();
             _parse_error(context, loc, "Unexpected token, wanted literal float.");
@@ -2263,71 +2328,118 @@ static bool _match_float(ParserContext* context, double* out_value, bool peek_op
         return false;
     }
 
-    // // @TODO match keyword
-    
-    // string text = context->import->text;
-    // i64 accumulator = 0;
-    // u32 head = context->head;
+    bool is_float = false;
 
-    // char rune = text.ptr[head];
-    // char rune2 = 0;
-    // if (head + 1 < text.len) {
-    //     rune2 = text.ptr[head+1];
-    // }
-    // if (rune == '0' && rune2 == 'x') {
-    //     head += 2;
-    //     while(head < text.len) {
-    //         char chr = text.ptr[head];
-    //         if((chr < '0' || chr > '9')) {
-    //             // @TODO Error for overflow
-    //             accumulator = accumulator * 16 + chr - '0';
-    //         } else if ((chr|32) < 'a' || (chr|32) > 'f') {
-    //             accumulator = accumulator * 16 + (chr|32) - 'a' + 10;
-    //         } else if (chr == '_') {
-    //             // skip, _ is used for nice formatting in big numbers
-    //         }
-    //         head++;
-    //     }
-    // } else if (rune == '0' && rune2 == 'o') {
-    //     head += 2;
-    //     while(head < text.len) {
-    //         char chr = text.ptr[head];
-    //         if(chr < '0' || chr > '7') {
-    //             accumulator = accumulator * 8 + chr - '0';
-    //         } else if (chr == '_') {
-    //             // skip
-    //         }
-    //         head++;
-    //     }
-    // } else if (rune == '0' && rune2 == 'b') {
-    //     head += 2;
-    //     while(head < text.len) {
-    //         char chr = text.ptr[head];
-    //         if(chr < '0' || chr > '1') {
-    //             accumulator = accumulator * 2 + chr - '0';
-    //         } else if (chr == '_') {
-    //             // skip
-    //         }
-    //         head++;
-    //     }
-    // } else if(rune < '0' || rune > '9') {
-    //     while(head < text.len) {
-    //         char chr = text.ptr[head];
-    //         if(chr < '0' || chr > '9') {
-    //             accumulator = accumulator * 10 + chr - '0';
-    //         } else if (chr == '_') {
-    //             // skip
-    //         }
-    //         head++;
-    //     }
-    // } else {
-    //     SourceLocation loc = srcloc();
-    //     _parse_error(context, loc, "Unexpected token, wanted '%s'", name_from_token(T_LITERAL_INTEGER));
-    //     return false;
-    // }
+    // Fractional part.
+    if (head < text.len && text.ptr[head] == '.') {
+        is_float = true;
+        head++;
 
-    // context->head = head;
-    // return accumulator;
+        if (!_consume_float_digits(text, &head, &value, true, &count)) {
+            goto invalid_float;
+        }
+    }
+
+    // Scientific notation.
+    if (head < text.len &&
+        (text.ptr[head] == 'e' || text.ptr[head] == 'E')) {
+
+        is_float = true;
+        head++;
+
+        bool negative_exponent = false;
+
+        if (head < text.len &&
+            (text.ptr[head] == '+' || text.ptr[head] == '-')) {
+            negative_exponent = text.ptr[head] == '-';
+            head++;
+        }
+
+        if (head >= text.len ||
+            text.ptr[head] < '0' ||
+            text.ptr[head] > '9') {
+            goto invalid_float;
+        }
+
+        i32 exponent = 0;
+
+        while (head < text.len) {
+            char chr = text.ptr[head];
+
+            if (chr >= '0' && chr <= '9') {
+                // Prevent integer overflow on enormous exponents.
+                if (exponent < 100000) {
+                    exponent = exponent * 10 + chr - '0';
+
+                    if (exponent > 100000) {
+                        exponent = 100000;
+                    }
+                }
+                head++;
+            } else if (chr == '_') {
+                if (head + 1 >= text.len ||
+                    text.ptr[head + 1] < '0' ||
+                    text.ptr[head + 1] > '9') {
+                    goto invalid_float;
+                }
+                head++;
+            } else {
+                break;
+            }
+        }
+
+        // Apply exponent using exponentiation by squaring.
+        double scale = 10.0;
+        double factor = 1.0;
+
+        while (exponent > 0) {
+            if (exponent & 1) {
+                factor *= scale;
+            }
+
+            scale *= scale;
+            exponent >>= 1;
+        }
+
+        if (negative_exponent) {
+            value /= factor;
+        } else {
+            value *= factor;
+        }
+    }
+
+    // Plain integers are not float literals.
+    if (!is_float) {
+        goto invalid_float;
+    }
+
+    context->head = head;
+    *out_value = value;
+    return true;
+
+invalid_float:
+    if (!peek_operation) {
+        SourceLocation loc = srcloc();
+        _parse_error(context, loc, "Invalid literal float.");
+    }
+
+/*
+Test data to try
+123.456	123.456
+0.5	0.5
+12.244e5	1224400
+12e5	1200000
+12e-5	0.00012
+1_000.25	1000.25
+1.5E+2	150
+123	Not a float
+12.	Invalid
+12.abc	Invalid
+12e	Invalid
+12e+	Invalid
+1__2.3	Invalid
+*/
+
     return false;
 }
 

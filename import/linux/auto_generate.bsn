@@ -1,0 +1,31 @@
+#!/usr/bin/env basin
+/*
+    Generates functions and declarations for linux syscalls.
+*/
+
+
+// @TODO Create own file functions since linux syscalls may not be generated yet.
+//    A bit of a chicken and egg problem here on linux.
+
+
+fn generate_linux_syscalls_string() -> string, bool {
+
+}
+
+fn generate_linux_syscalls_file(output_path: string) -> bool {
+    text, res := generate_linux_syscalls_string()
+    if !res return res
+    defer cleanup(&text)
+
+    res = write_file(output_path, text)
+    return  res
+}
+
+
+// CLI
+fn main(argv: char^^, argc: i32) {
+
+    // parse args
+
+}
+

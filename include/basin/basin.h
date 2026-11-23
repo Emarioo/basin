@@ -49,6 +49,7 @@ typedef enum {
 
 typedef enum {
     BASIN_TARGET_OS_host,
+    BASIN_TARGET_OS_none,
     BASIN_TARGET_OS_windows,
     BASIN_TARGET_OS_linux,
     BASIN_TARGET_OS_COUNT,
@@ -103,6 +104,7 @@ typedef struct {
     The input path in compile options will show up in error messages and __file__. Can be NULL.
 */
 typedef struct BasinCompileOptions {
+    // @TODO Architecture features AVX-512 for example.
     BasinTargetArch    target_arch;
     BasinTargetOS      target_os;
     BasinTargetABI     target_abi;
@@ -112,8 +114,8 @@ typedef struct BasinCompileOptions {
     BasinDebugFlags    debug_flags;
     BasinDebugFormat   debug_format;
     bool               run_output;
-    bool               skip_default_import_dirs;
-    bool               skip_default_library_dirs;
+    bool               disable_default_import_dirs;
+    bool               disable_default_library_dirs;
     bool               silent;
     
     const char* const* import_dirs;
@@ -169,7 +171,7 @@ BASIN_API const char* basin_target_os_string(BasinTargetOS os);
 /*
     Creates compile options from a string of arguments
 
-    @param arguments String of command line arguments
+    @param arguments String of command line arguments (each argument is separated by space)
     @param options Pointer to options to fill with options
     @return Result of compilation. Contains error messages or SUCCESS status.
 */

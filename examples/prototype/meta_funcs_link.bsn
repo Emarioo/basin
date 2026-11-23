@@ -1,0 +1,100 @@
+
+
+
+import "./linux.bsn" as linux
+import "./windows.bsn" as windows
+
+
+import "basin.bsn"
+
+fn public(node: Node^, name: string = "") {
+    func := node : ^basin.NodeFunction
+    if name.len > 0 {
+        func.linker_name = name
+    }
+}
+
+fn share(node: Node^) {
+    imp := node : ^basin.NodeImport
+    imp.shared = true
+}
+
+fn arch(node: Node^, name: string) {
+    assembly := node : ^basin.NodeAssembly
+    assembly.architecture = basin_name_to_arch_enum(name)
+}
+
+
+// How do we define a bunch of syscalls
+/*
+    Aspects to consider:
+    - Maintainability (easy to maintain a specification that turns into auto-generated text)
+    - Readability (no auto generated text gives best readability because you see exactly what's there, nothing hidden behind auto generation abstractions, reading the specification/origin of auto generated text can also have less boilerplate and therefore be more readableso it goes both ways)
+    - Compile time performance (generating text from specification takes time every compilation, you generate once and reuse that's nice)
+    - Run time performance (doesn't matter much because whatever we choose it will have a very small impact compared to syscall itself, for example inlining assembly versus a function call to the inline assembly, barely noticable relative to the syscall)
+*/
+
+@public fn open(path: char^, mode: u32) {
+    return @arch("x86_64") asm -> i32 {
+        mov eax, 9
+        mov rdi, {path}
+        mov rsi, {mode}
+        syscall
+    }
+}
+
+
+GEN_SYSCALL(syscall_nr, write, i32, fd: i32, buffer: char*, size: uword)
+
+
+
+@share
+import "util/util_defs.bsn"
+
+@public("util_platform") fn public_platform()
+@public fn util_platform()
+
+
+fn internal_platform() -> Platform {
+    return PLATFORM
+}
+
+fn read_file(path: string) -> Data {
+
+    data := reserve_data(100000)
+
+    @const if basin_platform() == linux {
+        file := linux.open(path)
+        defer linux.close(file)
+        linux.read(file, data)
+    } else if PLATFORM == windows {
+        file := windows.open(path)
+        defer windows.close(file)
+        windows.read(file, data)
+    }
+
+    @const if PLATFORM == linux {
+        file := linux.open(path)
+        defer linux.close(file)
+        linux.read(file, data)
+    } else if PLATFORM == windows {
+        file := windows.open(path)
+        defer windows.close(file)
+        windows.read(file, data)
+    }
+
+}
+
+
+
+@share
+import "reference" as content
+
+
+@public
+fn main() {
+
+}
+
+
+5 + 1

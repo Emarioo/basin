@@ -1,5 +1,14 @@
-Tests to write
 
+Run tests with
+
+```bash
+cd tests
+make test
+```
+
+Below are some tests to create.
+
+@TODO Line/statment coverage
 
 # Errors
 - Global not allowed inside comptime expression

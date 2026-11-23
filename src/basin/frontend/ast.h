@@ -5,8 +5,6 @@
 #include "basin/backend/ir.h"
 #include "basin/util/array.h"
 
-#define DEBUG_BUILD
-
 typedef enum {
     EXPR_BLOCK,
     EXPR_FOR,

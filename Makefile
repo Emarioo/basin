@@ -12,11 +12,12 @@ ifeq ($(OS),Windows_NT)
   OUTPUT_EXE ?= $(ROOT)/bin/basin.exe
   OUTPUT_LIB ?= $(ROOT)/bin/basin.lib
   OUTPUT_DYN ?= $(ROOT)/bin/basin.dll
-  
+  OBJDIR ?= obj/windows
 else
   OUTPUT_EXE ?= $(ROOT)/bin/basin
   OUTPUT_LIB ?= $(ROOT)/bin/libbasin.a
   OUTPUT_DYN ?= $(ROOT)/bin/libbasin.so
+  OBJDIR ?= obj/linux
 endif
 
 BINDIR        ?= bin
@@ -26,23 +27,22 @@ AR            ?= ar
 SILENT        ?=
 ENABLE_TRACY  ?= 1
 
-# obj/linux or obj/windows
-OBJDIR ?= obj
 
 CFLAGS ?=
 CFLAGS += -Wall -Werror -Wextra
 CFLAGS += -Wno-unused-value -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter -Wno-cast-function-type # @TODO Remove these and fix errors for final release?
 CFLAGS += -fPIC # needed for shared library
 CFLAGS += -I $(ROOT)/include -I $(ROOT)/src
-CFLAGS += -g
+CFLAGS += -g -DDEBUG_BUILD
+# DEBUG_BUILD macro will use enums instead of 8-bit integers in some structs for debuggability.
+# Ideally C has 8-bit enums but it does not. ISO C11 doesn't at least.
 # CFLAGS += -O3
-LFLAGS +=
+LFLAGS += -g
 
-
-# @TODO We may need these
-# if platform.system() == "Windows":
-# 	LDFLAGS += " -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc"
-
+# Below is needed for debugging on windows with GDB (from mingw)
+ifeq ($(OS),Windows_NT)
+  LFLAGS += -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc
+endif
 
 SRCDIRS := \
   $(ROOT)/src \

@@ -75,7 +75,7 @@ Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions
     string exe_path = string_create(400);
     fs__exepath(exe_path.max, exe_path.ptr);
     exe_path.len = strlen(exe_path.ptr);
-    if (!options->skip_default_import_dirs) {
+    if (!options->disable_default_import_dirs) {
         int closest_slash_pos = string_rfind(exe_path.ptr, exe_path.len-1, "/");
         ASSERT(closest_slash_pos != -1); // @NOCHECKIN Give good error message
         // basin_root/bin/basin

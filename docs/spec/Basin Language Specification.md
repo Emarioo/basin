@@ -1,4 +1,7 @@
-**Specification for the Basin programming language.**
+**Specification for the Basin programming language**
+
+This document contains all you need to write programs for the language.
+What is not covered is the specific arguments you pass to the compiler.
 
 # Table of Contents
 
@@ -21,7 +24,13 @@
 
 4. Syntax
    - Grammar rules
-   - Statements and expressions
+   - Functions
+   - Structures
+   - Enums
+   - Gloabls
+   - Constants
+   - Imports
+   - Expressions
    - Blocks and scoping rules
 
 5. Types
@@ -111,13 +120,6 @@ The Goal of Basin is:
 
 meh goals
 
-## Requirements language
-
-## Requirements compiler
-A little strange to specify compiler specifics in "Basin Language Specification" but here they are.
-
-- Small codebase, < 100K lines
-
 
 <!-- 
    - Overview of the Basin language
@@ -143,14 +145,23 @@ When compiling intermediate files such as inline assembly and object files they 
 **NOTE**: There are plans to support .PDB which is debug information for Windows.
 
 # 3. Lexical Structure
-The lexical structure defines the text encoding and which characters are allowed.
 
-Basin source files should be encoded using UTF-8.
+Basin source files are encoded as a stream of UTF-8 characters.
 
-Lexical analysis is applied to a file where sequences of characters are converted to tokens. These are the tokens:
+The characters can be considered as a stream of tokens where each tokens is one of the following:
+- Identifier
+- Integer
+- Decimal
+- String
+- Rune
+- Special character
 
-## Identifiers
-Identifiers are names for variables, functions, and parameters. They start with a letter or underscore followed by letters, digits, and underscores. Identifiers are case-sensitive.
+The following can exist betwene tokens:
+- Whitespace
+- Comments
+
+## Identifier
+Identifiers are names for variables, functions, parameters, keywords, and type names. They start with a letter or underscore followed by letters, digits, and underscores. Identifiers are case-sensitive.
 
 **Examples:**
 - `myvar`
@@ -158,36 +169,25 @@ Identifiers are names for variables, functions, and parameters. They start with 
 - `_123_hey`
 - `gold` and `Gold` refer to different things.
 
-- `41kopwa` not allowed
-- `4_23` not allowed
-- `char_ä` not allowed
+**Not allowed:**
+- `41kopwa`
+- `4_23`
+- `char_ä`
 
-## Keywords
-Keywords are reserved identifiers.
+**Unicode characters:**
+- **TODO**
 
-Some are: `if`, `in`, `for`, `while`, `import`, `return`.
-
-See `TokenKind` in [lexer.h](/src/basin/core/lexer.h).
-
-(**TODO:** Once compiler implementation is more complete the full list will be put here)
-
-## Literals
-There are literal numbers, strings, characters, and booleans. They have specific values.
-
-**Literal numbers:**
+## Integer
 - `123`
-- `12.244`
-- `12.244e5` same as (12.244 * pow(10, 5))
 - `0x123` hexidecimal
 - `0o7267` octal
 - `0b10_0011` binary
 
-**Literal characters**
-- `'a'` 
-- `'\0'` 
-- `'\n'`
-- `'\x41'`
+## Decimal
+- `12.244`
+- `12.244e5` same as (12.244 * pow(10, 5))
 
+## String
 **Literal strings**
 - `"hello"`
 - `"\"hello\""`
@@ -206,7 +206,7 @@ There are literal numbers, strings, characters, and booleans. They have specific
 - `"\u03BB"` (Unicode -> UTF-8, λ)
 - `"\U000003bb"` (Unicode -> UTF-8, λ)
 
-**Formatted strings**
+**Formatted strings (WIP)**
 - `f"Hello {num}\n"`
 - `f"package/game-{version}-{target}"`
 
@@ -227,6 +227,14 @@ f"a{x}a{y}a"  ->  "a", x, "a", y, "a"
 - `f"Hello {name:14}"` padding is not supported yet.
 -->
 
+## Rune
+**Literal characters**
+- `'a'` 
+- `'\0'` 
+- `'\n'`
+- `'\x41'`
+
+
 ## Special characters
 Operators and delimiters:
 ```
@@ -238,15 +246,15 @@ Operators and delimiters:
 ```
 
 ## Whitespace
-Whitespace is mostly ignored except for a few instances described in [Syntax](/docs/language/Basin%20Language%20Specification.md#4.%20Syntax).
+Whitespace is mostly ignored except for a few instances described in [Syntax](./Basin%20Language%20Specification.md#4.%20Syntax).
 
-Some operations in the language share special characters and whitespace is used to resolve the ambiguity.
+Some operations in the language share special characters and whitespace is used to resolve the ambiguity. It makes things interesting...
 
-One instance is to resolve operator kind:
+Example of whitespace solving ambiguity:
 - `variable&` means `ADDRESS OF variable`. ADDRESS OF is determined by no whitespace preceding the operator token.
 - `variable & MASK` means `bitwise AND operation on variable and MASK`
 - `variable& & MASK` means `bitwise AND operation on ADDRESS OF variable and MASK`
-- `variable & & MASK` is invalid syntax. Two XOR operations next to each other is not allowed since it's a binary operation (takes two inputs on left and right side).
+- `variable & & MASK` is invalid syntax. Two bitwise AND operations next to each other is not allowed since it's a binary operation (takes two inputs on left and right side).
 
 ## Comments
 ```
@@ -254,59 +262,91 @@ One instance is to resolve operator kind:
 /*
    multi-line
 */
+/*
+   Hello
+   /*
+      They can be nested
+   */
+   Still a comment
+*/
 ```
 
 # 4. Syntax
 
-The most common primitive in a Basin program is the expression. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions. An expression is a value or a thing that can be executed.
+The syntax of Basin revolves around expressions. An expression can be an arithmetic operation (like addition), a function call, a literal value, an if-statement, a for-loop, a block containing more expressions. An expression can be seen as something that executes.
 
-The text in a file is considered contents of a block expression that contains more expressions. In a block expression there may also be global variables, constants, functions, structs, and enums. These are declarations and definitions and not expressions because they aren't executed. The initial value of a variable, constant or the code inside a function is an expression but not the entire function itself.
+The text in a file is considered contents of a block expression that contains more expressions. In a block expression there may be global variables, constants, functions, structures, enums, and imports. These are declarations and definitions and not expressions because they are not executed. The initial value of a variable, constant or the code inside a function is an expression but not the declaration of the function or constant itself.
+
+EBNF grammar has not been written here because there is ambiguity in the language and whitespace matters in certain instances.
 
 Below are some pseudo grammar rules:
-- `thing` a normal name specifies a non-terminal, it expands to other non-terminals and terminals
-- `thing | other_thing` allows one or another thing
-- `("import" | "include") file_path` parenthesis declares precedence
-- `"import"` a terminal, specifies a specific string of text (keyword)
-- ` number ( "," number ) * ` asterisk specifies zero or more of the thing before
-- ` number ( "+" number ) + ` plus specifies one or more of the thing before
-- ` number ( "+" number ) ? ` question mark specifies zero or one of the thing before
-- White space is ignored
+|Rule|Description|
+|-|-|
+|`IDENTIFIER`                          | A terminal that specifies any identifier|
+|`"import"`                            | A terminal that specifies a specific identifier|
+|`"+"`                                 | A terminal that specifies a special character|
+|`INTEGER`                             | A terminal that specifies an integer|
+|`DECIMAL`                             | A terminal that specifies a decimal|
+|`CHARACTER`                           | A terminal that specifies an integer|
+|`STRING`                              | A terminal that specifies a string|
+|`node`                                | A non-terminal which expands to other non-terminals or terminals|
+|`node \| other_node`                  | Allows one of the nodes|
+|`( "import" \| "include" ) file_path` | Parenthesis declares precedence. This without parenthesis `"import" \| "include" file_path` would mean "import" **OR** "include <file_path>"|
+|` number ( "," number ) * `           | Asterisk specifies zero or more of the preceding node|
+|` number ( "+" number ) + `           | Plus specifies one or more of the preceding node|
+|` number ( "+" number ) ? `           | Question mark specifies zero or one of the preceding node|
+
+The following grammar describe the full syntax. See [Operations](./Basin%20Language%20Specification.md#6.%20Operations) for practical examples.
 
 ```bash
 file := block_expression
 
-block_expression :=  ( expression | global | constant | function | struct | enum | import )*
+block_expression := ( expression | global | constant | function | struct | enum | import )*
 
-expression := ( "{" block_expression "}" ) | loop_expression | if_expression | identifier | literal_expression | math_operation | function_call | assignment | local_var_declaration
+expression := \
+    ( "{" block_expression "}" ) |
+    loop_expression              |
+    if_expression                |
+    switch_expression            |
+    function_call                |
+    literal_expression           |
+    math_operation               |
+    local_var_declaration        |
+    assignment                   |
+    function_def                 |
+    struct_def                   |
+    enum_def                     |
+    IDENTIFIER                   
 
-# First expression is a range or slice
-#   if slice then first identifier will be the item, second identifier will be index
-#   if range then first identifier will be index, second identifier not allowed
-loop_expression := "for" identifier "in" expression  expression
-loop_expression := "for" identifier, identifier "in" expression  expression
-loop_expression := "for" expression  expression
+loop_expression := \
+    ( "for" IDENTIFIER, IDENTIFIER "in" expression  expression ) |
+    ( "for" IDENTIFIER "in" expression  expression )             |
+    ( "for" expression  expression )
 
-# conditional expression that should evaluate to a boolean, keep looping while true
-loop_expression := "while" expression expression
-# loop forever (until break or return)
-loop_expression := "while" "{" block_expression "}"
+if_expression := \
+    "if" expression  expression  ( "else" expression ) ?
 
-if_expression := "if" expression expression ( "else" expression )?
+switch_expression := \
+    "switch" expression "{" case * default_case ? "}"
 
-function_call :=
-   ( identifier ) |
-   ( identifier NO_WHITESPACE "(" comma_arg_list ")" ) |
-   ( identifier ( shell_arg_list | comma_arg_list ) )
+case         := "case" expression expression *
+default_case := "default" expression *
 
-paren_arg_list := argument ( "," argument )*
-shell_arg_list := ( argument )+
-argument       := ( expression | attribute "=" expression )
-attribute      := identifier
+function_call := \
+    identifier "(" argument_list ? ")"
 
+argument_list := argument ( "," argument ) *
+argument      := ( expression | IDENTIFIER "=" expression )
 
-cast_expression := " expression ":" type
+function_def := \
+    "fn" IDENTIFIER 
+
+# Annotations are not declared in any node above because any number of them can be added on any node above.
+# @TODO Clearly describe which nodes support annotations.
+annotation := "@" IDENTIFIER "(" argument_list ? ")"
 
 ```
+
 
 @TODO I have to solve this:
 
@@ -349,19 +389,21 @@ v := struct16[0, 5]
 
 # 5. Types
 
-Types defined by the language are lower case.
+The language defines the following types.
 
 ## Primitive types
 ```rust
 // integers
-u8, u16, u32, u64 // 1,2,4,8 bytes
-s8, s16, s32, s64 // 1,2,4,8 bytes
+u8, u16, u32, u64 // 1, 2, 4, 8 bytes
+s8, s16, s32, s64 // 1, 2, 4, 8 bytes
 
 // floating point (IEEE)
-f32, f64 // 4,8 bytes
+f32, f64 // 4, 8 bytes
 
 // other
-bool, char // 1,1 bytes
+bool // 1 byte
+char // 1 byte
+rune // 4 bytes
 
 // pointers
 void*
@@ -376,8 +418,11 @@ fn(i32)->i32
 i32[8]
 char[255]
 
-// slice (pointer + length)
+// slice (pointer + length, the latter is uword)
 char[]
+
+// range (start + end, both are uword)
+range
 
 // types with platform dependent size
 uword, sword     // 8 bytes on 64-bit Architecture
@@ -391,12 +436,18 @@ enum Ore {
    coal
    gold
 }
+
+enum Attribute : u8 {
+    Unknown,
+    Strong,
+    Weak,
+}
 ```
 
 ## Struct types
 
 ```rust
-struct Block  {
+struct Block {
    valid: bool
    len: u32
    max: u32
@@ -524,6 +575,49 @@ nbits
 ## Assignment
 
 
+# Operations
+
+The following are the basic operations, most apply to scalar types (integers).
+```c
+A + B  (add)
+A - B  (subtract)
+-A     (subtract by zero)
+A * B  (multiply)
+A / B  (divide)
+A % B  (modulo)
+A %% B (positive modulo)
+A ?? B (either or)
+A | B  (bitwise or)
+A & B  (bitwise and)
+A << B (bitwise shift left)
+A >> B (bitwise shift right)
+A ^ B  (bitwise xor)
+B~     (bitwise negate)
+A!     (not)
+A || B (or)
+A && B (and)
+A < B  (less than)
+A > B  (greater than)
+A == B (equal)
+A <= B (less than or equal)
+A >= B (greater than or requal)
+A != B (not equal)
+A[B]   (index if B is integer, slice if B is range)
+A&     (address of)
+A^     (dereference)
+A: B   (type cast)
+A: B   (declaration)
+A := B (declaration and assignment)
+A = B  (assignment)
+..     (range)
+.      (member)
+```
+
+Operator can be overloaded to different types.
+
+There is ambiguity in the syntax above if you do not respect whitespace.
+
+
 ```
 // infer
 hello := 214
@@ -551,8 +645,10 @@ else
 ```c
 switch <condition> {
    case <condition>
+   case <condition>
       <expression>
    case <condition>
+      <expression>
       <expression>
    default
       <expression>
@@ -561,6 +657,10 @@ switch <condition> {
 
 ## For
 
+
+ First expression is a range or slice<br>
+   if slice then first identifier will be the item, second identifier will be index<br>
+   if range then first identifier will be index, second identifier not allowed<br>
 
 ```c
 for <expression>
@@ -571,17 +671,11 @@ for item, index in <expression>
    <expression>
 ```
 
-## While
-
-```c
-while <expression>
-   <expression>
-```
 
 ## continue, break
 
 ```c
-while <expression> {
+for <expression> {
    
    continue // continue loop
    
@@ -595,7 +689,31 @@ while <expression> {
 defer <expression>
 ```
 
+# 7. Modules and Imports
+
+Anyone who imports api.bsn will also get symbols from util.bsn if you use `@share`.
+```c
+
+// util.bsn
+
+fn util_number() -> i32 { return 5 }
+
+// api.bsn
+
+@share
+import "./util.bsn"
+
+// main.bsn
+
+import "./api.bsn"
+
+print(util_number())
+
+```
+
 # 15. Intermediate Representation
+
+@TODO Move to compiler specification
 
 While the Basin language doesn't require bytecode it makes sense
 to implement it for the compiler internals. Running bytecode instead of

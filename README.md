@@ -1,15 +1,42 @@
 Basin Compiler
 
-The intention behind the language and compiler is
-- Cross platform
-- Standalone, can be embedded into your OS by adding a new platform layer ([ELOS](https://github.com/Emarioo/ELOS))
-- Very few dependencies (no LLVM).
-
 # Dependencies
 - GNU Make X.X.X
 - Which C Standard? What C compiler? can be compiled on windows/linux for your OS if you don't have a C compiler.
 
 Test system uses python?
+
+# Building
+
+(Same for Windows and Linux)
+
+**Dependencies**
+- GNU Make
+- GCC (or MSVC, or Clang, or TinyCC)
+
+(only GCC and Mingw GCC has been tested)
+
+**Compiling**
+```bash
+git clone https://github.com/Emarioo/basin
+cd basin
+make -j
+```
+**Usage**
+```bash
+# Linux
+source env.sh
+which basin
+/mnt/d/dev/basin/bin/basin
+
+# Windows
+env.bat
+where basin
+D:\dev\basin\bin\basin.exe
+
+# Dev example (latest feature being worked on)
+basin dev.bsn
+```
 
 # Current state
 
@@ -73,54 +100,3 @@ Threads finished
 Success (no object file is generated, IR and x86 machine code is flawed)
 ```
 
-
-# Building
-
-(Same for Windows and Linux)
-
-**Dependencies**
-- GNU Make
-- GCC (or MSVC, or Clang, or TinyCC)
-
-(only GCC and Mingw GCC has been tested)
-
-**Compiling**
-```bash
-git clone https://github.com/Emarioo/basin
-cd basin
-make -j
-```
-**Usage**
-```bash
-# Linux
-source env.sh
-which basin
-/mnt/d/dev/basin/bin/basin
-
-# Windows
-env.bat
-where basin
-D:\dev\basin\bin\basin.exe
-
-# Dev example (latest feature being worked on)
-basin dev.bsn
-```
-
-# Project structure
-```bash
-docs         - Documentation, guides, language specification
-include      - Public API headers to use basin as library
-import       - Basin standard library
-src/basin    - source code of compiler, completely platform/operating system independent
-src/platform - platform API, basic data structures, memory allocators. used by src/basin
-tracy        - Tracy for profiling the compiler
-tests        - Basin tests
-
-# These are ignored by git
-releases     - Built basin packages and releases
-int          - Intermediate object files
-```
-
-
-# My first attempt
-[BetterThanBatch](https://github.com/Emarioo/BetterThanBatch)
