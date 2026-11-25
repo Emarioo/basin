@@ -2,7 +2,8 @@
     Basin interface for testutil.c
 */
 
-@public fn test_begin()
+@public fn test_begin(ptr: char^)
 @public fn test_end()
 
 @public fn test_int(a: sword, b: sword)
+@public fn test_string(a: char*, b: char*)

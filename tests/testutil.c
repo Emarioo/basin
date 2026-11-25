@@ -5,12 +5,13 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 int total_tests = 0;
 int passed_tests = 0;
 
-void test_begin() {
-    printf("TEST BEGIN\n");
+void test_begin(const char* name) {
+    printf("TEST BEGIN %s\n", name);
 }
 
 void test_end() {
@@ -31,6 +32,23 @@ void test_int(int a, int b) {
     } else {
         printf("\033[31mFAILED\033[0m %d == %d\n", a, b);
     }
+}
+
+void test_string(char* a, char* b) {
+    total_tests++;
+    if (!strcmp(a, b)) {
+        passed_tests++;
+        printf("\033[32mpassed\033[0m %s == %s\n", a, b);
+    } else {
+        printf("\033[31mFAILED\033[0m %s == %s\n", a, b);
+    }
+}
+
+void test_main();
+
+int main() {
+    test_main();
+    return 0;
 }
 
 

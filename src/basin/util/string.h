@@ -33,6 +33,9 @@ string string_clone_cptr(const char* text);
 string string_clone(const char* text, int len);
 void   string_cleanup(string* str);
 
+void string_good_slashes(string* str);
+void string_good_slashes_cptr(char* str);
+
 void   string_append_cstr(string* str, cstring cstr);
 void   string_append_cptr(string* str, const char* cptr);
 void   string_append_char(string* str, char c);
@@ -44,7 +47,7 @@ static inline bool is_hex(char letter) {
 }
 static inline int hex_to_byte(char letter) {
     return letter <= '9' ? letter - '0' : (letter|32) - 'a' + 10;
-}
+} 
 
 #ifdef IMPL_PLATFORM
 
@@ -128,6 +131,27 @@ void string_append(string* str, const char* text, int len) {
     memcpy(str->ptr + str->len, text, len);
     str->len += len;
     str->ptr[str->len] = '\0';
+}
+
+
+void string_good_slashes(string* str) {
+    if (!str)
+        return;
+    for (size_t i=0;i<str->len;i++) {
+        if (str->ptr[i] == '\\') {
+            str->ptr[i] = '/';
+        }
+    }
+}
+void string_good_slashes_cptr(char* str) {
+    if (!str)
+        return;
+    size_t len = strlen(str);
+    for (size_t i=0;i<len;i++) {
+        if (str[i] == '\\') {
+            str[i] = '/';
+        }
+    }
 }
 
 

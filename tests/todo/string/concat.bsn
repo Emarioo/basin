@@ -1,0 +1,14 @@
+import "testutil.bsn"
+
+fn test_main() {
+    test_begin(__FILE__.ptr)
+
+    a := "Hello"
+    b := " world"
+
+    test_string(a + b, "Hello world")
+    test_string("A" + "B" + "C", "ABC")
+    test_int((a + b).len, 11)
+
+    test_end()
+}

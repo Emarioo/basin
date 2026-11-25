@@ -1,0 +1,14 @@
+
+import "testutil.bsn"
+
+fn test_main() {
+    test_begin(__FILE__.ptr)
+
+    test_int(1 + 2, 3)
+    test_int(10 - 5, 5)
+    test_int(4 * 5, 20)
+    test_int(20 / 4, 5)
+    test_int(10 % 3, 1)
+
+    test_end()
+}

@@ -1,7 +1,7 @@
 
 # @TODO Compilers to support gcc, clang, MSVC, TinyCC
 
-ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+BASIN_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 ifeq ($(OS),Windows_NT)
   SHELL := cmd.exe
@@ -9,72 +9,72 @@ ifeq ($(OS),Windows_NT)
 endif
 
 ifeq ($(OS),Windows_NT)
-  OUTPUT_EXE ?= $(ROOT)/bin/basin.exe
-  OUTPUT_LIB ?= $(ROOT)/bin/basin.lib
-  OUTPUT_DYN ?= $(ROOT)/bin/basin.dll
-  OBJDIR ?= obj/windows
+  BASIN_OUTPUT_EXE ?= $(BASIN_ROOT)/bin/basin.exe
+  BASIN_OUTPUT_LIB ?= $(BASIN_ROOT)/bin/basin.lib
+  BASIN_OUTPUT_DYN ?= $(BASIN_ROOT)/bin/basin.dll
+  BASIN_OBJDIR ?= obj/windows
 else
-  OUTPUT_EXE ?= $(ROOT)/bin/basin
-  OUTPUT_LIB ?= $(ROOT)/bin/libbasin.a
-  OUTPUT_DYN ?= $(ROOT)/bin/libbasin.so
-  OBJDIR ?= obj/linux
+  BASIN_OUTPUT_EXE ?= $(BASIN_ROOT)/bin/basin
+  BASIN_OUTPUT_LIB ?= $(BASIN_ROOT)/bin/libbasin.a
+  BASIN_OUTPUT_DYN ?= $(BASIN_ROOT)/bin/libbasin.so
+  BASIN_OBJDIR ?= obj/linux
 endif
 
-BINDIR        ?= bin
+BASIN_BINDIR        ?= bin
 CC            ?= gcc
-CXX           ?= g++
+BASIN_CXX           ?= g++
 AR            ?= ar
-SILENT        ?=
+SILENT        ?= @
 ENABLE_TRACY  ?= 1
 
 
-CFLAGS ?=
-CFLAGS += -Wall -Werror -Wextra
-CFLAGS += -Wno-unused-value -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter -Wno-cast-function-type # @TODO Remove these and fix errors for final release?
-CFLAGS += -fPIC # needed for shared library
-CFLAGS += -I $(ROOT)/include -I $(ROOT)/src
-CFLAGS += -g -DDEBUG_BUILD
+BASIN_CFLAGS ?=
+BASIN_CFLAGS += -Wall -Werror -Wextra
+BASIN_CFLAGS += -Wno-unused-value -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter -Wno-cast-function-type # @TODO Remove these and fix errors for final release?
+BASIN_CFLAGS += -fPIC # needed for shared library
+BASIN_CFLAGS += -I $(BASIN_ROOT)/include -I $(BASIN_ROOT)/src
+BASIN_CFLAGS += -g -DDEBUG_BUILD
 # DEBUG_BUILD macro will use enums instead of 8-bit integers in some structs for debuggability.
 # Ideally C has 8-bit enums but it does not. ISO C11 doesn't at least.
-# CFLAGS += -O3
-LFLAGS += -g
+# BASIN_CFLAGS += -O3
+BASIN_LFLAGS += -g
 
 # Below is needed for debugging on windows with GDB (from mingw)
 ifeq ($(OS),Windows_NT)
-  LFLAGS += -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc
+  BASIN_LFLAGS += -lws2_32 -lwinmm -ldbghelp -static-libstdc++ -static-libgcc
 endif
 
-SRCDIRS := \
-  $(ROOT)/src \
-  $(ROOT)/src/basin \
-  $(ROOT)/src/basin/backend \
-  $(ROOT)/src/basin/core \
-  $(ROOT)/src/basin/extra \
-  $(ROOT)/src/basin/frontend \
-  $(ROOT)/src/basin/util \
-  $(ROOT)/src/platform \
+BASIN_SRCDIRS := \
+  $(BASIN_ROOT)/src \
+  $(BASIN_ROOT)/src/basin \
+  $(BASIN_ROOT)/src/basin/backend \
+  $(BASIN_ROOT)/src/basin/core \
+  $(BASIN_ROOT)/src/basin/extra \
+  $(BASIN_ROOT)/src/basin/frontend \
+  $(BASIN_ROOT)/src/basin/util \
+  $(BASIN_ROOT)/src/platform \
   #
 
-SRCFILES := $(foreach DIR,$(SRCDIRS),\
+BASIN_SRCFILES := $(foreach DIR,$(BASIN_SRCDIRS),\
   $(wildcard $(DIR)/*.c) \
 )
 
 ifneq ($(ENABLE_TRACY),)
-  SRCFILES += $(ROOT)/src/tracy/0.12.2/public/TracyClient.cpp
-  CFLAGS   += -I $(ROOT)/src/tracy/0.12.2/public
+  BASIN_SRCFILES += $(BASIN_ROOT)/src/tracy/0.12.2/public/TracyClient.cpp
+  BASIN_CFLAGS   += -I $(BASIN_ROOT)/src/tracy/0.12.2/public
 endif
 
-OBJFILES := $(patsubst $(ROOT)/src/%.c,$(OBJDIR)/%.o,$(SRCFILES))
-OBJFILES := $(patsubst $(ROOT)/src/%.cpp,$(OBJDIR)/%.o,$(OBJFILES))
-DEPFILES := $(patsubst %.o,%.d,$(OBJFILES))
+BASIN_OBJFILES := $(patsubst $(BASIN_ROOT)/src/%.c,$(BASIN_OBJDIR)/%.o,$(BASIN_SRCFILES))
+BASIN_OBJFILES := $(patsubst $(BASIN_ROOT)/src/%.cpp,$(BASIN_OBJDIR)/%.o,$(BASIN_OBJFILES))
+BASIN_DEPFILES := $(patsubst %.o,%.d,$(BASIN_OBJFILES))
 
 .PHONY: all
 # @TODO Compile libs again (for now it's unnecessary, i don't use them).
-# all: $(OUTPUT_EXE) $(OUTPUT_LIB) $(OUTPUT_DYN)
-all: $(OUTPUT_EXE)
+# all: $(BASIN_OUTPUT_EXE) $(BASIN_OUTPUT_LIB) $(BASIN_OUTPUT_DYN)
+all: $(BASIN_OUTPUT_EXE)
 
 ifeq (0, $(words $(findstring $(MAKECMDGOALS), clean)))
-    -include $(DEP_FILES)
+    -include $(BASIN_DEPFILES)
 endif
 
 ifeq ($(OS),Windows_NT)
@@ -88,40 +88,40 @@ else
 endif
 
 
-$(OBJDIR) $(BINDIR):
+$(BASIN_OBJDIR) $(BASIN_BINDIR):
 	$(SILENT) $(call makedirs,$@)
 
-VERSION    := 0.0.1-dev
-CFLAGS += "-DBASIN_VERSION=\"$(VERSION)\""
+BASIN_VERSION    := 0.0.1-dev
+BASIN_CFLAGS += "-DBASIN_VERSION=\"$(BASIN_VERSION)\""
 
 
 ifeq ($(OS),Windows_NT)
-  GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>nul || echo unknown)
-  BUILD_DATE := $(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'")
-  CFLAGS += "-DBASIN_COMMIT=\"$(GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BUILD_DATE)\""
+  BASIN_GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>nul || echo unknown)
+  BASIN_BUILD_DATE := $(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'")
+  BASIN_CFLAGS += "-DBASIN_COMMIT=\"$(BASIN_GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BASIN_BUILD_DATE)\""
 else
-  GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)
-  BUILD_DATE := $(shell date '+%Y-%m-%d %H:%M:%S')
-  CFLAGS += "-DBASIN_COMMIT=\"$(GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BUILD_DATE)\""
+  BASIN_GIT_COMMIT := $(shell git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)
+  BASIN_BUILD_DATE := $(shell date '+%Y-%m-%d %H:%M:%S')
+  BASIN_CFLAGS += "-DBASIN_COMMIT=\"$(BASIN_GIT_COMMIT)\"" "-DBASIN_DATE=\"$(BASIN_BUILD_DATE)\""
 endif
 
-$(OBJDIR)/%.o: $(ROOT)/src/%.c | $(OBJDIR)
+$(BASIN_OBJDIR)/%.o: $(BASIN_ROOT)/src/%.c | $(BASIN_OBJDIR)
 	$(SILENT) $(call makedirs,$(@D))
-	$(SILENT) $(CC) -c -MD $(CFLAGS) -o $@ $<
+	$(SILENT) $(CC) -c -MD $(BASIN_CFLAGS) -o $@ $<
 
-$(OBJDIR)/%.o: $(ROOT)/src/%.cpp | $(OBJDIR)
+$(BASIN_OBJDIR)/%.o: $(BASIN_ROOT)/src/%.cpp | $(BASIN_OBJDIR)
 	$(SILENT) $(call makedirs,$(@D))
-	$(SILENT) $(CXX) -c -MD $(CFLAGS) -o $@ $<
+	$(SILENT) $(BASIN_CXX) -c -MD $(BASIN_CFLAGS) -o $@ $<
 
 # @TODO For libraries we don't want to include main.o
-# $(OUTPUT_LIB): $(OBJFILES) | $(BINDIR)
+# $(BASIN_OUTPUT_LIB): $(BASIN_OBJFILES) | $(BASIN_BINDIR)
 # 	$(SILENT) $(AR) rcs $@ $^
 
-$(OUTPUT_EXE): $(OBJFILES) | $(BINDIR)
-	$(SILENT) $(CXX) $(LFLAGS) -o $@ $^
+$(BASIN_OUTPUT_EXE): $(BASIN_OBJFILES) | $(BASIN_BINDIR)
+	$(SILENT) $(BASIN_CXX) $(BASIN_LFLAGS) -o $@ $^
 
-# $(OUTPUT_DYN): $(OBJFILES) | $(BINDIR)
-# 	$(SILENT) $(CXX) $(LFLAGS) -shared -o $@ $^
+# $(BASIN_OUTPUT_DYN): $(BASIN_OBJFILES) | $(BASIN_BINDIR)
+# 	$(SILENT) $(BASIN_CXX) $(BASIN_LFLAGS) -shared -o $@ $^
 
 
 .PHONY: clean

@@ -26,7 +26,9 @@ void generate_elf(ObjectContext* context);
 void generate_object_file(Compilation* compilation) {
     PROFILE_START()
 
-    debug("Gen object file %s\n", compilation->options->output_file);
+    if (DUMP_OBJFILE_STAGE()) {
+        debug("Gen object file %s\n", compilation->options->output_file);
+    }
 
     ObjectContext context = {};
     context.compilation = compilation;
@@ -99,7 +101,7 @@ int get_ir_id_from_machine_id(ObjectContext* context, int machine_function_id) {
 void generate_coff(ObjectContext* context) {
     PROFILE_START()
 
-    if (should_debug_print()) {
+    if (DUMP_INTERNAL_DATA()) {
         print_compilation(context);
     }
 
@@ -286,9 +288,13 @@ void generate_coff(ObjectContext* context) {
             symbol.StorageClass = IMAGE_SYM_CLASS_EXTERNAL;
             symbol.Value = current_function_text_offset;
             current_function_text_offset += function->code_len;
-            printf("avail %s\n", ir_function->name.ptr);
+            if (DUMP_OBJFILE_STAGE()) {
+                printf("avail %s\n", ir_function->name.ptr);
+            }
         } else {
-            printf("ext %s\n", ir_function->name.ptr);
+            if (DUMP_OBJFILE_STAGE()) {
+                printf("ext %s\n", ir_function->name.ptr);
+            }
             symbol.SectionNumber = 0;
             symbol.StorageClass = IMAGE_SYM_CLASS_EXTERNAL;
         }

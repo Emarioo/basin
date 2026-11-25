@@ -1,78 +1,64 @@
 
-# @TODO Compilers to support gcc, clang, MSVC, TinyCC
-
-ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
+BASIN_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
 TEST_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
+CC     ?= gcc
+BASIN  ?= basin
+CFLAGS ?= -std=c11 -O2 -g
+SILENT ?= @
 
 ifeq ($(OS),Windows_NT)
-  SHELL := cmd.exe
-  .SHELLFLAGS := /C
-endif
+    SHELL := cmd.exe
+    .SHELLFLAGS := /C
 
-ifeq ($(OS),Windows_NT)
-  OBJDIR ?= obj/windows
-  PATH := $(ROOT)/bin;$(PATH)
-  export PATH
+    RUNNER := $(BASIN_ROOT)/bin/runner.exe
+    OBJDIR ?= $(BASIN_ROOT)/obj/windows
+    PATH := $(BASIN_ROOT)/bin;$(PATH)
+    export PATH
+
+    define makedirs =
+        mkdir $(subst /,\,$(1)) 2>nul || exit /b 0
+    endef
 else
-  OBJDIR ?= obj/linux
-  PATH := $(ROOT)/bin:$(PATH)
-  export PATH
+    RUNNER := $(BASIN_ROOT)/bin/runner
+    OBJDIR ?= $(BASIN_ROOT)/obj/linux
+    PATH := $(BASIN_ROOT)/bin:$(PATH)
+    export PATH
+    define makedirs =
+        mkdir -p $(1)
+    endef
 endif
 
+ifeq ($(OS),Windows_NT)
+    EXIT_CMD := exit /b 0
+else
+    EXIT_CMD := exit 0
+endif
 
-TEST_DIRS ?= \
-    $(TEST_ROOT)/arithmetic \
-    $(TEST_ROOT)/control_flow
+RUNNER_ARGS := -testutil $(OBJDIR)/testutil.o -importdir $(TEST_ROOT) -objdir $(OBJDIR)
 
-TEST_FILES ?= $(foreach DIR,$(TEST_DIRS),\
-    $(wildcard $(DIR)/*.bsn)\
-)
-
-TEST_EXES := $(patsubst $(TEST_ROOT)/%.bsn,$(OBJDIR)/%.exe,$(TEST_FILES))
-
-BASIN         ?= basin
-CC            ?= gcc
-SILENT        ?= 
-
-CFLAGS := -g
-LFLAGS := -g
+ifneq ($(strip $(VERBOSE)),)
+    RUNNER_ARGS += -verbose
+endif
 
 
 .PHONY: test
-test: $(TEST_EXES)
-	for item in $(TEST_EXES); do echo "RUNNING $item"; done
+test: $(RUNNER) basin_compiler $(OBJDIR)/testutil.o
+	$(SILENT) $(RUNNER) $(RUNNER_ARGS) || $(EXIT_CMD)
 
 
-ifeq ($(OS),Windows_NT)
-  define makedirs =
-    mkdir $(subst /,\,$(1)) 2>nul || exit /b 0
-  endef
-else
-  define makedirs =
-    mkdir -p $(1)
-  endef
-endif
+$(RUNNER): $(TEST_ROOT)/runner.c | $(BASIN_ROOT)/bin
+	$(SILENT) $(CC) $(CFLAGS) -o $@ $^
+
 
 $(OBJDIR)/testutil.o: $(TEST_ROOT)/testutil.c | $(OBJDIR)
-	$(SILENT) $(CC) -c -MD $(CFLAGS) -o $@ $<
+	$(SILENT) $(CC) -c $(CFLAGS) -o $@ $^
 
-$(OBJDIR)/%.o: $(TEST_ROOT)/%.bsn | $(OBJDIR)
-	$(SILENT) $(call makedirs,$(@D))
-	$(SILENT) $(BASIN) -o $@ $<
 
-$(OBJDIR)/%.exe: $(OBJDIR)/%.o $(OBJDIR)/testutil.o | $(OBJDIR)
-	$(SILENT) $(call makedirs,$(@D))
-	$(SILENT) $(CC) $(LFLAGS) -o $@ $^
-
-$(OBJDIR):
+$(BASIN_ROOT)/bin $(OBJDIR):
 	$(SILENT) $(call makedirs,$@)
 
 
-.PHONY: clean
-clean:
-ifeq ($(OS),Windows_NT)
-	rd /S /Q obj bin 2>nul || exit /b 0
-else
-	rm -rf obj bin
-endif
+include $(BASIN_ROOT)/Makefile
+
+basin_compiler: $(BASIN_OUTPUT_EXE)

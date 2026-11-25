@@ -1,0 +1,26 @@
+
+import "testutil.bsn"
+
+fn test_main() {
+
+    test_begin(__FILE__.ptr)
+
+    a := if true {
+        10
+    } else {
+        20
+    }
+
+    test_int(a, 10)
+
+    b := if false {
+        10
+    } else {
+        20
+    }
+
+    test_int(b, 20)
+
+    test_end()
+
+}

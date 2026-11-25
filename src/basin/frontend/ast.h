@@ -5,6 +5,8 @@
 #include "basin/backend/ir.h"
 #include "basin/util/array.h"
 
+#include "basin/core/driver.h"
+
 typedef enum {
     EXPR_BLOCK,
     EXPR_FOR,
@@ -179,6 +181,7 @@ typedef struct AST {
     // TokenStream* stream;
     Import* import;
     ASTExpression_Block* global_block;
+    Array_TaskP tasks;
 } AST;
 
 typedef struct ASTAnnotation {

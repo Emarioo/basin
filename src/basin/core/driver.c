@@ -1,8 +1,8 @@
 #include "basin/core/driver.h"
 
 #include "basin/logger.h"
-// #include "basin/frontend/lexer.h"
 #include "basin/frontend/parser.h"
+#include "basin/frontend/ast.h"
 #include "basin/backend/gen_ir.h"
 #include "basin/backend/ir.h"
 #include "basin/backend/codegen.h"
@@ -20,7 +20,8 @@ Driver* driver_create() {
     TracyCZone(zone, 1);
     
     Driver* driver = HEAP_ALLOC_OBJECT(Driver);
-    barray_init(&driver->tasks, 100, 50);
+    array_init(&driver->queuedTasks, 100);
+    barray_init(&driver->tasks, 200, 200);
     barray_init(&driver->imports, 100, 50);
     barray_init(&driver->compilations, 10, 10);
 
@@ -33,14 +34,14 @@ Driver* driver_create() {
     return driver;
 }
 
-void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number) {
+Task* driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number) {
     TracyCZone(zone, 1);
 
     ASSERT_DEBUG(task->compilation);
 
     thread__lock_mutex(&driver->tasks_mutex);
     
-    barray_push(&driver->tasks, task);
+    Task* newTask = barray_push(&driver->tasks, task);
 
     // we try to signal in case threads are waiting
     // if there already is a thread getting semaphore then that's fine.
@@ -48,10 +49,47 @@ void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_numbe
 
     thread__unlock_mutex(&driver->tasks_mutex);
 
-    if(enabled_logging_driver) {
+    if(DUMP_DRIVER_TASKING()) {
         debug("[%d] Add task %s\n", thread_number, task_kind_names[task->kind]);
     }
     TracyCZoneEnd(zone);
+
+    return newTask;
+}
+
+void driver_add_task_dependency(Driver* driver, Task* task, Task* dep) {
+    TaskItem* item = mem__alloc(sizeof(TaskItem));
+    *item = (TaskItem){};
+    
+    atomic_add(&task->remainingDependencies, 1);
+    
+    
+    thread__lock_mutex(&driver->tasks_mutex);
+
+    item->current = task;
+    item->next = dep->tasksBlockedByMe;
+    dep->tasksBlockedByMe = item;
+
+    thread__unlock_mutex(&driver->tasks_mutex);
+
+}
+void driver_mark_task_ready(Driver* driver, Task* task, bool alreadyHasLockedMutex) {
+    if (task->remainingDependencies == 0) {
+        if(DUMP_DRIVER_TASKING()) {
+            debug("[?] Ready task %s\n", task_kind_names[task->kind]);
+        }
+        if (!alreadyHasLockedMutex)
+            thread__lock_mutex(&driver->tasks_mutex);
+
+        array_push(&driver->queuedTasks, &task);
+
+        if (!alreadyHasLockedMutex)
+            thread__unlock_mutex(&driver->tasks_mutex);
+    } else {
+        if(DUMP_DRIVER_TASKING()) {
+            debug("[?] Tried mark ready %s\n", task_kind_names[task->kind]);
+        }
+    }
 }
 
 Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions* options) {
@@ -69,6 +107,7 @@ Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions
 
     for (int i=0;i<options->import_dirs_len;i++) {
         string s = string_clone_cptr(options->import_dirs[i]);
+        string_good_slashes(&s);
         array_push(&comp->import_dirs, &s);
     }
 
@@ -188,7 +227,7 @@ void driver_run(Driver* driver, u32 thread_count, u32 task_process_limit) {
         thread__join(&driver->threads[i].thread);
     }
     
-    if(enabled_logging_driver) {
+    if(DUMP_DRIVER_TASKING()) {
         debug("Threads finished\n");
     }
     TracyCZoneEnd(zone);
@@ -201,6 +240,8 @@ void driver_cleanup(Driver* driver) {
 
     barray_cleanup(&driver->imports);
     thread__cleanup_mutex(&driver->import_mutex);
+
+    array_cleanup(&driver->queuedTasks);
 
     barray_cleanup(&driver->tasks);
     thread__cleanup_mutex(&driver->tasks_mutex);
@@ -225,7 +266,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
     int id = ((u64)thread_driver - (u64)driver->threads) / sizeof(*thread_driver);
 
-    if(enabled_logging_driver) {
+    if(DUMP_DRIVER_TASKING()) {
         debug("[%d] Started\n", id);
     }
 
@@ -240,7 +281,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
             thread__signal_semaphore(&driver->may_have_task_semaphore, 1);
         }
 
-        if(enabled_logging_driver) {
+        if(DUMP_DRIVER_TASKING()) {
             debug("[%d] waiting\n", id);
         }
 
@@ -251,7 +292,8 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
         // @TODO Handle task_process_limit
 
-        if(barray_count(&driver->tasks) == 0) {
+        if(array_size(&driver->queuedTasks) == 0) {
+        // if(barray_count(&driver->tasks) == 0) {
             // TODO: If we read idle_threads here,
             if (prev_idling_threads == driver->threads_len) {
                 atomic_add(&driver->idle_threads, 1);
@@ -265,7 +307,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         }
 
         // We pop last task.
-        //   We may  need to pick a task where dependencies are fulfilled.
+        //   We may need to pick a task where dependencies are fulfilled.
         //   perhaps we won't add the task until dependencies are completed.
         //   dependencies would be parsing after tokenizing.
         //   compile time exec after function declaration checking
@@ -274,33 +316,32 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
         // Calculate dependencies for a task and run it.
 
-        Task task = {};
-        barray_pop(&driver->tasks, &task);
-        int tasks_left = barray_count(&driver->tasks);
+        Task* task = array_pop(&driver->queuedTasks);
+        int tasks_left = array_size(&driver->queuedTasks);
 
-        atomic_add(&task.compilation->active_tasks, 1);
-        atomic_add(&task.compilation->pending_tasks, -1);
+        atomic_add(&task->compilation->active_tasks, 1);
+        atomic_add(&task->compilation->pending_tasks, -1);
 
         thread__unlock_mutex(&driver->tasks_mutex);
 
 
-        if(enabled_logging_driver) {
-            debug("[%d] pick %s (%d left)\n", id, task_kind_names[task.kind], tasks_left);
+        if(DUMP_DRIVER_TASKING()) {
+            debug("[%d] pick %s (%d left)\n", id, task_kind_names[task->kind], tasks_left);
         }
 
         // Perform task
-        switch(task.kind) {
+        switch(task->kind) {
             case TASK_PARSE: {
-                if (!task.lex_and_parse.import->text.ptr) {
+                if (!task->lex_and_parse.import->text.ptr) {
                     BasinResult result = {};
-                    string text = util_read_whole_file(task.lex_and_parse.import->path.ptr);
+                    string text = util_read_whole_file(task->lex_and_parse.import->path.ptr);
                     if(!text.ptr) {
-                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task.lex_and_parse.import->path.ptr);
+                        FORMAT_ERROR(result, BASIN_FILE_NOT_FOUND, "Cannot read '%s'\n", task->lex_and_parse.import->path.ptr);
                         fprintf(stderr, "%s", result.error_message);
                         break;
                     }
-                    task.lex_and_parse.import->text = text;
-                    import_init_line_positions(task.lex_and_parse.import);
+                    task->lex_and_parse.import->text = text;
+                    import_init_line_positions(task->lex_and_parse.import);
                 }
                 // TokenStream* stream = NULL;
                 // Result result = tokenize(task.lex_and_parse.import, &stream);
@@ -311,22 +352,34 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 // }
 
                 AST* ast = NULL;
-                Result result = parse_import(task.compilation, task.lex_and_parse.import, &ast);
+                Result result = parse_import(task->compilation, task->lex_and_parse.import, &ast);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
                     break;
                 }
-                task.lex_and_parse.import->ast = ast;
+                
+                task->lex_and_parse.import->ast = ast;
+                
 
-                if (should_debug_print()) {
+                if (DUMP_INTERNAL_DATA()) {
                     print_ast(ast);
                 }
                 // fprintf(stderr, "Parse success\n");
+
+                Task newTask = {};
+                newTask.kind = TASK_GEN_IR;
+                newTask.compilation = task->compilation;
+                newTask.gen_ir.import = task->lex_and_parse.import;
                 
-                task.kind = TASK_GEN_IR;
-                task.gen_ir.import = task.lex_and_parse.import;
-                driver_add_task_with_thread_id(driver, &task, id);
+                Task* pTask = driver_add_task_with_thread_id(driver, &newTask, id);
+                // @TODO This task should have all imports as dependencies.
+                for (int i = 0; i < array_size(&ast->tasks); i++) {
+                    Task* dep = array_get(&ast->tasks, i);
+                    driver_add_task_dependency(driver, pTask, dep);
+                }
+
+                driver_mark_task_ready(driver, pTask, false);
             } break;
             case TASK_GEN_IR: {
                 // All previous parse tasks for the compilation unit must be done at this point.
@@ -339,28 +392,32 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 // them to the real queue when all tasks are done?
 
 
-                Result result = generate_ir(task.compilation, task.gen_ir.import->ast, task.compilation->program);
+                Result result = generate_ir(task->compilation, task->gen_ir.import->ast, task->compilation->program);
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
                 } else {
-                    debug("Gen ir success\n");
+                    if (DUMP_GENIR_STAGE()) {
+                        debug("Gen ir success\n");
+                    }
                 }
                 
-                // task.kind = TASK_GEN_MACHINE;
-                // task.gen_machine.import = task.gen_ir.import;
+                // task->kind = TASK_GEN_MACHINE;
+                // task->gen_machine.import = task->gen_ir.import;
                 // driver_add_task_with_thread_id(driver, &task, id);
             } break;
             case TASK_GEN_MACHINE: {
                 
                 MachineFunction* func;
                 // This function adds the MachineFunction to machine program.
-                CodegenResult result = codegen_generate_function(task.compilation, task.gen_machine.ir_function, &func);
+                CodegenResult result = codegen_generate_function(task->compilation, task->gen_machine.ir_function, &func);
                 if(result.error_type != CODEGEN_SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.error_message);
                 } else {
-                    debug("Gen machine success\n");
+                    if (DUMP_CODEGEN_STAGE()) {
+                        debug("Gen machine success\n");
+                    }
                 }
 
                 // if not tasks in compilation unit
@@ -371,16 +428,35 @@ u32 driver_thread_run(DriverThread* thread_driver) {
             } break;
             case TASK_GEN_OBJECT: {
 
-                generate_object_file(task.compilation);
+                generate_object_file(task->compilation);
 
             } break;
             default: {
-                debug("Unhandled task %d\n", task.kind);
+                debug("Unhandled task %d\n", task->kind);
                 ASSERT(false);
             }
         }
 
-        atomic_add(&task.compilation->active_tasks, -1);
+        thread__lock_mutex(&driver->tasks_mutex);
+        
+        TaskItem* nextTask = task->tasksBlockedByMe;
+        while (nextTask) {
+            u32 result = atomic_add(&nextTask->current->remainingDependencies, -1) - 1;
+
+            ASSERT((int)result >= 0);
+            if (result == 0) {
+                driver_mark_task_ready(driver, nextTask->current, true);
+            }
+
+            nextTask = nextTask->next;
+        }
+
+        thread__unlock_mutex(&driver->tasks_mutex);
+
+
+        atomic_add(&task->compilation->active_tasks, -1);
+
+        // @TODO Task can be freed. Including TaskItems
 
         // once done, we may add new tasks, atomically, with mutex
         // loop again find a new task
@@ -391,7 +467,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
         generate_object_file(barray_get(&driver->compilations, 0));
     }
 
-    if(enabled_logging_driver) {
+    if(DUMP_DRIVER_TASKING()) {
         debug("[%d] Stopped\n", id);
     }
 
@@ -414,6 +490,8 @@ Import* driver_create_import_id(Driver* driver, cstring path) {
 
     Import import = {};
     import.path = string_clone_cstr(path);
+    string_good_slashes(&import.path);
+
     import.import_id = atomic_add(&driver->next_import_id, 1);
 
     thread__lock_mutex(&driver->import_mutex);
@@ -433,12 +511,21 @@ string comp_resolve_import_path(Compilation* compilation, const Import* origin, 
     string str = {};
     if (path.len == 0 || path.ptr[0] == '/') {
         // empty/invalid
-    } else if (path.ptr[0] == '.' && path.ptr[1] == '/') {
-        str.max = origin->path.len + path.len - 1;
+    } else if (path.len >= 2 && path.ptr[0] == '.' && path.ptr[1] == '/') {
+        int slash_pos = string_rfind(origin->path.ptr, origin->path.len-1, "/");
+        str.max = slash_pos + 1 + path.len - 2;
         str.ptr = mem__alloc(str.max + 1);
         str.len = str.max;
-        memcpy(str.ptr, origin->path.ptr, origin->path.len);
-        memcpy(str.ptr + origin->path.len, path.ptr+1, path.len-1);
+        memcpy(str.ptr, origin->path.ptr, slash_pos + 1);
+        memcpy(str.ptr + slash_pos + 1, path.ptr+2, path.len-2);
+        str.ptr[str.len] = '\0';
+    } else if (path.len >= 3 && path.ptr[0] == '.' && path.ptr[1] == '.' && path.ptr[2] == '/') {
+        int slash_pos = string_rfind(origin->path.ptr, origin->path.len-1, "/");
+        str.max = slash_pos + 1 + path.len;
+        str.ptr = mem__alloc(str.max + 1);
+        str.len = str.max;
+        memcpy(str.ptr, origin->path.ptr, slash_pos + 1);
+        memcpy(str.ptr + slash_pos + 1, path.ptr, path.len);
         str.ptr[str.len] = '\0';
     } else {
         str.max = 300;

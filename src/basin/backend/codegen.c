@@ -59,6 +59,7 @@ typedef struct {
     MachineDataObject reg_to_machine_register[256];
 
     bool used_machine_registers[256];
+    int max_machine_registers;
 
     // jmp_buf jump_state;
     // SourceLocation bad_location;
@@ -121,7 +122,7 @@ CodegenResult codegen_generate_function(Compilation* compilation, const IRFuncti
 
     x86_generate(&context);
 
-    if (should_debug_print()) {
+    if (DUMP_INTERNAL_DATA()) {
         dump_hex(context.machine_func->code, context.machine_func->code_len, 12);
     }
     // on success do this
@@ -181,7 +182,8 @@ Instruction** alloc_operands(CodegenContext* context, int count) {
 
 int alloc_machine_register(CodegenContext* context) {
     int found = -1;
-    for (int i=ARRAY_LENGTH(context->used_machine_registers)-1;i>=0;i--) {
+    // for (int i=ARRAY_LENGTH(context->used_machine_registers)-1;i>=0;i--) {
+    for (int i = context->max_machine_registers - 1; i >= 0; i--) {
         if (i == X64_REG_SP || i == X64_REG_BP)
             continue;
         // @NOCHECKIN These don't need to be here. We don't consider register's as volatile at them moment.
@@ -206,10 +208,15 @@ int alloc_specific_machine_register(CodegenContext* context, int reg) {
     return reg;
 }
 
-void free_machine_register(CodegenContext* context, int ir_reg) {
+void free_machine_register_from_ir_reg(CodegenContext* context, int ir_reg) {
     int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
     ASSERT(context->used_machine_registers[machine_reg]);
     context->used_machine_registers[machine_reg] = false;
+}
+
+void free_machine_register(CodegenContext* context, int machine_register) {
+    ASSERT(context->used_machine_registers[machine_register]);
+    context->used_machine_registers[machine_register] = false;
 }
 
 bool is_machine_register_free(CodegenContext* context, int reg) {
@@ -419,6 +426,9 @@ void x86_generate(CodegenContext* context) {
     }
 
     X86Builder* builder = &_builder;
+
+    // on 32-bit x86 there are 8 registers.
+    context->max_machine_registers = 16;
     
 
     //
@@ -473,7 +483,7 @@ void x86_generate(CodegenContext* context) {
                     int machine_out = machine_in0;
                     
                     if (inst->input1->uses == 0) {
-                        free_machine_register(context, ir_inst->input1);
+                        free_machine_register_from_ir_reg(context, ir_inst->input1);
                     }
 
                     context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
@@ -483,7 +493,7 @@ void x86_generate(CodegenContext* context) {
                 } else if (inst->input1->uses == 0) {
                     int machine_out = machine_in1;
                     
-                    // free_machine_register(context, ir_inst->input1);
+                    // free_machine_register_from_ir_reg(context, ir_inst->input1);
                     // alloc_specific_machine_register(context, machine_out);
                     context->reg_to_machine_register[ir_inst->output].machine_register = machine_out;
     
@@ -500,12 +510,31 @@ void x86_generate(CodegenContext* context) {
                     // x86_emit_add(builder, machine_out, machine_in1);
                     
                 }
+
                 switch (*inst->base) {
                     case IR_ADD: x86_emit_add(builder, op0, op1); break;
                     case IR_SUB: x86_emit_sub(builder, op0, op1); break;
-                    // case IR_MUL: x86_emit_mul(builder, op0, op1); break;
-                    // case IR_DIV: x86_emit_div(builder, op0, op1); break;
-                    // case IR_MOD: x86_emit_add(builder, op0, op1); break;
+                    case IR_MUL: x86_emit_imul(builder, op0, op1); break;
+                    case IR_DIV: {
+                        int extraReg = alloc_specific_machine_register(context, X64_REG_A);
+                        int extraReg2 = alloc_specific_machine_register(context, X64_REG_D);
+                        x86_emit_mov(builder, extraReg, op0);
+                        x86_emit_cdq(builder, X64_REG_A, X64_REG_A);
+                        x86_emit_idiv(builder, extraReg, op1);
+                        x86_emit_mov(builder, op0, extraReg);
+                        free_machine_register(context, extraReg);
+                        free_machine_register(context, extraReg2);
+                    } break;
+                    case IR_MOD: {
+                        int extraReg = alloc_specific_machine_register(context, X64_REG_A);
+                        int extraReg2 = alloc_specific_machine_register(context, X64_REG_D);
+                        x86_emit_mov(builder, extraReg, op0);
+                        x86_emit_cdq(builder, X64_REG_A, X64_REG_A);
+                        x86_emit_idiv(builder, extraReg, op1);
+                        x86_emit_mov(builder, op0, extraReg2);
+                        free_machine_register(context, extraReg);
+                        free_machine_register(context, extraReg2);
+                    } break;
                     default: ASSERT(false);
                 }
                 
@@ -598,7 +627,7 @@ void x86_generate(CodegenContext* context) {
                 inst->input0->uses--;
                 ASSERT(inst->input0->uses >= 0);
                 if (inst->input0->uses == 0) {
-                    free_machine_register(context, ir_inst->memory);
+                    free_machine_register_from_ir_reg(context, ir_inst->memory);
                 }
 
                 int machine_reg = alloc_machine_register(context);
@@ -618,12 +647,12 @@ void x86_generate(CodegenContext* context) {
                 inst->input0->uses--;
                 ASSERT(inst->input0->uses >= 0);
                 if (inst->input0->uses == 0) {
-                    free_machine_register(context, ir_inst->memory);
+                    free_machine_register_from_ir_reg(context, ir_inst->memory);
                 }
                 inst->input1->uses--;
                 ASSERT(inst->input1->uses >= 0);
                 if (inst->input1->uses == 0) {
-                    free_machine_register(context, ir_inst->input);
+                    free_machine_register_from_ir_reg(context, ir_inst->input);
                 }
 
                 x86_emit_store(builder, machine_src_reg, machine_mem_reg, ir_inst->displacement);
@@ -675,7 +704,7 @@ void x86_generate(CodegenContext* context) {
                             inst->inputs_outputs[i]->uses--;
                             ASSERT(inst->inputs_outputs[i]->uses >= 0);
                             if (inst->inputs_outputs[i]->uses == 0) {
-                                free_machine_register(context, ir_reg);
+                                free_machine_register_from_ir_reg(context, ir_reg);
                             }
                         }
 
@@ -706,7 +735,7 @@ void x86_generate(CodegenContext* context) {
                             inst->inputs_outputs[i]->uses--;
                             ASSERT(inst->inputs_outputs[i]->uses >= 0);
                             if (inst->inputs_outputs[i]->uses == 0) {
-                                free_machine_register(context, ir_reg);
+                                free_machine_register_from_ir_reg(context, ir_reg);
                             }
                         }
 
@@ -756,7 +785,7 @@ void x86_generate(CodegenContext* context) {
                     inst->inputs_outputs[0]->uses--;
                     ASSERT(inst->inputs_outputs[0]->uses >= 0);
                     if (inst->inputs_outputs[0]->uses == 0) {
-                        free_machine_register(context, ir_inst->operands[0]);
+                        free_machine_register_from_ir_reg(context, ir_inst->operands[0]);
                     }
                     
                     int machine_reg = context->reg_to_machine_register[ir_inst->operands[0]].machine_register;

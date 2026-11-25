@@ -82,6 +82,7 @@ typedef struct {
     Driver* driver;
     Import* import;
     u32 head; // token head
+    AST* ast;
     
     ASTExpression_Block* previous_block;
     ASTFunction*         current_function;
@@ -201,6 +202,7 @@ Result parse_import(Compilation* compilation, Import* import, AST** out_ast) {
     context.compilation = compilation;
     context.driver = compilation->driver;
     context.head = 0;
+    context.ast = ast;
 
     int res = setjmp(context.jump_state);
 
@@ -304,7 +306,9 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
                 }
             }
 
-            debug("ANOT %s '%.*s'\n", anot.name.ptr, anot.content.len, anot.content.ptr);
+            if (DUMP_PARSE_STAGE()) {
+                debug("ANOT %s '%.*s'\n", anot.name.ptr, anot.content.len, anot.content.ptr);
+            }
 
             // TODO: Add annotations to the AST
             continue;
@@ -331,7 +335,9 @@ ASTExpression_Block* parse_block_expression(ParserContext* context, ParseBlockFl
 
             string_cleanup(&resolved_path);
 
-            driver_add_task(context->driver, &task);
+            Task* pTask = driver_add_task(context->driver, &task);
+            array_push(&context->ast->tasks, &pTask);
+            driver_mark_task_ready(context->driver, pTask, false);
 
             ASTImport new_import = {};
             new_import.location = path_loc;
@@ -1680,7 +1686,7 @@ bool parse_type(ParserContext* context, ASTType* typename) {
             // advance();
             // cstring str = DATA_FROM_IDENTIFIER(tok);
             string_append_cstr(&acc, type_name);
-        } else if (tok == '*') {
+        } else if (tok == '*' || tok == '^') {
             advance();
             string_append_char(&acc, '*');
         } else if (tok == '[') {
@@ -2457,7 +2463,7 @@ static bool _match_id(ParserContext* context, cstring* outstring, bool peek_oper
     u32 head = context->head;
 
     char rune = text.ptr[head];
-    if(! (((rune|32) >= 'a' && (rune|32) <= 'z') || (unsigned)rune > 128)) {
+    if(! (((rune|32) >= 'a' && (rune|32) <= 'z') || rune == '_' || (unsigned)rune > 128)) {
         if (!peek_operation) {
             SourceLocation loc = srcloc();
             _parse_error(context, loc, "Unexpected token, wanted identifier.");

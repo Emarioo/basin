@@ -4,8 +4,12 @@
 #include "basin/common.h"
 #include "platform/platform.h"
 
-bool enabled_logging_driver = true;
-
+bool dump_driver_tasking = false;
+bool dump_internal_data = false;
+bool dump_parse_stage = false;
+bool dump_genir_stage = false;
+bool dump_codegen_stage = false;
+bool dump_objfile_stage = false;
 
 void dump_hex(void* address, int size, int stride) {
     u8* data = address;

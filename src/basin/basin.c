@@ -61,6 +61,23 @@ BasinResult basin_compile(const BasinCompileOptions* options) {
     
     BasinResult result = {};
 
+    if (options->debug_verbose) {
+        dump_internal_data = true;
+        dump_driver_tasking = true;
+        dump_parse_stage = true;
+        dump_genir_stage = true;
+        dump_codegen_stage = true;
+        dump_objfile_stage = true;
+    } else {
+        dump_internal_data = false;
+        dump_driver_tasking = false;
+        dump_parse_stage = false;
+        dump_genir_stage = false;
+        dump_codegen_stage = false;
+        dump_objfile_stage = false;
+    }
+
+
     Driver* driver = driver_create();
 
     Compilation* comp = driver_create_compilation(driver, options);
@@ -81,7 +98,8 @@ BasinResult basin_compile(const BasinCompileOptions* options) {
         task.lex_and_parse.import->text = string_clone(options->input_text, options->input_text_len);
     }
 
-    driver_add_task(driver, &task);
+    Task* pTask = driver_add_task(driver, &task);
+    driver_mark_task_ready(driver, pTask, false);
 
     // 0, 0 means: Use all CPU threads and process all tasks
     driver_run(driver, 0, 0);
@@ -209,6 +227,8 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
         argc++;
         while (argv[argc++]) ;
     }
+
+    int import_dirs_max = 0;
     
     // @TODO The paths and user args we insert into options, should they be
     //    allocated anew or simplify use those passed in argv?
@@ -256,8 +276,21 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
                 FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Missing import directory after '%s'\n", arg);
                 return result;
             }
-            log__printf("WARNING: Currently ignoring -I, to be implemented\n");
+
+            const char* import_dir = argv[argi];
             argi++;
+
+            if (options->import_dirs_len >= import_dirs_max) {
+                // @TODO Implement resize
+                int new_max = import_dirs_max*2 + 20;
+                const char** new_import_dirs = mem__realloc(new_max * sizeof(char*), (void*)options->import_dirs);
+                ASSERT(("out of memory", new_import_dirs));
+                import_dirs_max = new_max;
+                options->import_dirs = new_import_dirs;
+            }
+
+            ((const char**)options->import_dirs)[options->import_dirs_len] = import_dir;
+            options->import_dirs_len++;
         } else if(!strcmp(arg, "-L")) {
             if (argi >= argc) {
                 FORMAT_ERROR(result, BASIN_INVALID_COMPILE_OPTIONS, "Missing library directory '%s'\n", arg);
@@ -359,6 +392,8 @@ BasinResult basin_parse_argv(int argc, const char** argv, BasinCompileOptions* o
         
         } else if(!strcmp(arg, "-silent")) {
             options->silent = true;
+        } else if(!strcmp(arg, "-z")) {
+            options->debug_verbose = true;
         } else if(!strcmp(arg, "-run")) {
             options->run_output = true;
         } else if(arg[0] == '-') {

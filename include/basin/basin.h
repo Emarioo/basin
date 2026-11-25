@@ -117,6 +117,7 @@ typedef struct BasinCompileOptions {
     bool               disable_default_import_dirs;
     bool               disable_default_library_dirs;
     bool               silent;
+    bool               debug_verbose; // -z flag
     
     const char* const* import_dirs;
     int                import_dirs_len;

@@ -17,6 +17,11 @@ void x86_emit_pop(X86Builder* builder, int reg);
 void x86_emit_add(X86Builder* builder, int dst_reg, int input_reg);
 void x86_emit_sub(X86Builder* builder, int dst_reg, int input_reg);
 
+void x86_emit_imul(X86Builder* builder, int dst_reg, int input_reg);
+void x86_emit_idiv(X86Builder* builder, int dst_reg, int input_reg);
+void x86_emit_cdq(X86Builder* builder, int dst_reg, int input_reg);
+
+
 void x86_emit_add_imm(X86Builder* builder, int reg, int immediate);
 void x86_emit_sub_imm(X86Builder* builder, int reg, int immediate);
 

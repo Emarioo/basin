@@ -166,7 +166,7 @@ Result generate_ir(Compilation* compilation, AST* ast, IRProgram* program) {
 
 u32 submit_rodata_string(GenIRContext* context, cstring str) {
     u32 prev_offset = atomic_add64(&context->compilation->section_rodata->data_len, str.len+1);
-    memcpy(context->compilation->section_rodata->data, str.ptr, str.len);
+    memcpy(context->compilation->section_rodata->data + prev_offset, str.ptr, str.len);
     context->compilation->section_rodata->data[prev_offset + str.len] = '\0';
     return prev_offset;
 }
@@ -187,10 +187,15 @@ void walk(GenIRContext* context, ASTExpression* _expr) {
 
 void generate_function(GenIRContext* context, ASTFunction* func) {
     PROFILE_START();
-    debug("Gen Func %s\n", func->name.ptr);
+
+    if (DUMP_GENIR_STAGE()) {
+        debug("Gen Func %s\n", func->name.ptr);
+    }
     
     if(!func->body) {
-        debug(" skip no body %s\n", func->name.ptr);
+        if (DUMP_GENIR_STAGE()) {
+            debug(" skip no body %s\n", func->name.ptr);
+        }
         goto end;
     }
 
@@ -224,7 +229,7 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
 
 
 
-    if (should_debug_print()) {
+    if (DUMP_INTERNAL_DATA()) {
         print_ir_function(context->compilation->program, ir_func);
     }
 
@@ -232,7 +237,8 @@ void generate_function(GenIRContext* context, ASTFunction* func) {
     task.kind = TASK_GEN_MACHINE;
     task.compilation = context->compilation;
     task.gen_machine.ir_function = ir_func;
-    driver_add_task(context->driver, &task);
+    Task* pTask = driver_add_task(context->driver, &task);
+    driver_mark_task_ready(context->driver, pTask, false);
 
 end:
     PROFILE_END();
@@ -466,6 +472,25 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                     } break;
                     default: ASSERT(false);
                 }
+            } else if (expr_member->expr->kind == EXPR_LITERAL) {
+                ASTExpression_Literal* value = (ASTExpression_Literal*) expr_member->expr;
+                switch (value->literal_kind) {
+                    case EXPR_LITERAL_STRING: {
+                        int field_offset;
+                        if (string_equal_cstr(cstr(expr_member->name), "ptr")) {
+                            ir_value.regnum = allocate_register(context);
+                            int offset = submit_rodata_string(context, cstr(value->string_value));
+                            ir_address_of_variable(&context->builder, ir_value.regnum, context->compilation->sectionid_rodata, offset);
+                        } else if (string_equal_cstr(cstr(expr_member->name), "len")) {
+                            ir_value.regnum = allocate_register(context);
+                            int length = value->string_value.len;
+                            ir_imm32(&context->builder, ir_value.regnum, length, IR_TYPE_S64);
+                        } else {
+                            gen_error(expr_member->location, "Literal string does not have member '%s'.", expr_member->name.ptr);
+                        }
+                    } break;
+                    default: ASSERT(false);
+                }
             } else {
                 ASSERT(false);
             }
@@ -534,8 +559,9 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                 case EXPR_OP_DIV: {
                     ir_div(builder, ir_value.regnum, left_value.regnum, right_value.regnum, IR_TYPE_S64);
                 } break;
-
-                case EXPR_OP_MODULO:
+                case EXPR_OP_MODULO: {
+                    ir_mod(builder, ir_value.regnum, left_value.regnum, right_value.regnum, IR_TYPE_S64);
+                } break;
 
                 case EXPR_OP_LESS:
                 case EXPR_OP_GREATER:
@@ -603,13 +629,14 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                         int reg_ptr = allocate_register(context);
 
                         ir_imm32(&context->builder, reg_length, length, IR_TYPE_S64);
-                        ir_address_of_variable(&context->builder, reg_ptr, context->compilation->sectionid_rodata, offset);
-
-                        ir_store(&context->builder, ref.regnum, reg_ptr, 0, IR_TYPE_S64);
                         ir_store(&context->builder, ref.regnum, reg_length, 8, IR_TYPE_S64);
-                        free_register(context, ref.regnum);
                         free_register(context, reg_length);
+                        
+                        ir_address_of_variable(&context->builder, reg_ptr, context->compilation->sectionid_rodata, offset);
+                        ir_store(&context->builder, ref.regnum, reg_ptr, 0, IR_TYPE_S64);
                         free_register(context, reg_ptr); 
+
+                        free_register(context, ref.regnum);
                     } break;
                     case EXPR_LITERAL_INTEGER: {
                         int reg_value = allocate_register(context);

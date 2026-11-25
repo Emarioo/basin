@@ -195,6 +195,34 @@ void x86_emit_sub(X86Builder* builder, int dst_reg, int input_reg) {
     emit_modrm(builder, MODE_REG, CLAMP_EXT_REG(dst_reg), CLAMP_EXT_REG(input_reg));
 }
 
+void x86_emit_imul(X86Builder* builder, int dst_reg, int input_reg) {
+    EMIT_PRELUDE()
+
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, dst_reg, input_reg);
+    emit2(builder, OPCODE_2_IMUL_REG_RM);
+    emit_modrm(builder, MODE_REG, CLAMP_EXT_REG(dst_reg), CLAMP_EXT_REG(input_reg));
+}
+
+
+void x86_emit_idiv(X86Builder* builder, int dst_reg, int input_reg) {
+    EMIT_PRELUDE()
+
+    ASSERT(dst_reg == X64_REG_A);
+
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, 0, input_reg);
+    emit1(builder, OPCODE_IDIV_A_RM_SLASH_7);
+    emit_modrm_slash(builder, MODE_REG, 7, CLAMP_EXT_REG(input_reg));
+}
+
+void x86_emit_cdq(X86Builder* builder, int dst_reg, int input_reg) {
+    EMIT_PRELUDE()
+
+    ASSERT(dst_reg == X64_REG_A);
+    ASSERT(input_reg == X64_REG_A);
+
+    maybe_emit_prefix(builder, REXW_IF_64_BIT_ARCH, 0, 0);
+    emit1(builder, OPCODE_CDQ);
+}
 
 void x86_emit_add_imm(X86Builder* builder, int reg, int immediate) {
     EMIT_PRELUDE()

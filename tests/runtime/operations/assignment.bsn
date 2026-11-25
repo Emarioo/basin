@@ -1,0 +1,14 @@
+
+import "testutil.bsn"
+
+fn test_main() {
+    test_begin(__FILE__.ptr)
+
+    number: i32 = 99
+    test_int(number, 99)
+
+    text : char[] = "word"
+    test_string(text.ptr, "word".ptr)
+
+    test_end()
+}

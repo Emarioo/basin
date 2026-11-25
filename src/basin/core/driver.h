@@ -37,10 +37,21 @@ typedef enum {
 } TaskKind;
 extern const char* task_kind_names[TASK_COUNT];
 
+typedef struct Task Task;
+typedef struct TaskItem TaskItem;
+
+struct TaskItem {
+    Task* current;
+    TaskItem* next;
+};
+
 // A unit of work to be performed by the driver
-typedef struct Task {
-    TaskKind kind;
+struct Task {
+    TaskKind     kind;
+    volatile u32 remainingDependencies;
     Compilation* compilation;
+    TaskItem*    tasksBlockedByMe;
+
     union {
         struct {
             Import* import;
@@ -56,9 +67,12 @@ typedef struct Task {
             Import* import;
         } gen_object;
     };
-} Task;
+};
+
+typedef Task* TaskP;
 
 DEF_BUCKET_ARRAY(Task)
+DEF_ARRAY(TaskP)
 
 
 typedef struct Driver Driver;
@@ -72,9 +86,11 @@ typedef struct {
 DEF_BUCKET_ARRAY(Compilation)
 
 typedef struct Driver {
-    DriverThread* threads;
-    u32           threads_len;
-    u32           threads_cap;
+    DriverThread*    threads;
+    u32              threads_len;
+    u32              threads_cap;
+
+    Array_TaskP      queuedTasks;
 
     BucketArray_Task tasks;
     Mutex            tasks_mutex;
@@ -101,7 +117,10 @@ void    driver_run(Driver* driver, u32 thread_count, u32 task_process_limit);
 void    driver_cleanup(Driver* driver);
 
 #define driver_add_task(...) driver_add_task_with_thread_id(__VA_ARGS__, -1)
-void driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number);
+Task* driver_add_task_with_thread_id(Driver* driver, Task* task, int thread_number);
+
+void driver_add_task_dependency(Driver* driver, Task* task, Task* dep);
+void driver_mark_task_ready(Driver* driver, Task* task, bool alreadyHasLockedMutex);
 
 
 Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions* options);

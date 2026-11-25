@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 
     result = basin_compile(&options);
     if (result.error_type == BASIN_SUCCESS) {
-        printf("Success");
+        // printf("Success");
     } else if(result.error_type == BASIN_FILE_NOT_FOUND) {
         fprintf(stderr, "Cannot read '%s'\n", options.input_file);
     } else {
@@ -83,10 +83,13 @@ void print_help() {
     printf("Usage: basin [OPTIONS...] <input_file>\n"
         "Options: (WIP, most are not implemented)\n"
         "  -o <path>    Path to output file\n"
+        "  -I <path>    Add import directory\n"
+        "  --no-default-imports    Do not use default imports directories\n"
         "  -debug       Debug info\n"
         "  -run         Run program\n"
         "  -O <N>       Optimize level\n"
         "  -silent      Silence success and compile time info\n"
+        "  -z           Maximum verbosity\n"
         "  -type        File code type. object, static library, executable...\n"
         "  -target      Short-hand target\n"
         "  -mos         Target OS\n"
