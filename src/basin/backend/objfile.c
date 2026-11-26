@@ -190,14 +190,8 @@ void generate_coff(ObjectContext* context) {
 
     fileOffset += header.NumberOfSymbols * Symbol_Record_SIZE;
     
-
-    int symbol_index_of_text_section = 0;
-
-
-    // +1 because text section is not included in IR section and stack section is not really a section
     #define IR_SECTION_TO_SYMBOL_INDEX(ID) (ID)
 
-    // +2 because above
     int symbol_index_start_of_functions = atomic_array_size(&context->ir_program->sections);
 
     int exec_offset = exec_section.PointerToRawData;
@@ -392,19 +386,15 @@ void generate_elf(ObjectContext* context) {
     
     switch (target_arch) {
         case BASIN_TARGET_ARCH_x86_64: {
-            REGISTER_SIZE = 8;
             ELF_SET(&header, e_machine, EM_X86_64);
         } break;
         case BASIN_TARGET_ARCH_i386: {
-            REGISTER_SIZE = 4;
             ELF_SET(&header, e_machine, EM_860);
         } break; 
         case BASIN_TARGET_ARCH_aarch64: {
-            REGISTER_SIZE = 8;
             ELF_SET(&header, e_machine, EM_AARCH64);
         } break;
         case BASIN_TARGET_ARCH_arm: {
-            REGISTER_SIZE = 4;
             ELF_SET(&header, e_flags, 0x5000000);
             ELF_SET(&header, e_machine, EM_ARM);
         } break;
@@ -426,6 +416,7 @@ void generate_elf(ObjectContext* context) {
     num_sections += 1; // text section
     num_sections += 1; // relocation text section
     num_sections += 1; // symbol table
+    num_sections += 1; // note gnu
     num_sections += 1; // string table for symbols
     num_sections += 1; // string table for sections
     num_sections += 2 * (atomic_array_size(&context->ir_program->sections) - 1); // 2* for relocation and the actual section, -1 because it includes stack section
@@ -443,7 +434,9 @@ void generate_elf(ObjectContext* context) {
     Elf32_Shdr symtab_section32 = {};
     Elf64_Shdr symtab_section64 = {};
     
-
+    Elf32_Shdr gnustack_section32 = {};
+    Elf64_Shdr gnustack_section64 = {};
+    
     int sectionIndex_secstrtab = 1;
     int sectionIndex_symstrtab = 2;
     int sectionIndex_symtab = 3;
@@ -475,6 +468,10 @@ void generate_elf(ObjectContext* context) {
         ELF_SET(&symbol_strtab_section, sh_addralign, 1);
     }
     
+    {
+        ELF_SET(&gnustack_section, sh_type, SHT_PROGBITS);
+        ELF_SET(&gnustack_section, sh_addralign, 1);
+    }
     
     typedef struct ElfSection {
         int sec_index;
@@ -525,7 +522,7 @@ void generate_elf(ObjectContext* context) {
 
         ELF_SET(&text_section->rela, sh_type, SHT_RELA);
         ELF_SET(&text_section->rela, sh_flags, 0);
-        ELF_SET(&text_section->rela, sh_link, sectionIndex_symtab); // index to symtab section
+        ELF_SET(&text_section->rela, sh_link, sectionIndex_symtab);
         ELF_SET(&text_section->rela, sh_info, text_section->sec_index); // index to section where relocations should be applied
         ELF_SET(&text_section->rela, sh_addralign, REGISTER_SIZE);
         ELF_SET(&text_section->rela, sh_entsize, relocationSize);
@@ -540,10 +537,22 @@ void generate_elf(ObjectContext* context) {
         section->sec_index = sectionIndex_startOfOtherSections + 2 * si;
         section->rela_index = sectionIndex_startOfOtherSections + 2 * si + 1 ;
 
-        ELF_SET(&section->sec,sh_type, SHT_PROGBITS);
-        ELF_SET(&section->sec,sh_flags, SHF_ALLOC | SHF_EXECINSTR);
-        ELF_SET(&section->sec,sh_addralign, 1);
-        ELF_SET(&section->sec,sh_size, ir_section->data_len);
+        if (string_equal_cstr(cstr(ir_section->name), ".bss")) {
+            ELF_SET(&section->sec,sh_type, SHT_NOBITS);
+            ELF_SET(&section->sec,sh_flags, SHF_ALLOC | SHF_WRITE);
+            ELF_SET(&section->sec,sh_addralign, ir_section->dataAlignment);
+            ELF_SET(&section->sec,sh_size, ir_section->data_len);
+        } else if (string_equal_cstr(cstr(ir_section->name), ".rodata")) {
+            ELF_SET(&section->sec,sh_type, SHT_PROGBITS);
+            ELF_SET(&section->sec,sh_flags, SHF_ALLOC);
+            ELF_SET(&section->sec,sh_addralign, ir_section->dataAlignment);
+            ELF_SET(&section->sec,sh_size, ir_section->data_len);
+        } else {
+            ELF_SET(&section->sec,sh_type, SHT_PROGBITS);
+            ELF_SET(&section->sec,sh_flags, SHF_ALLOC | SHF_WRITE);
+            ELF_SET(&section->sec,sh_addralign, ir_section->dataAlignment);
+            ELF_SET(&section->sec,sh_size, ir_section->data_len);
+        }
         
         int relocationCount = 0;
 
@@ -580,6 +589,11 @@ void generate_elf(ObjectContext* context) {
         ELF_SET(&symtab_section, sh_name, fileOffset - strtab_base);
         fileOffset += strlen(name) + 1;
         
+        name = ".note.GNU-stack";
+        fs__write(handle, fileOffset, name, strlen(name) + 1);
+        ELF_SET(&gnustack_section, sh_name, fileOffset - strtab_base);
+        fileOffset += strlen(name) + 1;
+        
         name = ".text";
         fs__write(handle, fileOffset, name, strlen(name) + 1);
         ELF_SET(&text_section->sec, sh_name, fileOffset - strtab_base);
@@ -610,7 +624,7 @@ void generate_elf(ObjectContext* context) {
         ELF_SET(&section_strtab_section, sh_size, fileOffset - strtab_base);
     }
     
-    fileOffset = (fileOffset + 1) & ~(size_t)7; // 8-byte alignment
+    fileOffset = (fileOffset + 7) & ~(size_t)7; // 8-byte alignment
 
     {
         size_t fileOffset_symbols = fileOffset;
@@ -629,7 +643,7 @@ void generate_elf(ObjectContext* context) {
         fileOffset += numberOfSymbols * symbolSize;
         size_t fileOffset_strtab = fileOffset;
 
-        ELF_SET(&symtab_section, sh_offset, fileOffset_strtab);
+        ELF_SET(&symbol_strtab_section, sh_offset, fileOffset_strtab);
 
         
         int next_symbol_index = 0;
@@ -637,7 +651,11 @@ void generate_elf(ObjectContext* context) {
 
         {
             Elf32_Sym symbol32 = {};
-            Elf32_Sym symbol64 = {};
+            Elf64_Sym symbol64 = {};
+            
+            const char* name = "";
+            fs__write(handle, fileOffset, name, strlen(name) + 1);
+            fileOffset += strlen(name) + 1;
 
             fs__write(handle, fileOffset_symbols + next_symbol_index * symbolSize, ELF_PTR(&symbol), symbolSize);
             next_symbol_index++;
@@ -645,7 +663,7 @@ void generate_elf(ObjectContext* context) {
 
         {
             Elf32_Sym symbol32 = {};
-            Elf32_Sym symbol64 = {};
+            Elf64_Sym symbol64 = {};
 
             const char* name = ".text";
             fs__write(handle, fileOffset, name, strlen(name) + 1);
@@ -658,7 +676,7 @@ void generate_elf(ObjectContext* context) {
             ELF_SET(&symbol, st_value, 0);
             
             if(bind == STB_LOCAL) {
-                ELF_SET(&text_section->sec, sh_info, next_symbol_index);
+                ELF_SET(&symtab_section, sh_info, next_symbol_index);
             }
 
             fs__write(handle, fileOffset_symbols + next_symbol_index * symbolSize, ELF_PTR(&symbol), symbolSize);
@@ -671,7 +689,7 @@ void generate_elf(ObjectContext* context) {
             ElfSection* section = &elfSections[si];
 
             Elf32_Sym symbol32 = {};
-            Elf32_Sym symbol64 = {};
+            Elf64_Sym symbol64 = {};
 
             fs__write(handle, fileOffset, ir_section->name.ptr, ir_section->name.len + 1);
             size_t name_offset = fileOffset - fileOffset_strtab;
@@ -683,7 +701,7 @@ void generate_elf(ObjectContext* context) {
             ELF_SET(&symbol, st_value, 0);
             
             if(bind == STB_LOCAL) {
-                ELF_SET(&text_section->sec, sh_info, next_symbol_index);
+                ELF_SET(&symtab_section, sh_info, next_symbol_index + 1);
             }
 
             fs__write(handle, fileOffset_symbols + next_symbol_index * symbolSize, ELF_PTR(&symbol), symbolSize);
@@ -704,7 +722,7 @@ void generate_elf(ObjectContext* context) {
             }
 
             Elf32_Sym symbol32 = {};
-            Elf32_Sym symbol64 = {};
+            Elf64_Sym symbol64 = {};
 
             fs__write(handle, fileOffset, ir_function->name.ptr, ir_function->name.len + 1);
             size_t name_offset = fileOffset - fileOffset_strtab;
@@ -713,11 +731,11 @@ void generate_elf(ObjectContext* context) {
             ELF_SET(&symbol, st_name, name_offset);
             
             if (function) {
-                current_function_text_offset += function->code_len;
                 ELF_SET(&symbol, st_info, ELFX_ST_INFO(bind, STT_FUNC));
                 ELF_SET(&symbol, st_shndx, text_section->sec_index);
                 ELF_SET(&symbol, st_value, current_function_text_offset);
                 ELF_SET(&symbol, st_size, function->code_len);
+                current_function_text_offset += function->code_len;
             } else {
                 ELF_SET(&symbol, st_info, ELFX_ST_INFO(bind, STT_NOTYPE));
             }
@@ -735,22 +753,22 @@ void generate_elf(ObjectContext* context) {
     }
 
 
-    // +1 because text section is not included in IR section and stack section is not really a section
+    // +1 because null symbol, we put section symbols after the null symbol, then function symbols
     #undef IR_SECTION_TO_SYMBOL_INDEX
-    #define IR_SECTION_TO_SYMBOL_INDEX(ID) (sectionIndex_startOfOtherSections + ID)
+    #define IR_SECTION_TO_SYMBOL_INDEX(ID) (1 + ID)
 
-    // +2 because above
+    // +1 because null symbol
     int symbol_index_start_of_functions = 1 + atomic_array_size(&context->ir_program->sections);
 
     
     switch (target_arch) {
         case BASIN_TARGET_ARCH_i386:
         case BASIN_TARGET_ARCH_x86_64: {
-            fileOffset = (fileOffset + 1) & ~(size_t)15; // 16-byte alignment
+            fileOffset = (fileOffset + 15) & ~(size_t)15; // 16-byte alignment
         } break;
         case BASIN_TARGET_ARCH_arm:
         case BASIN_TARGET_ARCH_aarch64: {
-            fileOffset = (fileOffset + 1) & ~(size_t)15; // 16-byte alignment
+            fileOffset = (fileOffset + 15) & ~(size_t)15; // 16-byte alignment
         } break;
         default: ASSERT(false);
     }
@@ -772,7 +790,7 @@ void generate_elf(ObjectContext* context) {
     ELF_SET(&text_section->sec, sh_size, codeSize);
     ELF_SET(&text_section->rela, sh_size, relocationSize * relocationCount);
     
-    fileOffset = (fileOffset + 1) & ~(size_t)15; // 16-byte alignment
+    fileOffset = (fileOffset + 15) & ~(size_t)15; // 16-byte alignment
 
     ELF_SET(&text_section->rela, sh_offset, fileOffset);
 
@@ -821,7 +839,7 @@ void generate_elf(ObjectContext* context) {
         }
     }
     
-    fileOffset = (fileOffset + 1) & ~(size_t)15; // 16-byte alignment
+    fileOffset = (fileOffset + 15) & ~(size_t)15; // 16-byte alignment
 
     // @NOTE We start from i=1 because first section is stack which isn't a real section
     for (int si = 1; si < atomic_array_size(&context->ir_program->sections); si++) {
@@ -834,16 +852,18 @@ void generate_elf(ObjectContext* context) {
     }
 
 
-    fs__write(handle, fileOffset_sections + 0, ELF_PTR(&null_section), sectionSize);
-    fs__write(handle, fileOffset_sections + sectionIndex_secstrtab, ELF_PTR(&section_strtab_section), sectionSize);
-    fs__write(handle, fileOffset_sections + sectionIndex_symstrtab, ELF_PTR(&symbol_strtab_section), sectionSize);
-    fs__write(handle, fileOffset_sections + sectionIndex_symtab, ELF_PTR(&symtab_section), sectionSize);
+    fs__write(handle, fileOffset_sections + 0 * sectionSize, ELF_PTR(&null_section), sectionSize);
+    fs__write(handle, fileOffset_sections + sectionIndex_secstrtab * sectionSize, ELF_PTR(&section_strtab_section), sectionSize);
+    fs__write(handle, fileOffset_sections + sectionIndex_symstrtab * sectionSize, ELF_PTR(&symbol_strtab_section), sectionSize);
+    fs__write(handle, fileOffset_sections + sectionIndex_symtab * sectionSize, ELF_PTR(&symtab_section), sectionSize);
     for (int si=0;si<elfSections_len;si++) {
         ElfSection* section = &elfSections[si];
-        fs__write(handle, fileOffset_sections + section->sec_index, ELF_PTR(&section->sec), sectionSize);
-        fs__write(handle, fileOffset_sections + section->rela_index, ELF_PTR(&section->rela), sectionSize);
+        fs__write(handle, fileOffset_sections + section->sec_index * sectionSize, ELF_PTR(&section->sec), sectionSize);
+        fs__write(handle, fileOffset_sections + section->rela_index * sectionSize, ELF_PTR(&section->rela), sectionSize);
     }
 
+    int last_section_index = sectionIndex_startOfOtherSections + 2 * elfSections_len;
+    fs__write(handle, fileOffset_sections + last_section_index * sectionSize, ELF_PTR(&gnustack_section), sectionSize);
 
     fs__write(handle, 0, ELF_PTR(&header), headerSize);
 

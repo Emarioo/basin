@@ -270,6 +270,7 @@ typedef struct IRSection {
     u64 data_len;
     u64 data_cap;
     u8* data;
+    int dataAlignment;
 } IRSection;
 
 DEF_ARRAY(IRSection)
