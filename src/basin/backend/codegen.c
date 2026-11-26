@@ -1,7 +1,7 @@
 #include "basin/backend/codegen.h"
 
 #include "basin/core/driver.h"
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 
 #include "basin/backend/x86_gen.h"
 #include "basin/backend/x86_defs.h"
@@ -276,9 +276,11 @@ void x86_generate(CodegenContext* context) {
     BasinTargetOS target_os = determine_os(context->compilation->options);
     BasinTargetArch target_arch = determine_arch(context->compilation->options);
     if (target_os == BASIN_TARGET_OS_windows && target_arch == BASIN_TARGET_ARCH_x86_64) {
-        callingConvention = CALLING_CONVENTION_WIN_X64;
+        callingConvention = CALLING_CONVENTION_winx64;
     } else if (target_os == BASIN_TARGET_OS_linux) {
-        callingConvention = CALLING_CONVENTION_SYSV;
+        callingConvention = CALLING_CONVENTION_sysv;
+    } else {
+        ASSERT(false);
     }
 
     #define APPEND_INST() context->inst_sequence[context->inst_sequence_len++] = inst
@@ -421,14 +423,12 @@ void x86_generate(CodegenContext* context) {
     switch (target_arch) {
         case BASIN_TARGET_ARCH_x86_64: {
             _builder.pointer_size = 8;
+            context->max_machine_registers = 16;
         } break;
         default: ASSERT(false);
     }
 
     X86Builder* builder = &_builder;
-
-    // on 32-bit x86 there are 8 registers.
-    context->max_machine_registers = 16;
     
 
     //
@@ -659,118 +659,146 @@ void x86_generate(CodegenContext* context) {
             } break;
             case IR_CALL: {
                 IRInstruction_call* ir_inst = (IRInstruction_call*)inst->base;
+                IRFunction* callee = atomic_array_getptr(&context->compilation->program->functions, ir_inst->function_id);
+
+                // @TODO We should get callingConvention from IRFunction.
+                //   If it is specified as host then we use ABI.
+                //   If the ABI is host then we use the operating systems ABI.
+                //   If OS is host then we use the ABI of the OS when compiling.
                 
                 ASSERT(ir_inst->ret_count <= 1);
                 // ASSERT(ir_inst->arg_count <= 4);  // check if we don't support args on stack
                 ASSERT(ir_inst->arg_count <= 8); // we hardcode 64 bytes of extra stack at the start.
 
+                // @IMPORTANT THIS code is SO FLAWED that a light feather will break it if it were ice.
+
+                // @TODO Save used volatile registers (EAX...) to stack
+                //   Only those that aren't freed after they have been used as arguments.
+                // CALLING_CONVENTION_winx64
+                // CALLING_CONVENTION_sysv
+
+                int* table = NULL;
+                int from_table[8] = {};
+                int first_args = 0;
+                int max_regs = 0;
+                int extra_space = 0;
+
+
+                int table_msx64[] = {
+                    X64_REG_C,
+                    X64_REG_D,
+                    X64_REG_R8,
+                    X64_REG_R9,
+                };
+                int table_sysv[] = {
+                    X64_REG_DI,
+                    X64_REG_SI,
+                    X64_REG_D,
+                    X64_REG_C,
+                    X64_REG_R8,
+                    X64_REG_R9,
+                };
+
                 switch (callingConvention) {
-                    case CALLING_CONVENTION_WIN_X64: {
-                        // @IMPORTANT THIS code is SO FLAWED that a light feather will break it if it were ice.
-
-                        // @TODO Save used volatile registers (EAX...) to stack
-                        //   Only those that aren't freed after they have been used as arguments.
-
-                        int table[] = {
-                            X64_REG_C,
-                            X64_REG_D,
-                            X64_REG_R8,
-                            X64_REG_R9,
-                        };
-                        int from_table[4] = {};
-
-                        int temp_reg = X64_REG_R15;
-                        // ASSERT(is_machine_register_free(context, temp_reg));
-
-                        int first_args = ir_inst->arg_count <= 4 ? ir_inst->arg_count : 4;
-
-                        for (int i=0;i<first_args;i++) {
-                            int ir_reg = CALL_GET_ARG(ir_inst, i);
-                            int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
-                            from_table[i] = machine_reg;
-                        }
-
-                        // @TODO We need to implement Artificial Registers like we had in BTB's codegen.
-                        //    Artificial registers represents a lifetime of a value in a register.
-
-                        // @OPTIMIZE_OUTPUT  The instruction that puts stuff in a register could put it directly onto argument stack.
-                        //     May be efficient in some situations?
-                        const int REGISTER_SIZE = 8;
-                        for (int i=4;i<ir_inst->arg_count;i++) {
-                            int ir_reg = CALL_GET_ARG(ir_inst, i);
-                            int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
-                            x86_emit_store(builder, machine_reg, X64_REG_SP, 32 + (i-4) * REGISTER_SIZE);
-
-                            inst->inputs_outputs[i]->uses--;
-                            ASSERT(inst->inputs_outputs[i]->uses >= 0);
-                            if (inst->inputs_outputs[i]->uses == 0) {
-                                free_machine_register_from_ir_reg(context, ir_reg);
-                            }
-                        }
-
-
-                        for (int i=first_args-1;i>=0;i--) {
-                            int ir_reg = CALL_GET_ARG(ir_inst, i);
-                            int machine_reg = from_table[i];
-
-                            if (table[i] != machine_reg) {
-                            //     // The from_table and this loop makes sure we don't mix argument registers and loose values.
-                            //     // when moving them around.
-                            //     for (int j=i + 1;j<ir_inst->arg_count;j++) {
-                            //         int inner = from_table[j];
-                            //         if (table[i] == inner) {
-                            //             // @TODO AAAAAAAAAHHHHHHHHHH this only solves one move, if the in arg registers and convention table
-                            //             // are reversed from each other then it wont work!
-                            //             x86_emit_mov(builder, temp_reg, inner);
-                            //             from_table[j] = temp_reg;
-                            //             break;
-                            //         }
-                            //     }
-
-                            //     // @TODO We are potentially overwriting used registers which is why we need to save used volatile registers.
-                                x86_emit_mov(builder, table[i], machine_reg);
-                            }
-
-
-                            inst->inputs_outputs[i]->uses--;
-                            ASSERT(inst->inputs_outputs[i]->uses >= 0);
-                            if (inst->inputs_outputs[i]->uses == 0) {
-                                free_machine_register_from_ir_reg(context, ir_reg);
-                            }
-                        }
-
-             
-
-                        // @TODO Depending on function_id we emit direct or indirect call.
-                        IRFunction* callee = atomic_array_getptr(&context->compilation->program->functions, ir_inst->function_id);
-                        u32 fixup_address;
-                        x86_emit_call_rel(builder, &fixup_address);
-                        // debug("  %04x: call %s (requires relocation)\n", fixup_address, callee->name.ptr);
-
-                        add_call_relocation(context, fixup_address, ir_inst->function_id);
-                        
-                        if (ir_inst->ret_count > 0) {
-                            int reg;
-                            if (is_machine_register_free(context, X64_REG_A)) {
-                                // Prefer to allocate EAX register.
-                                reg = alloc_specific_machine_register(context, X64_REG_A);
-                            } else {
-                                // Otherwise move EAX to allocated register.
-                                reg = alloc_machine_register(context);
-                                x86_emit_mov(builder, reg, X64_REG_A);
-                            }
-                            int ir_reg = CALL_GET_RET_VALUE(ir_inst, 0);
-                            context->reg_to_machine_register[ir_reg].machine_register = reg;
-                        }
-
-                        // @TODO Restore used volatile registers (EAX...) from stack
-
+                    case CALLING_CONVENTION_winx64: {
+                        table = table_msx64;
+                        max_regs = 4;
+                        extra_space = 32;
                     } break;
-                    case CALLING_CONVENTION_SYSV: {
-                        ASSERT(false);
+                    case CALLING_CONVENTION_sysv: {
+                        table = table_sysv;
+                        max_regs = 6;
+                        extra_space = 0;
                     } break;
                     default: ASSERT(false);
                 }
+
+                first_args = ir_inst->arg_count <= max_regs ? ir_inst->arg_count : max_regs;
+
+                int temp_reg = X64_REG_R15;
+                // ASSERT(is_machine_register_free(context, temp_reg));
+
+
+                for (int i=0;i<first_args;i++) {
+                    int ir_reg = CALL_GET_ARG(ir_inst, i);
+                    int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
+                    from_table[i] = machine_reg;
+                }
+
+                // @TODO We need to implement Artificial Registers like we had in BTB's codegen.
+                //    Artificial registers represents a lifetime of a value in a register.
+
+                // @OPTIMIZE_OUTPUT  The instruction that puts stuff in a register could put it directly onto argument stack.
+                //     May be efficient in some situations?
+                const int REGISTER_SIZE = builder->pointer_size;
+                for (int i=max_regs;i<ir_inst->arg_count;i++) {
+                    int ir_reg = CALL_GET_ARG(ir_inst, i);
+                    int machine_reg = context->reg_to_machine_register[ir_reg].machine_register;
+                    x86_emit_store(builder, machine_reg, X64_REG_SP, extra_space + (i-max_regs) * REGISTER_SIZE);
+
+                    inst->inputs_outputs[i]->uses--;
+                    ASSERT(inst->inputs_outputs[i]->uses >= 0);
+                    if (inst->inputs_outputs[i]->uses == 0) {
+                        free_machine_register_from_ir_reg(context, ir_reg);
+                    }
+                }
+
+
+                for (int i=first_args-1;i>=0;i--) {
+                    int ir_reg = CALL_GET_ARG(ir_inst, i);
+                    int machine_reg = from_table[i];
+
+                    if (table[i] != machine_reg) {
+                    //     // The from_table and this loop makes sure we don't mix argument registers and loose values.
+                    //     // when moving them around.
+                    //     for (int j=i + 1;j<ir_inst->arg_count;j++) {
+                    //         int inner = from_table[j];
+                    //         if (table[i] == inner) {
+                    //             // @TODO AAAAAAAAAHHHHHHHHHH this only solves one move, if the in arg registers and convention table
+                    //             // are reversed from each other then it wont work!
+                    //             x86_emit_mov(builder, temp_reg, inner);
+                    //             from_table[j] = temp_reg;
+                    //             break;
+                    //         }
+                    //     }
+
+                    //     // @TODO We are potentially overwriting used registers which is why we need to save used volatile registers.
+                        x86_emit_mov(builder, table[i], machine_reg);
+                    }
+
+
+                    inst->inputs_outputs[i]->uses--;
+                    ASSERT(inst->inputs_outputs[i]->uses >= 0);
+                    if (inst->inputs_outputs[i]->uses == 0) {
+                        free_machine_register_from_ir_reg(context, ir_reg);
+                    }
+                }
+
+        
+
+                // @TODO Depending on function_id we emit direct or indirect call.
+                u32 fixup_address;
+                x86_emit_call_rel(builder, &fixup_address);
+                // debug("  %04x: call %s (requires relocation)\n", fixup_address, callee->name.ptr);
+
+                add_call_relocation(context, fixup_address, ir_inst->function_id);
+                
+                if (ir_inst->ret_count > 0) {
+                    int reg;
+                    if (is_machine_register_free(context, X64_REG_A)) {
+                        // Prefer to allocate EAX register.
+                        reg = alloc_specific_machine_register(context, X64_REG_A);
+                    } else {
+                        // Otherwise move EAX to allocated register.
+                        reg = alloc_machine_register(context);
+                        x86_emit_mov(builder, reg, X64_REG_A);
+                    }
+                    int ir_reg = CALL_GET_RET_VALUE(ir_inst, 0);
+                    context->reg_to_machine_register[ir_reg].machine_register = reg;
+                }
+
+                // @TODO Restore used volatile registers (EAX...) from stack
+
             } break;
             case IR_RET: {
                 IRInstruction_ret* ir_inst = (IRInstruction_ret*)inst->base;

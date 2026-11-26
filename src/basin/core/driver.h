@@ -19,7 +19,7 @@
 #include "basin/common.h"
 // #include "basin/frontend/lexer.h"
 #include "basin/basin.h"
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 
 #include "basin/util/array.h"
 #include "basin/util/bucket_array.h"
@@ -105,6 +105,8 @@ typedef struct Driver {
     
     volatile u32 idle_threads;
     volatile u32 task_process_limit;
+
+    bool failed;
     
 } Driver;
 

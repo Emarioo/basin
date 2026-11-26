@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -136,14 +137,14 @@ static void run_tests(TestSet* testSet, const char *directory) {
         } while(0);
 
         PLATFORM_RUN("basin", arguments1);
-        if (result.success) {
+        if (result.exit_code == 0) {
             PLATFORM_RUN("gcc", arguments2);
         }
-        if (result.success) {
+        if (result.exit_code == 0) {
             PLATFORM_RUN(xpath, arguments3);
         }
 
-        bool passed = result.success && result.exit_code == 0;
+        bool passed = result.exit_code == 0;
 
         if (passed) {
             printf("[PASS] %s\n", path);
@@ -665,7 +666,7 @@ Platform_ProcessResult platform_run(
 
     if (GetExitCodeProcess(process.hProcess, &exit_code)) {
         result.exit_code = (int)exit_code;
-        result.success = true;
+        // result.success = true;
     }
     // printf("RES %d %d\n", result.success, exit_code);
 

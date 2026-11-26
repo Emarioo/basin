@@ -2,7 +2,7 @@
 
 #include "basin/common.h"
 
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 
 typedef struct Driver Driver;
 typedef struct AST AST;

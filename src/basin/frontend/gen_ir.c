@@ -1,10 +1,10 @@
 
-#include "basin/backend/gen_ir.h"
+#include "basin/frontend/gen_ir.h"
 
 #include "basin/core/driver.h"
 #include "basin/frontend/parser.h"
 #include "basin/frontend/ast.h"
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 
 #include "platform/platform.h"
 #include "platform/platform.h"
@@ -383,7 +383,10 @@ IRValue generate_expression(GenIRContext* context, ASTExpression* _expression, G
                 } else {
                     context->builder.function->frame_size += 8; // @NOCHECKIN Increment by size of variable!!!
                 }
-                printf("Install %s at %d\n", var->name.ptr, var->frame_offset);
+
+                if (DUMP_GENIR_STAGE()) {
+                    debug("Install %s at %d\n", var->name.ptr, var->frame_offset);
+                }
             }
 
             for (int i=0;i<expression->expressions.len;i++) {

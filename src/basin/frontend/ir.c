@@ -1,4 +1,4 @@
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 
 #include "basin/common.h"
 

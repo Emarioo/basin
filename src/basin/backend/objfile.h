@@ -7,4 +7,4 @@
 // generate object file from IRFunctions
 
 
-void generate_object_file(Compilation* compilation);
+bool generate_object_file(Compilation* compilation);

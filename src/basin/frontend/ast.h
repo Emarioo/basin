@@ -2,7 +2,7 @@
 
 #include "basin/common.h"
 // #include "basin/frontend/lexer.h" // SourceLocation
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 #include "basin/util/array.h"
 
 #include "basin/core/driver.h"

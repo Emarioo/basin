@@ -3,8 +3,8 @@
 #include "basin/logger.h"
 #include "basin/frontend/parser.h"
 #include "basin/frontend/ast.h"
-#include "basin/backend/gen_ir.h"
-#include "basin/backend/ir.h"
+#include "basin/frontend/gen_ir.h"
+#include "basin/frontend/ir.h"
 #include "basin/backend/codegen.h"
 #include "basin/backend/objfile.h"
 
@@ -177,6 +177,12 @@ Compilation* driver_create_compilation(Driver* driver, const BasinCompileOptions
         
         comp->section_data->data_cap = 0x100000;
         comp->section_data->data = mem__alloc(comp->section_data->data_cap);
+    }
+    {
+        IRSection section = {};
+        section.name = string_clone_cptr(".bss");
+        comp->sectionid_bss = atomic_array_push(&comp->program->sections, &section);
+        comp->section_bss = atomic_array_getptr(&comp->program->sections, comp->sectionid_bss);
     }
 
     comp->machine_program = HEAP_ALLOC_OBJECT(MachineProgram);
@@ -356,6 +362,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
+                    driver->failed = true;
                     break;
                 }
                 
@@ -396,6 +403,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 if(result.kind != SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.message.ptr);
+                    driver->failed = true;
                 } else {
                     if (DUMP_GENIR_STAGE()) {
                         debug("Gen ir success\n");
@@ -414,6 +422,7 @@ u32 driver_thread_run(DriverThread* thread_driver) {
                 if(result.error_type != CODEGEN_SUCCESS) {
                     // Print message. We are done with this series of tasks
                     fprintf(stderr, "%s", result.error_message);
+                    driver->failed = true;
                 } else {
                     if (DUMP_CODEGEN_STAGE()) {
                         debug("Gen machine success\n");
@@ -428,8 +437,10 @@ u32 driver_thread_run(DriverThread* thread_driver) {
             } break;
             case TASK_GEN_OBJECT: {
 
-                generate_object_file(task->compilation);
-
+                bool result = generate_object_file(task->compilation);
+                if (!result) {
+                    driver->failed = true;
+                }
             } break;
             default: {
                 debug("Unhandled task %d\n", task->kind);
@@ -464,7 +475,10 @@ u32 driver_thread_run(DriverThread* thread_driver) {
 
     // @TODO Temporary
     if (id == 0) {
-        generate_object_file(barray_get(&driver->compilations, 0));
+        bool result = generate_object_file(barray_get(&driver->compilations, 0));
+        if (!result) {
+            driver->failed = true;
+        }
     }
 
     if(DUMP_DRIVER_TASKING()) {

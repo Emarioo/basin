@@ -7,7 +7,7 @@
 #pragma once
 
 #include "basin/basin.h" // needs BasinAllocator
-#include "basin/backend/ir.h"
+#include "basin/frontend/ir.h"
 
 #include "basin/common.h"
 
@@ -57,8 +57,9 @@ typedef struct {
 
 
 typedef enum CallingConvention {
-    CALLING_CONVENTION_WIN_X64,
-    CALLING_CONVENTION_SYSV,
+    CALLING_CONVENTION_host,
+    CALLING_CONVENTION_winx64,
+    CALLING_CONVENTION_sysv,
 } CallingConvention;
 
 typedef enum {

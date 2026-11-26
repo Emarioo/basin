@@ -112,8 +112,10 @@ typedef struct Compilation {
     // Cache them here so we don't have to look for them
     IRSection* section_rodata;
     IRSection* section_data;
+    IRSection* section_bss;
     IRSectionID sectionid_rodata;
     IRSectionID sectionid_data;
+    IRSectionID sectionid_bss;
 
     MachineProgram* machine_program;
     

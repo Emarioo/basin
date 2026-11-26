@@ -115,6 +115,11 @@ BasinResult basin_compile(const BasinCompileOptions* options) {
     
     TracyCZoneEnd(zone);
 
+    result.error_type = BASIN_SUCCESS;
+    if (driver->failed) {
+        result.error_type = BASIN_COMPILE_ERROR;
+    }
+
     return result;
 }
 
